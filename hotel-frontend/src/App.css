@@ -1,0 +1,167 @@
+.App {
+  text-align: center;
+}
+
+.App-logo {
+  height: 40vmin;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .App-logo {
+    animation: App-logo-spin infinite 20s linear;
+  }
+}
+
+.App-header {
+  background-color: #282c34;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-size: calc(10px + 2vmin);
+  color: white;
+}
+
+.App-link {
+  color: #61dafb;
+}
+
+@keyframes App-logo-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Dynamic Printer Configuration */
+.print-paper-58mm {
+  width: 58mm !important;
+  font-size: 10px !important;
+  margin: 0 auto !important;
+}
+
+.print-paper-58mm * {
+  font-size: 10px !important;
+}
+
+.print-paper-58mm .receipt-logo {
+  max-width: 40px !important;
+  margin-bottom: 5px !important;
+}
+
+.print-paper-58mm .hide-on-58mm {
+  display: none !important;
+}
+
+.print-paper-58mm .compact-text {
+  letter-spacing: -0.2px !important;
+}
+
+.print-paper-80mm {
+  width: 80mm !important;
+  font-size: 12px !important;
+  margin: 0 auto !important;
+}
+
+.print-paper-80mm .receipt-logo {
+  max-width: 60px !important;
+  margin-bottom: 10px !important;
+}
+
+/* Real Thermal Receipt Aesthetics */
+.thermal-receipt {
+  font-family: 'Courier New', Courier, monospace !important;
+  line-height: 1.2 !important;
+  color: #000 !important;
+  text-transform: uppercase !important; /* Most thermal printers print in upper or bold */
+}
+
+.thermal-receipt .dashed-divider {
+  border-top: 1px dashed #000 !important;
+  margin: 5px 0 !important;
+  width: 100% !important;
+}
+
+.thermal-receipt .item-row {
+  display: flex !important;
+  justify-content: space-between !important;
+  margin: 2px 0 !important;
+}
+
+.thermal-receipt .centered {
+  text-align: center !important;
+}
+
+.thermal-receipt .bold {
+  font-weight: bold !important;
+}
+
+.thermal-receipt table {
+  width: 100% !important;
+  border-collapse: collapse !important;
+}
+
+.thermal-receipt th {
+  text-align: left !important;
+  border-bottom: 1px dashed #000 !important;
+  padding: 2px 0 !important;
+}
+
+.thermal-receipt td {
+  padding: 2px 0 !important;
+}
+
+@media print {
+  @page {
+    margin: 0 !important;
+    size: auto;
+  }
+
+  /* Force background to white and hide everything */
+  html, body {
+    background: #fff !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    height: auto !important;
+  }
+
+  /* Hide EVERYTHING except our specific print targets */
+  body > *:not(.print-allow):not(#print-report):not(#print-bill):not(.thermal-receipt) {
+    display: none !important;
+  }
+
+  /* If the app is deeply nested, hide all siblings of print targets */
+  div:not(.thermal-receipt):not(#print-report):not(#print-bill):not(.print-allow) {
+    /* We can't hide all divs because some are parents of our targets */
+  }
+
+  /* More reliable way: hide the specific UI components */
+  nav, aside, header, footer, [class*="sidebar"], [class*="topbar"], .no-print, button {
+    display: none !important;
+  }
+
+  /* Ensure the print target is the only thing visible and takes the whole space */
+  .thermal-receipt, #print-report, #print-bill {
+    display: block !important;
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 10px !important;
+    visibility: visible !important;
+    background: #fff !important;
+    color: #000 !important;
+  }
+
+  /* Make sure all parent containers are visible but don't show their other children */
+  .print-allow-parent {
+    display: block !important;
+    visibility: visible !important;
+    background: transparent !important;
+  }
+}
