@@ -17,7 +17,7 @@ export const API_BASE_URL = (hostname === 'localhost' || hostname === '127.0.0.1
     : hostname.endsWith('.localhost')
         ? 'http://127.0.0.1:8000/api'   // ← use 127.0.0.1, not barok.localhost
         : isProduction
-            ? `https://${hostname}/api`
+            ? `https://hotelerp.acrmatech.com/api`
             : isNgrok
                 ? `${window.location.protocol}//${hostname}/api`
                 : `http://127.0.0.1:8000/api`;
