@@ -49,8 +49,15 @@ const Sidebar = ({ activeTab, setActiveTab, handleLogout }) => {
 
   useEffect(() => {
     const token = localStorage.getItem('access_token');
+    const tenant = getTenantSchemaHint(); // Get current hotel subdomain
+
     if (token) {
-      axios.get(`${API_BASE_URL}/users/settings/`, { headers: { Authorization: `Bearer ${token}` } })
+      axios.get(`${API_BASE_URL}/users/settings/`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'X-Tenant-Schema': tenant // Required for production multi-tenancy
+        }
+      })
         .then(res => {
           const data = Array.isArray(res.data) ? res.data[0] : res.data;
           setHotelSettings(data);
