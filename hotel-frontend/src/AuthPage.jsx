@@ -2,11 +2,10 @@ import React, { useState } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import {
-  Mail, Lock, User, Phone, ArrowRight, ShieldCheck,
-  RefreshCcw, LogIn, UserPlus
+  Mail, Lock, User, Phone, ArrowRight, ShieldCheck, RefreshCcw
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { API_BASE_URL, BASE_URL } from './apiConfig';
+import { API_BASE_URL } from './apiConfig';
 
 const API_BASE = `${API_BASE_URL}/users/`;
 
@@ -37,9 +36,14 @@ const AuthPage = () => {
     const endpoint = isLogin ? 'login/' : 'register/';
 
     try {
+      console.log("Attempting login at:", `${API_BASE}${endpoint}`);
       if (isLogin) {
         // --- 1. CLEAN SLATE: ማንኛውንም የቆየ ዳታ እና ቶከን እናጽዳ ---
+        // ግን የ tenant schema hint ን እናስቀር (routing እንዲሰራ)
+        const currentTenant = localStorage.getItem('public_tenant_schema');
         localStorage.clear();
+        if (currentTenant) localStorage.setItem('public_tenant_schema', currentTenant);
+        
         delete axios.defaults.headers.common["Authorization"];
 
         const loginData = {
@@ -47,10 +51,8 @@ const AuthPage = () => {
           password: formData.password
         };
 
-        // --- 2. ሪኩዌስት ስንልክ Headers ባዶ መሆኑን እናረጋግጥ ---
-        const res = await axios.post(`${API_BASE}${endpoint}`, loginData, {
-          headers: { 'Authorization': '' }
-        });
+        // --- 2. ሪኩዌስት ስንልክ (Interceptor automatically adds Tenant header) ---
+        const res = await axios.post(`${API_BASE}${endpoint}`, loginData);
 
         if (res.data.tokens && res.data.tokens.access) {
           // ቶከኖችን ማስቀመጥ
@@ -62,7 +64,6 @@ const AuthPage = () => {
           axios.defaults.headers.common["Authorization"] = `Bearer ${res.data.tokens.access}`;
 
           const user = res.data.user;
-          const userRole = (user && user.role) ? user.role.toLowerCase().trim() : 'customer';
 
           // --- SMART REDIRECTION ---
           const currentHostname = window.location.hostname;

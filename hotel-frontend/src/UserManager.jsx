@@ -2,14 +2,12 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import {
   UserPlus, Search, Edit, Trash2, Shield, UserCheck, Check,
-  Users, X, Camera, Phone, Mail, Lock, CheckCircle, Briefcase, Filter
+  Users, X, Camera, Phone, Mail, Lock, Briefcase
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { API_BASE_URL, BASE_URL } from './apiConfig';
+import { API_BASE_URL } from './apiConfig';
 
-// ማስተካከያ፡ URL-ዎቹን ለየብቻ እናስቀምጣቸው
 const USER_API = `${API_BASE_URL}/users/users/`;
-const REGISTER_API = `${API_BASE_URL}/users/register/`;
 
 const UserManager = () => {
   const [users, setUsers] = useState([]);

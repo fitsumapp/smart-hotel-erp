@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Search, Plus, Edit, Trash2, CheckCircle, Users, Clock, X, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { API_BASE_URL, BASE_URL } from './apiConfig';
+import { API_BASE_URL } from './apiConfig';
 
 const API_BASE = `${API_BASE_URL}/users/manage/`;
 

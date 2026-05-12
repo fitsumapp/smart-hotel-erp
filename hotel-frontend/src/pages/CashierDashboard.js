@@ -1,12 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
-import { useReactToPrint } from 'react-to-print';
 import {
-  BarChart3, DollarSign, Receipt, CreditCard, PieChart, Clock,
-  Search, Bell, CheckCircle, X, Printer, User, LayoutGrid, Package, ChevronDown, ChevronUp, RefreshCcw, Info
+  BarChart3, DollarSign, Receipt, CreditCard,
+  Search, Bell, CheckCircle, X, Printer, User, LayoutGrid
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { API_BASE_URL, BASE_URL } from '../apiConfig';
+import { API_BASE_URL } from '../apiConfig';
 
 const API_BASE = `${API_BASE_URL}/users/`;
 const TABLES_API = `${API_BASE}manage/`;
@@ -71,6 +70,7 @@ const CashierDashboard = ({ userData, handleLogout }) => {
     fetchInitialData();
     const interval = setInterval(fetchDataUpdate, 5000);
     return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filterStartDate, filterEndDate, filterLimit]);
 
   useEffect(() => {

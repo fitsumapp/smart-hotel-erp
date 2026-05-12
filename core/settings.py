@@ -13,8 +13,8 @@ load_dotenv()
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = os.getenv("SECRET_KEY", "django-insecure-change-me-in-production")
-DEBUG = os.getenv("DEBUG", "False") == "True"
-ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "localhost,127.0.0.1,.acrmatech.com,.ngrok-free.app").split(",")
+DEBUG = os.getenv("DEBUG", "True") == "True"
+ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "localhost,127.0.0.1,.localhost,.acrmatech.com,.ngrok-free.app").split(",")
 CSRF_TRUSTED_ORIGINS = os.getenv("CSRF_TRUSTED_ORIGINS", "https://*.acrmatech.com,https://*.ngrok-free.app").split(",")
 
 
@@ -59,9 +59,12 @@ TENANT_DOMAIN_MODEL = "tenants.Domain"
 # ── Middleware ─────────────────────────────────────────────────────────────────
 # TenantMainMiddleware MUST be first — it sets the DB schema for each request
 MIDDLEWARE = [
-    "django_tenants.middleware.main.TenantMainMiddleware",   # ← FIRST
+    # CorsMiddleware MUST be first — it must wrap every response (including
+    # preflight OPTIONS replies) with Access-Control-Allow-* headers BEFORE
+    # any other middleware can short-circuit the request.
+    "corsheaders.middleware.CorsMiddleware",                 # ← FIRST (CORS)
+    "django_tenants.middleware.main.TenantMainMiddleware",   # ← tenant routing
     "tenants.middleware.LocalhostTenantRoutingMiddleware",
-    "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -79,19 +82,32 @@ MIDDLEWARE = [
 ROOT_URLCONF = "core.urls"
 PUBLIC_SCHEMA_URLCONF = "core.public_urls"
 
-# ── Database — PostgreSQL with django-tenants backend ─────────────────────────
+# ── Database — Neon.tech PostgreSQL (SSL required) ────────────────────────────
 DATABASE_ROUTERS = ["django_tenants.routers.TenantSyncRouter"]
 
-DATABASES = {
-    "default": {
-        "ENGINE": "django_tenants.postgresql_backend",   # replaces django.db.backends.postgresql
-        "NAME": os.getenv("DB_NAME", "hotel_erp_db"),
-        "USER": os.getenv("DB_USER", "postgres"),
-        "PASSWORD": os.getenv("DB_PASSWORD", "12345@678"),
-        "HOST": os.getenv("DB_HOST", "localhost"),
-        "PORT": os.getenv("DB_PORT", "5432"),
+# Neon.tech connection string support (takes priority if set)
+_neon_url = os.getenv("DATABASE_URL", "")
+
+if _neon_url:
+    import dj_database_url
+    _db_config = dj_database_url.parse(_neon_url)
+    _db_config["ENGINE"] = "django_tenants.postgresql_backend"
+    _db_config.setdefault("OPTIONS", {})["sslmode"] = "require"
+    DATABASES = {"default": _db_config}
+else:
+    DATABASES = {
+        "default": {
+            "ENGINE": "django_tenants.postgresql_backend",
+            "NAME": os.getenv("DB_NAME", "hotel_erp_db"),
+            "USER": os.getenv("DB_USER", "postgres"),
+            "PASSWORD": os.getenv("DB_PASSWORD", ""),
+            "HOST": os.getenv("DB_HOST", "localhost"),
+            "PORT": os.getenv("DB_PORT", "5432"),
+            "OPTIONS": {
+                "sslmode": os.getenv("DB_SSLMODE", "prefer"),
+            },
+        }
     }
-}
 
 # ── Templates ─────────────────────────────────────────────────────────────────
 TEMPLATES = [
@@ -111,16 +127,14 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "core.wsgi.application"
 
-from django.templatetags.static import static
-
 UNFOLD = {
     "SITE_TITLE": "Smart Hotel ERP",
     "SITE_HEADER": "Hotel Management System",
     "SITE_URL": "/",
-    # Custom logo placeholder - use a robust dummy image
+    # Logo via external URL (no local static file required)
     "SITE_LOGO": {
-        "light": lambda request: static("https://dummyimage.com/150x50/1e3a8a/ffffff.png&text=SMART+ERP"),
-        "dark": lambda request: static("https://dummyimage.com/150x50/1e3a8a/ffffff.png&text=SMART+ERP"),
+        "light": lambda request: "https://dummyimage.com/150x50/1e3a8a/ffffff.png&text=SMART+ERP",
+        "dark": lambda request: "https://dummyimage.com/150x50/0f172a/ffffff.png&text=SMART+ERP",
     },
     "COLORS": {
         "primary": {
@@ -193,8 +207,9 @@ USE_I18N = True
 USE_TZ = True
 
 # ── Static & Media ────────────────────────────────────────────────────────────
-STATIC_URL = "static/"
+STATIC_URL = "/static/"
 STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")
+STATICFILES_DIRS = []
 MEDIA_URL = "/media/"
 MEDIA_ROOT = os.path.join(BASE_DIR, "media")
 
@@ -217,8 +232,9 @@ CHAPA_BASE_URL = os.getenv("CHAPA_BASE_URL", "https://api.chapa.co/v1")
 FRONTEND_BASE_URL = os.getenv("FRONTEND_BASE_URL", "http://localhost:3000")
 BACKEND_BASE_URL = os.getenv("BACKEND_BASE_URL", "http://127.0.0.1:8000")
 
-# ── CORS ──────────────────────────────────────────────────────────────────────
-CORS_ALLOW_ALL_ORIGINS = True
+# ── CORS Settings ──────────────────────────────────────────────────────────────
+CORS_ALLOW_ALL_ORIGINS = True  # For development, allow all. In production, we can be more specific.
+CORS_ALLOW_CREDENTIALS = True
 from corsheaders.defaults import default_headers
 CORS_ALLOW_HEADERS = list(default_headers) + [
     "x-tenant-schema",

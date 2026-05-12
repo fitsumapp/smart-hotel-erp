@@ -1,3 +1,8 @@
+# Node modules (root level AND nested)
+node_modules/
+/node_modules/
+hotel-frontend/node_modules/
+
 # Python
 __pycache__/
 *.py[cod]

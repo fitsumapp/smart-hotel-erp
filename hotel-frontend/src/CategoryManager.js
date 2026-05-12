@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, LayoutGrid, Pencil, Trash2, X, Check, Image as ImageIcon, Upload } from 'lucide-react';
-import { API_BASE_URL, BASE_URL } from './apiConfig';
+import { Plus, Pencil, Trash2, X, Check, Image as ImageIcon, Upload } from 'lucide-react';
+import { API_BASE_URL } from './apiConfig';
 
 const CATEGORY_API_BASE = `${API_BASE_URL}/users/categories/`;
 

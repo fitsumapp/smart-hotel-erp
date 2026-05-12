@@ -2,10 +2,10 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import {
   Save, Building2, Receipt, Cpu, ToggleLeft, ToggleRight,
-  ChevronDown, ChevronUp, Percent, Settings2, MapPin, Phone, Printer
+  ChevronDown, ChevronUp, Settings2, MapPin, Phone, Printer
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { API_BASE_URL, BASE_URL } from './apiConfig';
+import { API_BASE_URL } from './apiConfig';
 
 const SystemSettingsManager = () => {
     const [settings, setSettings] = useState({
@@ -24,9 +24,8 @@ const SystemSettingsManager = () => {
 
     const [openSection, setOpenSection] = useState('receipt'); // Set 'receipt' as default open
 
-    const API_URL = `${API_BASE_URL}/users/settings/`;
-
     useEffect(() => {
+        const API_URL = `${API_BASE_URL}/users/settings/`;
         const token = localStorage.getItem('access_token');
         axios.get(API_URL, { headers: { Authorization: `Bearer ${token}` } })
         .then(res => {
@@ -35,6 +34,8 @@ const SystemSettingsManager = () => {
         })
         .catch(err => console.error("Failed to load settings:", err));
     }, []);
+
+    const API_URL = `${API_BASE_URL}/users/settings/`;
 
     const handleSave = () => {
         const token = localStorage.getItem('access_token');

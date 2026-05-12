@@ -4,30 +4,37 @@ const hostname = window.location.hostname;
 
 // Example: hostname = 'atlas.localhost' -> subdomain = 'atlas'
 // In production: 'barok.hotelerp.acrmatech.com' -> subdomain = 'barok'
-const subdomain = hostname.split('.')[0];
+export const subdomain = hostname.split('.')[0];
 
 const isProduction = hostname.includes('acrmatech.com');
 const isNgrok = hostname.includes('ngrok-free.app');
 
-// API_BASE_URL ends at /api — individual API calls append their own path
-// e.g. API_BASE_URL + '/hotel/rooms/' => 'https://hotelerp.acrmatech.com/api/hotel/rooms/'
+// For *.localhost subdomains we use 127.0.0.1 (always resolves on Windows)
+// without editing the hosts file.  The subdomain is sent as X-Tenant-Schema
+// header so Django still knows which tenant schema to use.
 export const API_BASE_URL = (hostname === 'localhost' || hostname === '127.0.0.1')
     ? 'http://127.0.0.1:8000/api'
-    : isProduction
-        ? `https://${hostname}/api`   // uses current subdomain (e.g. hotel1.hotelerp.acrmatech.com)
-        : isNgrok
-            ? `${window.location.protocol}//${hostname}/api`
-            : `http://${subdomain}.localhost:8000/api`;
+    : hostname.endsWith('.localhost')
+        ? 'http://127.0.0.1:8000/api'   // ← use 127.0.0.1, not barok.localhost
+        : isProduction
+            ? `https://${hostname}/api`
+            : isNgrok
+                ? `${window.location.protocol}//${hostname}/api`
+                : `http://127.0.0.1:8000/api`;
 
 // Base host without /api — for images, media files, etc.
 export const BASE_URL = (hostname === 'localhost' || hostname === '127.0.0.1')
     ? 'http://127.0.0.1:8000'
-    : isProduction
-        ? `https://hotelerp.acrmatech.com`
-        : isNgrok
-            ? `${window.location.protocol}//${hostname}`
-            : `http://${subdomain}.localhost:8000`;
+    : hostname.endsWith('.localhost')
+        ? 'http://127.0.0.1:8000'       // ← use 127.0.0.1, not barok.localhost
+        : isProduction
+            ? `https://hotelerp.acrmatech.com`
+            : isNgrok
+                ? `${window.location.protocol}//${hostname}`
+                : `http://127.0.0.1:8000`;
 
+// Returns the tenant schema name to send as X-Tenant-Schema header.
+// Priority: URL ?tenant= param → localStorage → logged-in user → subdomain
 export const getTenantSchemaHint = () => {
     try {
         const urlTenant = new URLSearchParams(window.location.search).get('tenant');
@@ -38,7 +45,13 @@ export const getTenantSchemaHint = () => {
         const savedPublicTenant = localStorage.getItem('public_tenant_schema');
         if (savedPublicTenant) return savedPublicTenant;
         const user = JSON.parse(localStorage.getItem('user') || 'null');
-        return user?.tenant_schema || '';
+        if (user?.tenant_schema) return user.tenant_schema;
+        // Fall back to the subdomain extracted from the current URL
+        // e.g. barok.localhost  →  'barok'
+        if (hostname.endsWith('.localhost') || isProduction) {
+            return subdomain;
+        }
+        return '';
     } catch (error) {
         return '';
     }

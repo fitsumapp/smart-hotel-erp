@@ -7,7 +7,7 @@ core/public_urls.py
   Hotel staff APIs are NOT available on the public domain.
 """
 from django.contrib import admin
-from django.urls import path
+from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
 from users.views import (
@@ -24,12 +24,8 @@ from django.views.generic import RedirectView
 urlpatterns = [
     path("", RedirectView.as_view(url="/admin/")),
     path("admin/", admin.site.urls),
-    path("api/users/public-booking/rooms/", PublicRoomCatalogView.as_view()),
-    path("api/users/public-booking/rooms/<int:room_id>/reserve/", PublicRoomReserveView.as_view()),
-    path("api/users/reservations/public/<str:token>/", PublicReservationDetailView.as_view()),
-    path("api/users/reservations/public/<str:token>/verify/", PublicReservationVerifyPaymentView.as_view()),
-    path("api/users/reservations/qr-checkin/", PublicQRCheckInView.as_view()),
-    path("api/users/payments/chapa/webhook/", ChapaWebhookView.as_view()),
+    # Essential for 127.0.0.1 (public schema) routing
+    path("api/users/", include("users.urls")),
 ]
 
 if settings.DEBUG:

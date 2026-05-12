@@ -3,11 +3,9 @@ import axios from 'axios';
 import { QRCodeSVG } from 'qrcode.react';
 import {
   Bell,
-  CheckCircle2,
   ChefHat,
   CreditCard,
   Grid2x2,
-  Info,
   LoaderCircle,
   Menu,
   Minus,
@@ -22,7 +20,7 @@ import {
   Wallet,
   X,
 } from 'lucide-react';
-import { API_BASE_URL, BASE_URL } from '../apiConfig';
+import { API_BASE_URL } from '../apiConfig';
 
 const API_BASE = `${API_BASE_URL}/users/`;
 

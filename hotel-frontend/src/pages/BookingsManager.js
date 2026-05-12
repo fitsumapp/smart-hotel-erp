@@ -2,9 +2,8 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import axios from 'axios';
 import {
-  PlusCircle, X, Search, User, Phone, Globe, CalendarDays,
-  CreditCard, ClipboardList, ChevronDown, CheckCircle, Clock,
-  AlertCircle, Filter, Download, Eye
+  PlusCircle, X, Search, User, Globe,
+  CreditCard, ClipboardList, Eye
 } from 'lucide-react';
 import { API_BASE_URL } from '../apiConfig';
 
@@ -44,8 +43,6 @@ export default function BookingsManager() {
   const [form, setForm] = useState(emptyBooking);
   const [selectedRoomId, setSelectedRoomId] = useState('');
   const [guestHistory, setGuestHistory] = useState([]);
-  const [showHistoryPanel, setShowHistoryPanel] = useState(false);
-  const [actionLoading, setActionLoading] = useState({});
 
   useEffect(() => { fetchAll(); }, []);
 
@@ -135,7 +132,6 @@ Notes: ${form.notes}`,
     try {
       const res = await axios.get(`${GUEST_API}?phone=${encodeURIComponent(phone)}`);
       setGuestHistory(res.data);
-      setShowHistoryPanel(true);
     } catch (err) { console.error(err); }
   };
 
@@ -524,7 +520,7 @@ Notes: ${form.notes}`,
             <motion.div initial={{ y: 30, opacity: 0 }} animate={{ y: 0, opacity: 1 }} style={{ ...modal, maxWidth: 640 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
                 <h3 style={{ margin: 0 }}>Guest Profile</h3>
-                <X style={{ cursor: 'pointer' }} onClick={() => { setSelectedReservation(null); setShowHistoryPanel(false); }} />
+                <X style={{ cursor: 'pointer' }} onClick={() => { setSelectedReservation(null); }} />
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 20 }}>
@@ -595,7 +591,6 @@ const modal = { backgroundColor: '#0f172a', padding: '30px 30px 20px', borderRad
 const sectionLabel = { margin: '8px 0 4px', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', color: '#7dd3fc', letterSpacing: '0.08em' };
 const grid2 = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 };
 const grid3 = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16 };
-const inp = { backgroundColor: '#1e293b', border: '1px solid #334155', color: '#fff', padding: 11, borderRadius: 10, width: '100%', boxSizing: 'border-box', fontSize: 13 };
 const saveBtn = { width: '100%', backgroundColor: '#bef264', color: '#000', border: 'none', padding: 14, borderRadius: 12, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, fontSize: 14 };
 
 // New Form Styles

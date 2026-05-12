@@ -7,8 +7,8 @@ Ensures:
   2. Superusers / platform admins can access any tenant.
   3. Anonymous requests pass through (login endpoints, public payment pages).
 """
+from django.db import models, connection
 from django.http import JsonResponse
-from django.db import connection
 from tenants.models import Hotel
 
 
@@ -95,10 +95,13 @@ class LocalhostTenantRoutingMiddleware:
     def __call__(self, request):
         path = request.path_info or ""
         host = request.get_host().split(":")[0]
+        
+        # If we are on public schema and on localhost/127.0.0.1, 
+        # allow manual tenant routing via headers/params for ALL API paths.
         if (
             connection.schema_name == "public"
             and host in {"localhost", "127.0.0.1"}
-            and any(path.startswith(prefix) for prefix in self.TENANT_HINT_PATH_PREFIXES)
+            and path.startswith("/api/")
         ):
             tenant_schema = (
                 request.headers.get("X-Tenant-Schema")
@@ -106,7 +109,24 @@ class LocalhostTenantRoutingMiddleware:
                 or request.POST.get("tenant")
             )
             if tenant_schema:
+                # 1. Try direct schema name match
                 tenant = Hotel.objects.filter(schema_name=tenant_schema, is_active=True).first()
+                
+                # 2. Try with hotel_ prefix
+                if not tenant and not tenant_schema.startswith('hotel_'):
+                    tenant = Hotel.objects.filter(schema_name=f"hotel_{tenant_schema}", is_active=True).first()
+                
+                # 3. Try matching via Domain (most reliable for local development)
+                if not tenant:
+                    from tenants.models import Domain
+                    # Look for domain like 'barok.localhost'
+                    domain_obj = Domain.objects.filter(
+                        models.Q(domain=f"{tenant_schema}.localhost") |
+                        models.Q(domain=tenant_schema)
+                    ).select_related('tenant').first()
+                    if domain_obj:
+                        tenant = domain_obj.tenant
+
                 if tenant:
                     connection.set_tenant(tenant)
         return self.get_response(request)

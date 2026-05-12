@@ -4,8 +4,8 @@ import axios from 'axios';
 import {
   PlusCircle, X, Trash2, Edit3, ImageIcon,
   LayoutGrid, List, CheckCircle, User, RefreshCw, Wrench,
-  Globe, CalendarCheck2, LogIn, ClipboardList, BedDouble, ScanLine,
-  History, Receipt, Printer, Plus, CreditCard
+  Globe, CalendarCheck2, ClipboardList, ScanLine,
+  Receipt
 } from 'lucide-react';
 import { API_BASE_URL, getTenantSchemaHint } from './apiConfig';
 
@@ -16,7 +16,6 @@ const QR_CHECKIN_API = `${API_BASE_URL}/users/reservations/qr-checkin/`;
 const PUBLIC_SITE_INFO_API = `${API_BASE_URL}/users/public-site/`;
 
 const allAmenities = ['WiFi', 'TV', 'Shower', 'Breakfast', 'Mini Bar', 'AC', 'Balcony'];
-const commonAmenitiesOptions = ['WiFi', 'Pool', 'Gym'];
 const optionalEmptyFields = new Set([
   'weekend_price',
   'holiday_price',
@@ -693,7 +692,6 @@ const RoomManager = ({ activeSection = 'rooms' }) => {
             <tbody>
               {visibleRooms.map((room) => {
                 const reservedOnline = room.status === 'Reserved' && room.booking_source === 'online';
-                const busyAction = actionLoading[room.id];
                 return (
                   <tr key={room.id} style={{ ...trStyle, ...(reservedOnline ? listReservedRow : {}) }}>
                     <td style={tdStyle}>{room.name} (#{room.room_number})</td>

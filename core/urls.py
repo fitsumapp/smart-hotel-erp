@@ -13,5 +13,7 @@ urlpatterns = [
     path("api/users/", include("users.urls")),
 ]
 
-# Serve media files in both dev and production
+# Serve media and static files in development
 urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+if settings.DEBUG:
+    urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)

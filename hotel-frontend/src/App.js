@@ -31,12 +31,21 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 
 // --- AXIOS INTERCEPTOR ---
+import { getTenantSchemaHint } from './apiConfig';
+
 axios.interceptors.request.use(
     (config) => {
         const token = localStorage.getItem('access_token');
         if (token) {
             config.headers.Authorization = `Bearer ${token}`;
         }
+        
+        // Add Tenant Schema Header automatically
+        const tenantHint = getTenantSchemaHint();
+        if (tenantHint) {
+            config.headers['X-Tenant-Schema'] = tenantHint;
+        }
+        
         return config;
     },
     (error) => Promise.reject(error)

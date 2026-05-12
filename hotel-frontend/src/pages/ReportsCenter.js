@@ -2,8 +2,8 @@ import React, { useState, useCallback, useRef } from 'react';
 import { motion } from 'framer-motion';
 import axios from 'axios';
 import {
-  FileBarChart2, Shield, TrendingUp, Hotel, Printer,
-  RefreshCw, Calendar, CheckCircle, DollarSign, Users, Bed
+  Shield, TrendingUp, Hotel, Printer,
+  RefreshCw, Calendar, CheckCircle
 } from 'lucide-react';
 import { API_BASE_URL } from '../apiConfig';
 
@@ -157,7 +157,6 @@ export default function ReportsCenter() {
               fontWeight: 700, fontSize: 13,
               backgroundColor: activeTab === tab.id ? tab.color : '#0f172a',
               color: activeTab === tab.id ? '#000' : '#94a3b8',
-              border: activeTab === tab.id ? 'none' : '1px solid #1e293b',
               transition: 'all 0.2s',
             }}
           >

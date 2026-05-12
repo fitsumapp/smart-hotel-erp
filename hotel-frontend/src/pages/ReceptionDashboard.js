@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import axios from 'axios';
 import { 
   QrCode, Search, User, Calendar, Bed, CheckCircle, 
-  ArrowRight, Loader2, X, Phone, Mail, Clock, Wallet
+  ArrowRight, X, Phone, Mail, Clock, Wallet
 } from 'lucide-react';
 import { API_BASE_URL } from '../apiConfig';
 

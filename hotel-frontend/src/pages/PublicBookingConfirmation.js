@@ -16,9 +16,9 @@ const PublicBookingConfirmation = () => {
   const [loading, setLoading] = useState(true);
   const [scanLoading, setScanLoading] = useState(false);
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     fetchReservation();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
   const fetchReservation = async () => {

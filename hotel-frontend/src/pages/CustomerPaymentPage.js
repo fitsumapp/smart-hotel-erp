@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import { ExternalLink, LoaderCircle } from 'lucide-react';
 import { useParams, useSearchParams } from 'react-router-dom';
-import { API_BASE_URL, BASE_URL } from '../apiConfig';
+import { API_BASE_URL } from '../apiConfig';
 
 const API_BASE = `${API_BASE_URL}/users/`;
 

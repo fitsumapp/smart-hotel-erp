@@ -208,7 +208,6 @@ const subLogoStyle = { color: '#a0aec0', fontSize: '11px', letterSpacing: '1px',
 const navStyle = { padding: '20px 15px', flex: 1, overflowY: 'auto' };
 const navItemStyle = { display: 'flex', alignItems: 'center', padding: '12px 18px', marginBottom: '8px', borderRadius: '10px', cursor: 'pointer', position: 'relative', transition: 'all 0.3s ease' };
 const dividerStyle = { height: '1px', backgroundColor: '#1f2937', margin: '15px 0', opacity: 0.5 };
-const activeIndicatorStyle = { position: 'absolute', right: '10px', width: '6px', height: '6px', backgroundColor: '#0ff', borderRadius: '50%', boxShadow: '0 0 10px #0ff' };
 const logoutSectionStyle = { marginTop: 'auto', padding: '20px 25px', borderTop: '1px solid #1f2937', display: 'flex', alignItems: 'center', cursor: 'pointer', color: '#feb2b2', transition: 'all 0.3s' };
 
 export default Sidebar;

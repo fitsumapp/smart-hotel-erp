@@ -27,9 +27,9 @@ const CustomerDashboard = () => {
   const [message, setMessage] = useState('');
   const [photoViewer, setPhotoViewer] = useState({ open: false, photos: [], currentIndex: 0 });
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     fetchRooms();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters.check_in_date, filters.check_out_date]);
 
   const fetchRooms = async () => {

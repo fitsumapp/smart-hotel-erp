@@ -1,14 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Clock, CheckCircle, ChefHat, Bell } from 'lucide-react';
+import { Clock, ChefHat } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { API_BASE_URL, BASE_URL } from '../apiConfig';
+import { API_BASE_URL } from '../apiConfig';
 
 const API_BASE = `${API_BASE_URL}/users/`;
 
 const KitchenDashboard = () => {
   const [orders, setOrders] = useState([]);
-  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     fetchKitchenOrders();
@@ -24,7 +23,6 @@ const KitchenDashboard = () => {
       headers: { Authorization: `Bearer ${token}` }
     });
     setOrders(res.data);
-    setLoading(false);
   } catch (err) {
     console.error("Orders መጫን አልተቻለም", err);
   }
