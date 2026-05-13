@@ -10,37 +10,37 @@ import {
 } from 'lucide-react';
 
 const menuItems = [
-  { id: 'dashboard', title: 'Dashboard', icon: <LayoutDashboard size={20}/>, pkg: 'dashboard' },
-  { id: 'orders', title: 'Orders', icon: <ShoppingCart size={20}/>, pkg: 'orders' },
-  { id: 'payments', title: 'Payments', icon: <CreditCard size={20}/>, pkg: 'payments' },
-  { 
-    id: 'food_beverage', 
-    title: 'Food and Beverage', 
-    icon: <Utensils size={20}/>, 
+  { id: 'dashboard', title: 'Dashboard', icon: <LayoutDashboard size={20} />, pkg: 'dashboard' },
+  { id: 'orders', title: 'Orders', icon: <ShoppingCart size={20} />, pkg: 'orders' },
+  { id: 'payments', title: 'Payments', icon: <CreditCard size={20} />, pkg: 'payments' },
+  {
+    id: 'food_beverage',
+    title: 'Food and Beverage',
+    icon: <Utensils size={20} />,
     pkg: 'food_beverage',
     children: [
-      { id: 'menus', title: 'Menus', icon: <Utensils size={18}/> },
-      { id: 'categories', title: 'Categories', icon: <Tags size={18}/> },
-      { id: 'tables', title: 'Tables', icon: <TableProperties size={18}/> },
+      { id: 'menus', title: 'Menus', icon: <Utensils size={18} /> },
+      { id: 'categories', title: 'Categories', icon: <Tags size={18} /> },
+      { id: 'tables', title: 'Tables', icon: <TableProperties size={18} /> },
     ]
   },
-  { 
-    id: 'rooms_pkg', 
-    title: 'Front Office & Rooms', 
-    icon: <BedDouble size={20}/>, 
+  {
+    id: 'rooms_pkg',
+    title: 'Front Office & Rooms',
+    icon: <BedDouble size={20} />,
     pkg: 'rooms',
     children: [
-      { id: 'rooms', title: 'Rooms', icon: <BedDouble size={18}/> },
-      { id: 'reservation_booking', title: 'Reservation and Booking', icon: <CalendarDays size={18}/> },
-      { id: 'checkin_checkout', title: 'Check In / Check Out', icon: <Users size={18}/> },
-      { id: 'night_audit', title: 'Night Audit', icon: <BarChart3 size={18}/> },
-      { id: 'bookings', title: 'Bookings Manager', icon: <ClipboardList size={18}/> },
-      { id: 'reports', title: 'Reports Center', icon: <FileBarChart2 size={18}/> },
+      { id: 'rooms', title: 'Rooms', icon: <BedDouble size={18} /> },
+      { id: 'reservation_booking', title: 'Reservation and Booking', icon: <CalendarDays size={18} /> },
+      { id: 'checkin_checkout', title: 'Check In / Check Out', icon: <Users size={18} /> },
+      { id: 'night_audit', title: 'Night Audit', icon: <BarChart3 size={18} /> },
+      { id: 'bookings', title: 'Bookings Manager', icon: <ClipboardList size={18} /> },
+      { id: 'reports', title: 'Reports Center', icon: <FileBarChart2 size={18} /> },
     ]
   },
-  { id: 'analytics', title: 'Analytics', icon: <BarChart3 size={20}/>, pkg: 'analytics' },
-  { id: 'users', title: 'Users', icon: <Users size={20}/>, pkg: 'users' },
-  { id: 'settings', title: 'Settings', icon: <Settings size={20}/>, pkg: 'settings' },
+  { id: 'analytics', title: 'Analytics', icon: <BarChart3 size={20} />, pkg: 'analytics' },
+  { id: 'users', title: 'Users', icon: <Users size={20} />, pkg: 'users' },
+  { id: 'settings', title: 'Settings', icon: <Settings size={20} />, pkg: 'settings' },
 ];
 
 const Sidebar = ({ activeTab, setActiveTab, handleLogout }) => {
@@ -66,7 +66,9 @@ const Sidebar = ({ activeTab, setActiveTab, handleLogout }) => {
     }
   }, []);
 
-  const enabledFeatures = hotelSettings?.enabled_features || [];
+  const enabledFeatures = hotelSettings?.enabled_features?.length > 0
+    ? hotelSettings.enabled_features
+    : ['dashboard', 'orders', 'payments', 'food_beverage', 'rooms', 'analytics', 'users', 'settings'];
 
   const toggleSubmenu = (id) => {
     setOpenSubmenu(openSubmenu === id ? null : id);
@@ -82,10 +84,10 @@ const Sidebar = ({ activeTab, setActiveTab, handleLogout }) => {
     >
       <div style={logoSectionStyle}>
         {hotelSettings?.logo && (
-          <img 
-            src={hotelSettings.logo.startsWith('http') ? hotelSettings.logo : `${BASE_URL}${hotelSettings.logo}`} 
-            alt="Hotel Logo" 
-            style={{ 
+          <img
+            src={hotelSettings.logo.startsWith('http') ? hotelSettings.logo : `${BASE_URL}${hotelSettings.logo}`}
+            alt="Hotel Logo"
+            style={{
               width: '64px',
               height: '64px',
               borderRadius: '50%',
@@ -94,11 +96,11 @@ const Sidebar = ({ activeTab, setActiveTab, handleLogout }) => {
               border: '2px solid #0ff',
               boxShadow: '0 0 15px rgba(0,255,255,0.3)',
               backgroundColor: '#fff'
-            }} 
+            }}
           />
         )}
         <h1 style={logoStyle}>
-          <span style={{color: '#fff'}}>
+          <span style={{ color: '#fff' }}>
             {hotelSettings?.hotel_name ? hotelSettings.hotel_name.split(' ')[0] : 'SMART'}
           </span>
           {' '}{hotelSettings?.hotel_name ? hotelSettings.hotel_name.split(' ').slice(1).join(' ') : 'HOTEL'}
