@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import {
   BarChart3, DollarSign, Receipt, CreditCard,
-  Search, Bell, CheckCircle, X, Printer, User, LayoutGrid
+  Search, Bell, CheckCircle, X, Printer, User, LayoutGrid, Menu
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { API_BASE_URL } from '../apiConfig';
@@ -36,14 +36,14 @@ function MetricCard({ icon, label, value, tone }) {
 
 const CashierDashboard = ({ userData, handleLogout }) => {
   const [activeTab, setActiveTab] = useState('orders');
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [tables, setTables] = useState([]);
   const [pendingBills, setPendingBills] = useState([]);
   const [completedBills, setCompletedBills] = useState([]);
   const [stats, setStats] = useState(null);
   const [settings, setSettings] = useState(null);
   const [selectedOrder, setSelectedOrder] = useState(null);
-  const [paymentMethod, setPaymentMethod] = useState('Cash');
-  const [paymentReference, setPaymentReference] = useState('');
+  // Payment method selection removed — payment is handled by Waiter
   const [autoPrintOrderId, setAutoPrintOrderId] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [notifications, setNotifications] = useState([]);
@@ -64,7 +64,7 @@ const CashierDashboard = ({ userData, handleLogout }) => {
 
   const [serviceRate, setServiceRate] = useState(10);
   const [vatRate, setVatRate] = useState(15);
-  const [discountValue, setDiscountValue] = useState(0);
+  const [discountValue] = useState(0);
 
   useEffect(() => {
     fetchInitialData();
@@ -74,8 +74,8 @@ const CashierDashboard = ({ userData, handleLogout }) => {
   }, [filterStartDate, filterEndDate, filterLimit]);
 
   useEffect(() => {
-    if (autoPrintOrderId && completedBills.length > 0) {
-      const orderToPrint = completedBills.find(b => b.id === autoPrintOrderId);
+    if (autoPrintOrderId) {
+      const orderToPrint = completedBills.find(b => b.id === autoPrintOrderId) || pendingBills.find(b => b.id === autoPrintOrderId);
       if (orderToPrint) {
         const subTotal = orderToPrint.items?.reduce((sum, item) => sum + (item.quantity * item.price_at_order), 0) || 0;
         const discount = parseFloat(discountValue || 0);
@@ -106,7 +106,7 @@ const CashierDashboard = ({ userData, handleLogout }) => {
         setAutoPrintOrderId(null);
       }
     }
-  }, [autoPrintOrderId, completedBills, settings, discountValue, serviceRate, vatRate]);
+  }, [autoPrintOrderId, completedBills, pendingBills, settings, discountValue, serviceRate, vatRate]);
 
   const fetchInitialData = async () => {
     try {
@@ -209,7 +209,8 @@ const CashierDashboard = ({ userData, handleLogout }) => {
       setToastNotification(topNote);
       playNotificationSound();
       
-      if (topNote.message && topNote.message.includes("Order Paid - Print Receipt")) {
+      // Auto-trigger receipt on "Order Served" or "Order Paid" notifications
+      if (topNote.message && (topNote.message.includes("Order Served") || topNote.message.includes("Order Paid - Print Receipt"))) {
         const match = topNote.message.match(/ORD-(\d+)/);
         if (match && match[1]) {
           setAutoPrintOrderId(parseInt(match[1]));
@@ -333,33 +334,7 @@ const CashierDashboard = ({ userData, handleLogout }) => {
     fetchDataUpdate();
   };
 
-  const handleProcessPayment = async () => {
-    if (!selectedOrder) return;
-    try {
-      const token = localStorage.getItem('access_token');
-      const response = await axios.post(`${API_BASE}cashier/process/${selectedOrder.id}/`,
-        { payment_method: paymentMethod, payment_reference: paymentReference },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-
-      setFiscalData({
-        ...selectedOrder,
-        summary: response.data.receipt_data || response.data,
-        tin: settings?.tin_number || "0000000000",
-        address: settings?.address || "Addis Ababa, Ethiopia",
-        phone: settings?.phone_number || "",
-        machineId: settings?.fiscal_machine_no || "FG-000000",
-        fiscalNumber: "FS" + Math.floor(Math.random() * 1000000),
-        dateTime: new Date().toLocaleString()
-      });
-
-      setShowReceipt(true);
-      setDiscountValue(0);
-      setPaymentReference('');
-    } catch (err) {
-      alert("Payment failed: " + (err.response?.data?.error || "Network error"));
-    }
-  };
+  // handleProcessPayment removed — Cashier no longer confirms payment
 
   const handlePrintNow = async () => {
     if (!fiscalData?.id) return;
@@ -414,7 +389,11 @@ const CashierDashboard = ({ userData, handleLogout }) => {
       <div style={styles.backgroundAuraA} />
       <div style={styles.backgroundAuraB} />
 
-      <div style={styles.topBar}>
+      {mobileMenuOpen && (
+        <div className="role-sidebar-overlay open" onClick={() => setMobileMenuOpen(false)} />
+      )}
+
+      <div className="role-topbar">
         <div style={{ ...styles.brandBlock, flex: 1 }}>
           <div style={styles.brandIcon}>C</div>
           <div>
@@ -422,6 +401,10 @@ const CashierDashboard = ({ userData, handleLogout }) => {
             <div style={styles.brandSub}>Cashier Control Center</div>
           </div>
         </div>
+
+        <button className="role-hamburger" onClick={() => setMobileMenuOpen(!mobileMenuOpen)} aria-label="Toggle menu">
+          {mobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
+        </button>
 
         <div style={styles.topActions}>
           <div style={{ position: 'relative' }}>
@@ -452,24 +435,27 @@ const CashierDashboard = ({ userData, handleLogout }) => {
             )}
           </div>
           <div style={styles.userPill}>
-            <User size={16} /> <span>{userData?.first_name || 'Cashier'}</span>
+            <User size={16} /> <span className="user-pill-text">{userData?.first_name || 'Cashier'}</span>
           </div>
           <button style={styles.logoutButton} onClick={handleLogout}>Logout</button>
         </div>
       </div>
 
-      <div style={styles.layout}>
-        <div style={styles.sidebar}>
-          <div style={activeTab === 'home' ? styles.sidebarItemActive : styles.sidebarItem} onClick={() => setActiveTab('home')}>
+      <div className="role-layout">
+        <div className={`role-sidebar${mobileMenuOpen ? ' open' : ''}`}>
+          <button className="role-hamburger" style={{ marginBottom: 12, alignSelf: 'flex-end' }} onClick={() => setMobileMenuOpen(false)} aria-label="Close">
+            <X size={20} />
+          </button>
+          <div style={activeTab === 'home' ? styles.sidebarItemActive : styles.sidebarItem} onClick={() => { setActiveTab('home'); setMobileMenuOpen(false); }}>
             <BarChart3 size={18} /> System Overview
           </div>
-          <div style={activeTab === 'tables' ? styles.sidebarItemActive : styles.sidebarItem} onClick={() => setActiveTab('tables')}>
+          <div style={activeTab === 'tables' ? styles.sidebarItemActive : styles.sidebarItem} onClick={() => { setActiveTab('tables'); setMobileMenuOpen(false); }}>
             <LayoutGrid size={18} /> Tables
           </div>
-          <div style={activeTab === 'orders' ? styles.sidebarItemActive : styles.sidebarItem} onClick={() => setActiveTab('orders')}>
+          <div style={activeTab === 'orders' ? styles.sidebarItemActive : styles.sidebarItem} onClick={() => { setActiveTab('orders'); setMobileMenuOpen(false); }}>
             <Receipt size={18} /> Billing & Checkout
           </div>
-          <div style={activeTab === 'tips' ? styles.sidebarItemActive : styles.sidebarItem} onClick={() => setActiveTab('tips')}>
+          <div style={activeTab === 'tips' ? styles.sidebarItemActive : styles.sidebarItem} onClick={() => { setActiveTab('tips'); setMobileMenuOpen(false); }}>
             <CreditCard size={18} /> Tips History
           </div>
 
@@ -657,22 +643,10 @@ const CashierDashboard = ({ userData, handleLogout }) => {
                         </div>
 
                         {!isCompletedOrder ? (
-                          <>
-                            <div style={{ padding: '0 20px 20px 20px' }}>
-                              <p style={{ fontSize: '12px', fontWeight: 'bold', marginBottom: '8px', color: '#1e293b' }}>Payment Method:</p>
-                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginBottom: '10px' }}>
-                                {['Cash', 'Telebirr', 'Card'].map(m => (
-                                  <button key={m} onClick={() => setPaymentMethod(m)} style={{ padding: '8px 4px', fontSize: '12px', border: '1px solid #e2e8f0', borderRadius: '6px', fontWeight: '600', backgroundColor: paymentMethod === m ? '#1e293b' : '#fff', color: paymentMethod === m ? '#fff' : '#1e293b', cursor: 'pointer' }}>{m}</button>
-                                ))}
-                              </div>
-                              {paymentMethod !== 'Cash' && (
-                                <input type="text" placeholder="Transaction Reference #" value={paymentReference} onChange={(e) => setPaymentReference(e.target.value)} style={styles.searchInput} />
-                              )}
-                            </div>
-                            <div style={{ padding: '0 20px 20px 20px' }}>
-                              <button onClick={handleProcessPayment} style={styles.primaryButton}>Confirm Payment</button>
-                            </div>
-                          </>
+                          <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', background: '#f8fafc', borderTop: '1px solid #e2e8f0' }}>
+                            <div style={{ color: '#0f766e', fontSize: '13px', fontWeight: '700', background: 'rgba(16,185,129,0.1)', padding: '8px 16px', borderRadius: '8px' }}>Awaiting Payment from Waiter</div>
+                            <button onClick={() => setAutoPrintOrderId(selectedOrder?.id)} style={{ padding: '12px 20px', background: '#0f172a', color: '#fff', borderRadius: '8px', border: 'none', cursor: 'pointer', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px' }}><Printer size={16} /> Print Receipt Now</button>
+                          </div>
                         ) : (
                           <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px', background: '#f8fafc' }}>
                             <div style={{ color: '#64748b', fontSize: '14px', fontWeight: 'bold' }}>Order Complete</div>

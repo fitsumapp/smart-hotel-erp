@@ -9,7 +9,7 @@ import { API_BASE_URL } from './apiConfig';
 
 const API_BASE = `${API_BASE_URL}/users/`;
 
-const AuthPage = () => {
+const AuthPage = ({ onLoginSuccess }) => {
   const [isLogin, setIsLogin] = useState(true);
   const [isVerifying, setIsVerifying] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -64,6 +64,10 @@ const AuthPage = () => {
           axios.defaults.headers.common["Authorization"] = `Bearer ${res.data.tokens.access}`;
 
           const user = res.data.user;
+
+          if (onLoginSuccess) {
+            onLoginSuccess(user);
+          }
 
           // --- SMART REDIRECTION ---
           const currentHostname = window.location.hostname;
@@ -134,13 +138,14 @@ const AuthPage = () => {
   };
 
   return (
-    <div style={containerStyle}>
-      <div style={overlayStyle}></div>
+    <div style={containerStyle} className="auth-container">
+      <div style={overlayStyle} className="auth-overlay"></div>
 
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         style={glassCardStyle}
+        className="auth-glass-card"
       >
         <div style={headerSection}>
           <div style={logoBadgeStyle}>

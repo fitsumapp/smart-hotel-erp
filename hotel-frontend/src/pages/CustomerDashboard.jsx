@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import { CalendarDays, ExternalLink, Globe, Hotel, LoaderCircle, ShieldCheck, Sparkles, ChevronLeft, ChevronRight, X } from 'lucide-react';
-import { API_BASE_URL, getTenantSchemaHint } from '../apiConfig';
+import { API_BASE_URL } from '../apiConfig';
 
 const API_BASE = `${API_BASE_URL}/users/`;
 
@@ -17,7 +17,6 @@ const initialBooking = {
 };
 
 const CustomerDashboard = () => {
-  const tenantSchema = getTenantSchemaHint();
   const [rooms, setRooms] = useState([]);
   const [filters, setFilters] = useState({ check_in_date: '', check_out_date: '' });
   const [booking, setBooking] = useState(initialBooking);
@@ -38,10 +37,7 @@ const CustomerDashboard = () => {
       const query = new URLSearchParams();
       if (filters.check_in_date) query.set('check_in_date', filters.check_in_date);
       if (filters.check_out_date) query.set('check_out_date', filters.check_out_date);
-      if (tenantSchema) query.set('tenant', tenantSchema);
-      const res = await axios.get(`${API_BASE}public-booking/rooms/?${query.toString()}`, {
-        headers: tenantSchema ? { 'X-Tenant-Schema': tenantSchema } : {},
-      });
+      const res = await axios.get(`${API_BASE}public-booking/rooms/?${query.toString()}`);
       setRooms(res.data);
     } catch (err) {
       setMessage(err.response?.data?.error || 'Unable to load rooms right now.');
@@ -88,9 +84,6 @@ const CustomerDashboard = () => {
     try {
       const res = await axios.post(`${API_BASE}public-booking/rooms/${selectedRoom.id}/reserve/`, {
         ...booking,
-        tenant: tenantSchema,
-      }, {
-        headers: tenantSchema ? { 'X-Tenant-Schema': tenantSchema } : {},
       });
       window.location.href = res.data.checkout_url;
     } catch (err) {

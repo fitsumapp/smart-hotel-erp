@@ -20,13 +20,19 @@ const MenuManager = () => {
 
   useEffect(() => {
     fetchData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const getHeaders = () => {
+    const token = localStorage.getItem('access_token');
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  };
 
   const fetchData = async () => {
     try {
       const [resItems, resCats] = await Promise.all([
-        axios.get(`${API_BASE}menu-items/`),
-        axios.get(`${API_BASE}categories/`)
+        axios.get(`${API_BASE}menu-items/`, { headers: getHeaders() }),
+        axios.get(`${API_BASE}categories/`, { headers: getHeaders() })
       ]);
       setItems(resItems.data);
       setCategories(resCats.data);
@@ -52,10 +58,14 @@ const MenuManager = () => {
     try {
       if (editingId) {
         // UPDATE (PUT)
-        await axios.put(`${API_BASE}menu-items/${editingId}/`, formData);
+        await axios.put(`${API_BASE}menu-items/${editingId}/`, formData, {
+          headers: getHeaders()
+        });
       } else {
         // ADD (POST)
-        await axios.post(`${API_BASE}menu-items/`, formData);
+        await axios.post(`${API_BASE}menu-items/`, formData, {
+          headers: getHeaders()
+        });
       }
 
       setIsModalOpen(false);
@@ -72,7 +82,9 @@ const MenuManager = () => {
   const handleDelete = async (id) => {
     if (window.confirm("ይህንን ምግብ መሰረዝ ትፈልጋለህ?")) {
       try {
-        await axios.delete(`${API_BASE}menu-items/${id}/`);
+        await axios.delete(`${API_BASE}menu-items/${id}/`, {
+          headers: getHeaders()
+        });
         fetchData(); // ዝርዝሩን አድስ
       } catch (error) {
         console.error("መሰረዝ አልተቻለም:", error);
@@ -104,12 +116,12 @@ const MenuManager = () => {
   );
 
   return (
-    <div style={{ padding: '20px', color: '#fff' }}>
+    <div style={{ padding: '20px', color: '#0f172a' }}>
       {/* Header */}
       <div style={headerCardStyle}>
         <div>
-          <h2 style={{ margin: 0, fontSize: '28px' }}>Menu Items</h2>
-          <p style={{ color: '#94a3b8', fontSize: '14px' }}>Manage and edit your food items.</p>
+          <h2 style={{ margin: 0, fontSize: '28px', color: '#0f172a' }}>Menu Items</h2>
+          <p style={{ color: '#64748b', fontSize: '14px' }}>Manage and edit your food items.</p>
         </div>
         <button onClick={() => { resetForm(); setIsModalOpen(true); }} style={addBtnStyle}>
           <Plus size={18} /> Add Item
@@ -145,12 +157,12 @@ const MenuManager = () => {
               />
             </div>
             <div style={{ padding: '15px' }}>
-              <h4 style={{ margin: 0 }}>{item.name}</h4>
+              <h4 style={{ margin: 0, color: '#0f172a' }}>{item.name}</h4>
               <p style={descStyle}>{item.description}</p>
               <div style={cardFooter}>
                 <div style={priceValue}>{item.price} <span style={{fontSize: '10px'}}>ETB</span></div>
                 <div style={{ display: 'flex', gap: '8px' }}>
-                  <button onClick={() => startEdit(item)} style={actionBtn}><Pencil size={14} /></button>
+                  <button onClick={() => startEdit(item)} style={actionBtn}><Pencil size={14} color="#475569" /></button>
                   <button onClick={() => handleDelete(item.id)} style={{...actionBtn, color: '#ef4444'}}><Trash2 size={14} /></button>
                 </div>
               </div>
@@ -164,9 +176,9 @@ const MenuManager = () => {
         {isModalOpen && (
           <div style={modalOverlayStyle}>
             <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }} style={modalContentStyle}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}>
-                <h3>{editingId ? 'Edit Menu Item' : 'Add New Item'}</h3>
-                <X onClick={() => setIsModalOpen(false)} style={{ cursor: 'pointer' }} />
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px', alignItems: 'center' }}>
+                <h3 style={{ margin: 0, color: '#0f172a' }}>{editingId ? 'Edit Menu Item' : 'Add New Item'}</h3>
+                <X onClick={() => setIsModalOpen(false)} style={{ cursor: 'pointer', color: '#64748b' }} />
               </div>
 
               <form onSubmit={handleSaveItem} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
@@ -204,9 +216,12 @@ const MenuManager = () => {
                   onChange={e => setNewItem({...newItem, description: e.target.value})}
                 />
 
-                <input type="file" onChange={e => setNewItem({...newItem, image: e.target.files[0]})} />
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                  <label style={{ fontSize: '11px', fontWeight: '700', color: '#64748b' }}>Item Image</label>
+                  <input type="file" onChange={e => setNewItem({...newItem, image: e.target.files[0]})} style={{ fontSize: '12px' }} />
+                </div>
 
-                <div style={{ display: 'flex', gap: '10px' }}>
+                <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
                   <button type="button" onClick={() => setIsModalOpen(false)} style={cancelBtnStyle}>Cancel</button>
                   <button type="submit" style={saveBtnStyle}>
                     {editingId ? 'Update Item' : 'Save Item'}
@@ -221,25 +236,25 @@ const MenuManager = () => {
   );
 };
 
-// Styles (እንዳሉ ይቀጥላሉ...)
-const headerCardStyle = { backgroundColor: '#111827', padding: '25px', borderRadius: '15px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px', border: '1px solid #1f2937' };
-const addBtnStyle = { backgroundColor: '#365314', color: '#bef264', border: 'none', padding: '10px 20px', borderRadius: '10px', fontWeight: '700', cursor: 'pointer' };
+// Styles
+const headerCardStyle = { backgroundColor: '#fff', padding: '25px', borderRadius: '15px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px', border: '1px solid rgba(148,163,184,0.16)', boxShadow: '0 4px 20px rgba(15,23,42,0.03)' };
+const addBtnStyle = { backgroundColor: '#0f766e', color: '#fff', border: 'none', padding: '10px 20px', borderRadius: '10px', fontWeight: '700', cursor: 'pointer', boxShadow: '0 4px 12px rgba(15,118,110,0.15)' };
 const filterBarStyle = { display: 'flex', gap: '20px', marginBottom: '30px', alignItems: 'center' };
-const searchContainer = { display: 'flex', alignItems: 'center', gap: '10px', backgroundColor: '#1f2937', padding: '10px 15px', borderRadius: '12px', flex: 1, border: '1px solid #374151' };
-const searchInputStyle = { background: 'none', border: 'none', color: '#fff', outline: 'none', width: '100%' };
-const selectStyle = { backgroundColor: '#1f2937', color: '#fff', border: '1px solid #374151', padding: '10px', borderRadius: '12px' };
+const searchContainer = { display: 'flex', alignItems: 'center', gap: '10px', backgroundColor: '#fff', padding: '10px 15px', borderRadius: '12px', flex: 1, border: '1px solid rgba(148,163,184,0.2)' };
+const searchInputStyle = { background: 'none', border: 'none', color: '#0f172a', outline: 'none', width: '100%' };
+const selectStyle = { backgroundColor: '#fff', color: '#475569', border: '1px solid rgba(148,163,184,0.2)', padding: '10px', borderRadius: '12px', outline: 'none', cursor: 'pointer' };
 const gridStyle = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '25px' };
-const itemCardStyle = { backgroundColor: '#111827', borderRadius: '20px', overflow: 'hidden', border: '1px solid #1f2937' };
+const itemCardStyle = { backgroundColor: '#fff', borderRadius: '20px', overflow: 'hidden', border: '1px solid rgba(148,163,184,0.16)', boxShadow: '0 12px 28px rgba(15,23,42,0.04)' };
 const imageWrapper = { position: 'relative', height: '180px' };
 const itemImgStyle = { width: '100%', height: '100%', objectFit: 'cover' };
 const descStyle = { fontSize: '12px', color: '#64748b', margin: '10px 0' };
 const cardFooter = { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' };
-const priceValue = { fontSize: '20px', fontWeight: '800', color: '#fff' };
-const actionBtn = { backgroundColor: '#1f2937', border: 'none', padding: '8px', borderRadius: '8px', cursor: 'pointer' };
-const modalOverlayStyle = { position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.8)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 };
-const modalContentStyle = { backgroundColor: '#111827', padding: '30px', borderRadius: '20px', width: '400px', border: '1px solid #1f2937' };
-const inputStyle = { backgroundColor: '#1f2937', border: '1px solid #374151', color: '#fff', padding: '12px', borderRadius: '10px' };
-const saveBtnStyle = { flex: 1, backgroundColor: '#365314', color: '#bef264', border: 'none', padding: '12px', borderRadius: '10px', fontWeight: '700', cursor: 'pointer' };
-const cancelBtnStyle = { flex: 1, backgroundColor: '#1f2937', color: '#94a3b8', border: 'none', padding: '12px', borderRadius: '10px', cursor: 'pointer' };
+const priceValue = { fontSize: '20px', fontWeight: '800', color: '#0f766e' };
+const actionBtn = { backgroundColor: '#f1f5f9', border: 'none', padding: '8px', borderRadius: '8px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' };
+const modalOverlayStyle = { position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(15,23,42,0.4)', backdropFilter: 'blur(4px)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 };
+const modalContentStyle = { backgroundColor: '#fff', padding: '30px', borderRadius: '20px', width: '400px', border: '1px solid rgba(148,163,184,0.16)', boxShadow: '0 20px 40px rgba(15,23,42,0.1)' };
+const inputStyle = { backgroundColor: '#f1f5f9', border: '1px solid rgba(148,163,184,0.12)', color: '#0f172a', padding: '12px', borderRadius: '10px', outline: 'none' };
+const saveBtnStyle = { flex: 1, backgroundColor: '#0f766e', color: '#fff', border: 'none', padding: '12px', borderRadius: '10px', fontWeight: '700', cursor: 'pointer', boxShadow: '0 4px 12px rgba(15,118,110,0.15)' };
+const cancelBtnStyle = { flex: 1, backgroundColor: '#e2e8f0', color: '#475569', border: 'none', padding: '12px', borderRadius: '10px', cursor: 'pointer' };
 
 export default MenuManager;

@@ -42,7 +42,6 @@ function WaiterDashboard({ userData, handleLogout }) {
   const [digitalSession, setDigitalSession] = useState(null);
   const [isBusy, setIsBusy] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [windowWidth, setWindowWidth] = useState(window.innerWidth);
   const prevNotifCount = useRef(0);
 
   const [filterStartDate, setFilterStartDate] = useState("");
@@ -50,13 +49,6 @@ function WaiterDashboard({ userData, handleLogout }) {
   const [filterLimit, setFilterLimit] = useState(10);
 
   const headers = () => ({ Authorization: `Bearer ${localStorage.getItem('access_token')}` });
-  const isMobile = windowWidth < 960;
-
-  useEffect(() => {
-    const handleResize = () => setWindowWidth(window.innerWidth);
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
 
   useEffect(() => {
     loadAllData();
@@ -81,7 +73,13 @@ function WaiterDashboard({ userData, handleLogout }) {
   const fetchDashboardData = async () => {
     try {
       const [resOrders, resTables, resMenu] = await Promise.all([
-        axios.get(`${API_BASE}waiter/my-orders/?start_date=${filterStartDate}&end_date=${filterEndDate}&limit=${filterLimit}`, { headers: headers() }),
+        axios.get(`${API_BASE}waiter/my-orders/?start_date=${filterStartDate}&end_date=${filterEndDate}&limit=${filterLimit}&_cb=${new Date().getTime()}`, { 
+          headers: {
+            ...headers(),
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache'
+          } 
+        }),
         axios.get(`${API_BASE}manage/`, { headers: headers() }),
         axios.get(`${API_BASE}menu-items/`, { headers: headers() }),
       ]);
@@ -275,36 +273,45 @@ function WaiterDashboard({ userData, handleLogout }) {
       <div style={styles.backgroundAuraA} />
       <div style={styles.backgroundAuraB} />
 
-      <header style={styles.topBar}>
+      {/* Mobile overlay */}
+      {mobileMenuOpen && (
+        <div
+          className="role-sidebar-overlay open"
+          onClick={() => setMobileMenuOpen(false)}
+        />
+      )}
+
+      <header className="role-topbar">
         <div style={styles.brandBlock}>
           <div style={styles.brandIcon}>W</div>
           <div>
             <div style={styles.brandTitle}>Waiter Command</div>
-            <div style={styles.brandSub}>Dining floor operations and digital checkout</div>
+            <div style={styles.brandSub} className="waiter-brand-sub">Dining floor operations and digital checkout</div>
           </div>
         </div>
 
-        {isMobile ? (
-          <button style={styles.iconButton} onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
-            {mobileMenuOpen ? <X size={18} /> : <Menu size={18} />}
-          </button>
-        ) : null}
+        <button className="role-hamburger" onClick={() => setMobileMenuOpen(!mobileMenuOpen)} aria-label="Toggle menu">
+          {mobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
+        </button>
 
-        <div style={{ ...styles.topActions, ...(isMobile && !mobileMenuOpen ? styles.hiddenMobile : {}) }}>
+        <div style={styles.topActions}>
           <div style={styles.alertPill}>
             <Bell size={15} />
             <span>{notifications.length} alerts</span>
           </div>
           <div style={styles.userPill}>
             <User size={15} />
-            <span>{userData?.first_name || 'Waiter'}</span>
+            <span className="user-pill-text">{userData?.first_name || 'Waiter'}</span>
           </div>
           <button style={styles.logoutButton} onClick={handleLogout}>Logout</button>
         </div>
       </header>
 
-      <div style={styles.layout}>
-        <aside style={{ ...styles.sidebar, ...(isMobile && !mobileMenuOpen ? styles.hiddenMobile : {}) }}>
+      <div className="role-layout">
+        <aside className={`role-sidebar${mobileMenuOpen ? ' open' : ''}`}>
+          <button className="role-hamburger" style={{ marginBottom: 12, alignSelf: 'flex-end' }} onClick={() => setMobileMenuOpen(false)} aria-label="Close menu">
+            <X size={20} />
+          </button>
           {navItems.map((item) => {
             const Icon = item.icon;
             return (
@@ -340,11 +347,11 @@ function WaiterDashboard({ userData, handleLogout }) {
         <main style={styles.main}>
           {activeTab === 'home' && (
             <>
-              <section style={styles.hero}>
-                <div>
+              <section style={styles.hero} className="waiter-hero">
+                <div className="waiter-hero-text">
                   <div style={styles.sectionKicker}>Floor Overview</div>
-                  <h1 style={styles.heroTitle}>Everything you need for service, billing, and digital payment in one place.</h1>
-                  <p style={styles.heroText}>
+                  <h1 style={styles.heroTitle} className="waiter-hero-title">Everything you need for service, billing, and digital payment in one place.</h1>
+                  <p style={styles.heroText} className="waiter-hero-sub">
                     Track ready orders, collect payments, and open QR checkout without leaving the waiter dashboard.
                   </p>
                   <div style={styles.heroActions}>
@@ -359,7 +366,7 @@ function WaiterDashboard({ userData, handleLogout }) {
                   </div>
                 </div>
 
-                <div style={styles.heroPanel}>
+                <div style={styles.heroPanel} className="waiter-hero-panel">
                   <div style={styles.heroPanelTitle}>Payment Readiness</div>
                   {payableOrders.length ? payableOrders.slice(0, 3).map((order) => (
                     <button key={order.id} style={styles.quickOrderCard} onClick={() => openCheckout(order)}>
@@ -375,14 +382,14 @@ function WaiterDashboard({ userData, handleLogout }) {
                 </div>
               </section>
 
-              <section style={styles.metricGrid}>
+              <section style={styles.metricGrid} className="waiter-metric-grid">
                 <MetricCard icon={<UtensilsCrossed size={18} />} label="Active Orders" value={activeOrders.length} tone="cyan" />
                 <MetricCard icon={<ChefHat size={18} />} label="Ready To Serve" value={readyOrders.length} tone="amber" />
                 <MetricCard icon={<CreditCard size={18} />} label="Payment Queue" value={payableOrders.length} tone="green" />
                 <MetricCard icon={<Bell size={18} />} label="Unread Alerts" value={notifications.length} tone="rose" />
               </section>
 
-              <section style={styles.dualGrid}>
+              <section style={styles.dualGrid} className="waiter-dual-grid">
                 <div style={styles.panel}>
                   <div style={styles.panelHeader}>
                     <div>
@@ -429,7 +436,7 @@ function WaiterDashboard({ userData, handleLogout }) {
 
           {activeTab === 'orders' && (
             <>
-              <section style={styles.sectionHeaderRow}>
+              <section style={styles.sectionHeaderRow} className="waiter-section-header">
                 <div>
                   <div style={styles.sectionKicker}>Order Desk</div>
                   <h2 style={styles.sectionTitle}>Actionable orders and payment flow</h2>
@@ -441,7 +448,7 @@ function WaiterDashboard({ userData, handleLogout }) {
               </section>
 
               <section style={styles.panel}>
-                <div style={styles.orderSummaryRow}>
+                <div style={styles.orderSummaryRow} className="waiter-summary-row">
                   <MiniSummary label="Ready" value={readyOrders.length} />
                   <MiniSummary label="Served" value={orders.filter((order) => order.status === 'served').length} />
                   <MiniSummary label="Completed" value={paidOrders.length} />
@@ -455,7 +462,7 @@ function WaiterDashboard({ userData, handleLogout }) {
                     <div style={styles.panelSub}>Serve orders, launch checkout, and review history</div>
                   </div>
                 </div>
-                <div style={{ ...styles.filterRow, padding: '0 20px 15px 20px', marginTop: 0 }}>
+                <div style={{ ...styles.filterRow, padding: '0 20px 15px 20px', marginTop: 0 }} className="waiter-filter-row">
                   <input type="date" value={filterStartDate} onChange={e => setFilterStartDate(e.target.value)} style={styles.filterInput} />
                   <span style={{ fontSize: 12, color: '#94a3b8' }}>to</span>
                   <input type="date" value={filterEndDate} onChange={e => setFilterEndDate(e.target.value)} style={styles.filterInput} />
@@ -504,7 +511,7 @@ function WaiterDashboard({ userData, handleLogout }) {
           )}
 
           {activeTab === 'menu' && (
-            <section style={styles.menuGridLayout}>
+            <section style={styles.menuGridLayout} className="waiter-menu-grid">
               <div style={styles.panel}>
                 <div style={styles.panelHeader}>
                   <div>
@@ -565,7 +572,7 @@ function WaiterDashboard({ userData, handleLogout }) {
                 </div>
               </div>
 
-              <div style={styles.cartPanel}>
+              <div style={styles.cartPanel} className="waiter-cart-panel">
                 <div style={styles.panelHeader}>
                   <div>
                     <div style={styles.panelTitle}>Order Cart</div>
@@ -1451,16 +1458,6 @@ const styles = {
   filterRow: { display: 'flex', alignItems: 'center', gap: 8, marginTop: 12 },
   filterInput: { padding: '6px 12px', border: '1px solid #cbd5e1', borderRadius: 8, fontSize: 13, outline: 'none' },
   filterSelect: { padding: '6px 12px', border: '1px solid #cbd5e1', borderRadius: 8, fontSize: 13, outline: 'none', background: '#fff' },
-  hiddenMobile: {},
 };
-
-if (typeof window !== 'undefined' && window.innerWidth < 960) {
-  styles.layout.gridTemplateColumns = '1fr';
-  styles.hero.gridTemplateColumns = '1fr';
-  styles.metricGrid.gridTemplateColumns = 'repeat(2, minmax(0, 1fr))';
-  styles.dualGrid.gridTemplateColumns = '1fr';
-  styles.menuGridLayout.gridTemplateColumns = '1fr';
-  styles.orderSummaryRow.gridTemplateColumns = 'repeat(2, minmax(0, 1fr))';
-}
 
 export default WaiterDashboard;

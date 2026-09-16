@@ -13,20 +13,28 @@ const CategoryManager = () => {
   const [imageFile, setImageFile] = useState(null);
   const [editingId, setEditingId] = useState(null);
 
+  const getHeaders = () => {
+    const token = localStorage.getItem('access_token');
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  };
+
   // 1. ዳታ ከመረጃ ቋቱ (Database) ለማምጣት
   const fetchCategories = async () => {
-  try {
-    const response = await axios.get(CATEGORY_API_BASE);
-    // በደንብ እንዲታይ ዳታውን log አድርገው
-    console.log("Categories Loaded:", response.data);
-    setCategories(response.data);
-  } catch (error) {
-    console.error("ዳታ መጫን አልተቻለም:", error);
-  }
-};
+    try {
+      const response = await axios.get(CATEGORY_API_BASE, {
+        headers: getHeaders()
+      });
+      // በደንብ እንዲታይ ዳታውን log አድርገው
+      console.log("Categories Loaded:", response.data);
+      setCategories(response.data);
+    } catch (error) {
+      console.error("ዳታ መጫን አልተቻለም:", error);
+    }
+  };
 
   useEffect(() => {
     fetchCategories();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleImageChange = (e) => {
@@ -51,9 +59,13 @@ const CategoryManager = () => {
 
     try {
       if (editingId) {
-        await axios.put(`${CATEGORY_API_BASE}${editingId}/`, data);
+        await axios.put(`${CATEGORY_API_BASE}${editingId}/`, data, {
+          headers: getHeaders()
+        });
       } else {
-        await axios.post(CATEGORY_API_BASE, data);
+        await axios.post(CATEGORY_API_BASE, data, {
+          headers: getHeaders()
+        });
       }
       fetchCategories(); // ዳታውን እንደገና አድስ
       resetForm();
@@ -72,7 +84,9 @@ const CategoryManager = () => {
   const deleteCategory = async (id) => {
     if (window.confirm("Are you sure?")) {
       try {
-        await axios.delete(`${CATEGORY_API_BASE}${id}/`);
+        await axios.delete(`${CATEGORY_API_BASE}${id}/`, {
+          headers: getHeaders()
+        });
         fetchCategories();
       } catch (error) {
         console.error("መሰረዝ አልተቻለም:", error);
@@ -144,7 +158,7 @@ const CategoryManager = () => {
         </div>
 
         <div style={{ display: 'flex', gap: '10px' }}>
-          <button onClick={handleSave} style={{...addButtonStyle, backgroundColor: editingId ? '#10b981' : '#0ff'}}>
+          <button onClick={handleSave} style={{...addButtonStyle, backgroundColor: editingId ? '#16a34a' : '#0f766e', color: '#fff'}}>
             {editingId ? <Check size={18} /> : <Plus size={18} />}
           </button>
           {editingId && <button onClick={resetForm} style={cancelButtonStyle}><X size={18} /></button>}
@@ -160,12 +174,12 @@ const CategoryManager = () => {
                 {cat.image ? (
                   <img src={cat.image} alt={cat.name} style={catImgStyle} />
                 ) : (
-                  <ImageIcon size={24} color="#1f2937" />
+                  <ImageIcon size={24} color="#64748b" />
                 )}
               </div>
 
               <div style={{ flex: 1 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <h4 style={catNameStyle}>{cat.name}</h4>
                   <small style={stationBadgeStyle}>{cat.station}</small>
                 </div>
@@ -173,7 +187,7 @@ const CategoryManager = () => {
               </div>
 
               <div style={actionGroupStyle}>
-                <button onClick={() => startEdit(cat)} style={actionButtonStyle}><Pencil size={12} color="#94a3b8" /></button>
+                <button onClick={() => startEdit(cat)} style={actionButtonStyle}><Pencil size={12} color="#475569" /></button>
                 <button onClick={() => deleteCategory(cat.id)} style={actionButtonStyle}><Trash2 size={12} color="#ef4444" /></button>
               </div>
             </motion.div>
@@ -184,28 +198,28 @@ const CategoryManager = () => {
   );
 };
 
-// --- Styles (ካለህበት ይቀጥላሉ) ---
+// --- Styles ---
 const containerStyle = { padding: '10px' };
-const titleStyle = { color: '#fff', fontSize: '22px', fontWeight: '800', marginBottom: '25px' };
-const formCardStyle = { display: 'flex', gap: '15px', alignItems: 'flex-end', backgroundColor: '#111827', padding: '15px', borderRadius: '15px', marginBottom: '30px', border: '1px solid #1f2937' };
-const uploadBoxStyle = { width: '60px', height: '60px', borderRadius: '12px', border: '2px dashed #374151', overflow: 'hidden', cursor: 'pointer' };
+const titleStyle = { color: '#0f172a', fontSize: '22px', fontWeight: '800', marginBottom: '22px' };
+const formCardStyle = { display: 'flex', gap: '15px', alignItems: 'flex-end', backgroundColor: '#fff', padding: '20px', borderRadius: '16px', marginBottom: '30px', border: '1px solid rgba(148,163,184,0.16)', boxShadow: '0 4px 20px rgba(15,23,42,0.03)' };
+const uploadBoxStyle = { width: '60px', height: '60px', borderRadius: '12px', border: '2px dashed #cbd5e1', overflow: 'hidden', cursor: 'pointer', backgroundColor: '#f8fafc' };
 const uploadLabel = { width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' };
 const uploadPlaceholder = { display: 'flex', flexDirection: 'column', alignItems: 'center' };
 const previewStyle = { width: '100%', height: '100%', objectFit: 'cover' };
 const inputGroup = { display: 'flex', flexDirection: 'column', gap: '8px', flex: 1 };
-const labelStyle = { color: '#94a3b8', fontSize: '10px', fontWeight: '800', textTransform: 'uppercase' };
-const inputStyle = { backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '10px', padding: '10px', color: '#fff', fontSize: '13px', outline: 'none' };
+const labelStyle = { color: '#64748b', fontSize: '10px', fontWeight: '800', textTransform: 'uppercase' };
+const inputStyle = { backgroundColor: '#f1f5f9', border: '1px solid rgba(148,163,184,0.12)', borderRadius: '10px', padding: '10px', color: '#0f172a', fontSize: '13px', outline: 'none' };
 const selectStyle = { ...inputStyle, cursor: 'pointer' };
-const addButtonStyle = { color: '#000', padding: '10px', borderRadius: '10px', border: 'none', fontWeight: '800', cursor: 'pointer', height: '42px', width: '50px', display: 'flex', justifyContent: 'center', alignItems: 'center' };
-const cancelButtonStyle = { backgroundColor: '#374151', color: '#fff', padding: '10px', borderRadius: '10px', border: 'none', cursor: 'pointer', height: '42px' };
+const addButtonStyle = { color: '#fff', padding: '10px', borderRadius: '10px', border: 'none', fontWeight: '800', cursor: 'pointer', height: '42px', width: '50px', display: 'flex', justifyContent: 'center', alignItems: 'center', boxShadow: '0 4px 12px rgba(15,118,110,0.15)' };
+const cancelButtonStyle = { backgroundColor: '#e2e8f0', color: '#475569', padding: '10px', borderRadius: '10px', border: 'none', cursor: 'pointer', height: '42px' };
 const listGridStyle = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))', gap: '20px' };
-const categoryCardStyle = { backgroundColor: '#111827', padding: '15px', borderRadius: '18px', display: 'flex', gap: '15px', border: '1px solid #1f2937', alignItems: 'center' };
-const catImageBox = { width: '70px', height: '70px', backgroundColor: '#1f2937', borderRadius: '14px', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' };
+const categoryCardStyle = { backgroundColor: '#fff', padding: '20px', borderRadius: '18px', display: 'flex', gap: '15px', border: '1px solid rgba(148,163,184,0.16)', alignItems: 'center', boxShadow: '0 12px 28px rgba(15,23,42,0.04)' };
+const catImageBox = { width: '70px', height: '70px', backgroundColor: '#f1f5f9', borderRadius: '14px', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' };
 const catImgStyle = { width: '100%', height: '100%', objectFit: 'cover' };
-const catNameStyle = { margin: 0, fontSize: '16px', fontWeight: '700', color: '#fff' };
+const catNameStyle = { margin: 0, fontSize: '16px', fontWeight: '700', color: '#0f172a' };
 const descStyle = { margin: '5px 0 0 0', fontSize: '12px', color: '#64748b' };
-const stationBadgeStyle = { color: '#0ff', fontSize: '10px', fontWeight: '800', textTransform: 'uppercase' };
+const stationBadgeStyle = { color: '#0f766e', backgroundColor: '#ccfbf1', padding: '2px 8px', borderRadius: '6px', fontSize: '10px', fontWeight: '800', textTransform: 'uppercase' };
 const actionGroupStyle = { display: 'flex', flexDirection: 'column', gap: '5px' };
-const actionButtonStyle = { backgroundColor: '#1f2937', border: 'none', padding: '8px', borderRadius: '8px', cursor: 'pointer' };
+const actionButtonStyle = { backgroundColor: '#f1f5f9', border: 'none', padding: '8px', borderRadius: '8px', cursor: 'pointer' };
 
 export default CategoryManager;

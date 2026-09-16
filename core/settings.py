@@ -1,6 +1,6 @@
 """
-Django settings for Smart Hotel ERP — Multi-Tenant SaaS Edition
-Using django-tenants with PostgreSQL schema isolation.
+Django settings for Smart Hotel ERP — Single-Tenant Edition
+Using standard PostgreSQL with Django ORM.
 """
 
 from pathlib import Path
@@ -12,99 +12,125 @@ load_dotenv()
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = os.getenv("SECRET_KEY", "django-insecure-change-me-in-production")
-DEBUG = os.getenv("DEBUG", "True") == "True"
-ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "localhost,127.0.0.1,.localhost,.acrmatech.com,.ngrok-free.app").split(",")
-CSRF_TRUSTED_ORIGINS = os.getenv("CSRF_TRUSTED_ORIGINS", "https://*.acrmatech.com,https://*.ngrok-free.app").split(",")
+ENVIRONMENT = os.getenv("DJANGO_ENV", "development").lower()
+IS_PRODUCTION = ENVIRONMENT == "production"
+
+
+def env_bool(name, default=False):
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.lower() in {"1", "true", "yes", "on"}
+
+
+def env_list(name, default=""):
+    return [item.strip() for item in os.getenv(name, default).split(",") if item.strip()]
+
+
+def require_env(name):
+    value = os.getenv(name)
+    if not value:
+        raise RuntimeError(f"{name} must be configured when DJANGO_ENV=production.")
+    return value
+
+
+SECRET_KEY = os.getenv("SECRET_KEY", "django-insecure-dev-only-key")
+DEBUG = env_bool("DEBUG", not IS_PRODUCTION)
+ALLOWED_HOSTS = env_list("ALLOWED_HOSTS", "localhost,127.0.0.1,.localhost")
+CSRF_TRUSTED_ORIGINS = env_list("CSRF_TRUSTED_ORIGINS", "")
+
+if IS_PRODUCTION:
+    SECRET_KEY = require_env("SECRET_KEY")
+    if SECRET_KEY.startswith("django-insecure") or SECRET_KEY == "django-insecure-dev-only-key":
+        raise RuntimeError("SECRET_KEY must be a strong production secret.")
+    if DEBUG:
+        raise RuntimeError("DEBUG must be False when DJANGO_ENV=production.")
+    if not ALLOWED_HOSTS:
+        raise RuntimeError("ALLOWED_HOSTS must be configured when DJANGO_ENV=production.")
+    if "*" in ALLOWED_HOSTS:
+        raise RuntimeError("Wildcard ALLOWED_HOSTS is not allowed in production.")
+    if not CSRF_TRUSTED_ORIGINS:
+        raise RuntimeError("CSRF_TRUSTED_ORIGINS must be configured when DJANGO_ENV=production.")
+    if any("*" in origin for origin in CSRF_TRUSTED_ORIGINS):
+        raise RuntimeError("Wildcard CSRF_TRUSTED_ORIGINS is not allowed in production.")
 
 
 
-# ── Multi-Tenant App Split ────────────────────────────────────────────────────
-# SHARED_APPS  → tables live in the PUBLIC schema (platform-level)
-# TENANT_APPS  → tables live in each hotel's OWN schema (isolated)
-
-SHARED_APPS = [
-    # django-tenants MUST be first
-    "django_tenants",
-    # Public-schema models: Hotel, Domain, Package
-    "tenants",
-    # Shared Django internals + User model
-    "unfold",
+# ── Installed Apps ────────────────────────────────────────────────────────────
+INSTALLED_APPS = [
+    "unfold",  # Must be before django.contrib.admin
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
-    # Shared third-party
     "rest_framework",
     "rest_framework_simplejwt",
+    "rest_framework_simplejwt.token_blacklist",
     "corsheaders",
-    # users app lives in SHARED so AUTH_USER_MODEL resolves in public schema
     "users",
-]
-
-TENANT_APPS = [
-    # Hotel-specific data — each hotel gets its own schema copy
     "hotel",
 ]
 
-# Django requires INSTALLED_APPS = union of both lists (shared first, then unique tenants)
-INSTALLED_APPS = list(SHARED_APPS) + [app for app in TENANT_APPS if app not in SHARED_APPS]
-
-# Tenant model pointers
-TENANT_MODEL = "tenants.Hotel"
-TENANT_DOMAIN_MODEL = "tenants.Domain"
-
 # ── Middleware ─────────────────────────────────────────────────────────────────
-# TenantMainMiddleware MUST be first — it sets the DB schema for each request
 MIDDLEWARE = [
-    # CorsMiddleware MUST be first — it must wrap every response (including
-    # preflight OPTIONS replies) with Access-Control-Allow-* headers BEFORE
-    # any other middleware can short-circuit the request.
     "corsheaders.middleware.CorsMiddleware",                 # ← FIRST (CORS)
-    "django_tenants.middleware.main.TenantMainMiddleware",   # ← tenant routing
-    "tenants.middleware.LocalhostTenantRoutingMiddleware",
     "django.middleware.security.SecurityMiddleware",
+    "core.security.SecurityHeadersMiddleware",
+    "core.observability.ObservabilityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
-    # Cross-tenant isolation — hotel staff cannot access other hotels
-    "tenants.middleware.TenantUserIsolationMiddleware",      # ← LAST
+    "django.middleware.cache.UpdateCacheMiddleware",         # ← Needed for no-cache
+    "django.middleware.cache.FetchFromCacheMiddleware",      # ← Needed for no-cache
 ]
 
+# Disable all server-side caching — API responses must always be fresh
+CACHE_MIDDLEWARE_SECONDS = 0
+CACHE_MIDDLEWARE_KEY_PREFIX = ""
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.dummy.DummyCache",
+    }
+}
+
 # ── URL Configuration ──────────────────────────────────────────────────────────
-# ROOT_URLCONF        → served for every HOTEL subdomain  (e.g. atlas.myerp.com)
-# PUBLIC_SCHEMA_URLCONF → served for the PUBLIC domain     (e.g. myerp.com)
 ROOT_URLCONF = "core.urls"
-PUBLIC_SCHEMA_URLCONF = "core.public_urls"
 
 # ── Database — Neon.tech PostgreSQL (SSL required) ────────────────────────────
-DATABASE_ROUTERS = ["django_tenants.routers.TenantSyncRouter"]
-
 # Neon.tech connection string support (takes priority if set)
 _neon_url = os.getenv("DATABASE_URL", "")
 
 if _neon_url:
     import dj_database_url
     _db_config = dj_database_url.parse(_neon_url)
-    _db_config["ENGINE"] = "django_tenants.postgresql_backend"
+    _db_config["ENGINE"] = "django.db.backends.postgresql"
     _db_config.setdefault("OPTIONS", {})["sslmode"] = "require"
+    _db_config["CONN_MAX_AGE"] = int(os.getenv("DB_CONN_MAX_AGE", "60"))
+    _db_config["CONN_HEALTH_CHECKS"] = True
+    _db_config["OPTIONS"]["options"] = f"-c statement_timeout={int(os.getenv('DB_STATEMENT_TIMEOUT_MS', '30000'))} -c lock_timeout={int(os.getenv('DB_LOCK_TIMEOUT_MS', '5000'))} -c idle_in_transaction_session_timeout={int(os.getenv('DB_IDLE_TX_TIMEOUT_MS', '60000'))}"
     DATABASES = {"default": _db_config}
 else:
+    if IS_PRODUCTION:
+        for _required_db_env in ("DB_NAME", "DB_USER", "DB_PASSWORD", "DB_HOST"):
+            require_env(_required_db_env)
     DATABASES = {
         "default": {
-            "ENGINE": "django_tenants.postgresql_backend",
+            "ENGINE": "django.db.backends.postgresql",
             "NAME": os.getenv("DB_NAME", "hotel_erp_db"),
             "USER": os.getenv("DB_USER", "postgres"),
             "PASSWORD": os.getenv("DB_PASSWORD", ""),
             "HOST": os.getenv("DB_HOST", "localhost"),
             "PORT": os.getenv("DB_PORT", "5432"),
+            "CONN_MAX_AGE": int(os.getenv("DB_CONN_MAX_AGE", "60")),
+            "CONN_HEALTH_CHECKS": True,
             "OPTIONS": {
                 "sslmode": os.getenv("DB_SSLMODE", "prefer"),
+                "options": f"-c statement_timeout={int(os.getenv('DB_STATEMENT_TIMEOUT_MS', '30000'))} -c lock_timeout={int(os.getenv('DB_LOCK_TIMEOUT_MS', '5000'))} -c idle_in_transaction_session_timeout={int(os.getenv('DB_IDLE_TX_TIMEOUT_MS', '60000'))}",
             },
         }
     }
@@ -152,41 +178,7 @@ UNFOLD = {
     },
     "SIDEBAR": {
         "show_search": True,
-        "show_all_applications": False,
-        "navigation": [
-            {
-                "title": "Platform Administration",
-                "separator": True,
-                "items": [
-                    {
-                        "title": "Registered Hotels",
-                        "icon": "domain",
-                        "link": "/admin/tenants/hotel/",
-                    },
-                    {
-                        "title": "Subdomains",
-                        "icon": "link",
-                        "link": "/admin/tenants/domain/",
-                    },
-                    {
-                        "title": "Subscription Packages",
-                        "icon": "inventory_2",
-                        "link": "/admin/tenants/package/",
-                    },
-                ],
-            },
-            {
-                "title": "Access Management",
-                "separator": True,
-                "items": [
-                    {
-                        "title": "Platform Admins",
-                        "icon": "shield",
-                        "link": "/admin/users/user/",
-                    },
-                ],
-            },
-        ],
+        "show_all_applications": True,
     },
 }
 
@@ -232,29 +224,94 @@ CHAPA_BASE_URL = os.getenv("CHAPA_BASE_URL", "https://api.chapa.co/v1")
 FRONTEND_BASE_URL = os.getenv("FRONTEND_BASE_URL", "http://localhost:3000")
 BACKEND_BASE_URL = os.getenv("BACKEND_BASE_URL", "http://127.0.0.1:8000")
 
+if IS_PRODUCTION:
+    CHAPA_SECRET_KEY = require_env("CHAPA_SECRET_KEY")
+    CHAPA_WEBHOOK_SECRET = require_env("CHAPA_WEBHOOK_SECRET")
+    require_env("FRONTEND_BASE_URL")
+    require_env("BACKEND_BASE_URL")
+
 # ── CORS Settings ──────────────────────────────────────────────────────────────
-CORS_ALLOW_ALL_ORIGINS = True  # For development, allow all. In production, we can be more specific.
+CORS_ALLOW_ALL_ORIGINS = env_bool("CORS_ALLOW_ALL_ORIGINS", False)
 CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOWED_ORIGINS = env_list("CORS_ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:8000" if not IS_PRODUCTION else "")
+if CORS_ALLOW_ALL_ORIGINS and CORS_ALLOW_CREDENTIALS:
+    raise RuntimeError("Do not combine wildcard CORS origins with credential support.")
+if IS_PRODUCTION and CORS_ALLOW_ALL_ORIGINS:
+    raise RuntimeError("CORS_ALLOW_ALL_ORIGINS must be False in production.")
+if IS_PRODUCTION and not CORS_ALLOWED_ORIGINS:
+    raise RuntimeError("CORS_ALLOWED_ORIGINS must be configured in production.")
 from corsheaders.defaults import default_headers
 CORS_ALLOW_HEADERS = list(default_headers) + [
     "x-tenant-schema",
 ]
 
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+SECURE_SSL_REDIRECT = env_bool("SECURE_SSL_REDIRECT", IS_PRODUCTION)
+SESSION_COOKIE_SECURE = env_bool("SESSION_COOKIE_SECURE", IS_PRODUCTION)
+CSRF_COOKIE_SECURE = env_bool("CSRF_COOKIE_SECURE", IS_PRODUCTION)
+SESSION_COOKIE_HTTPONLY = True
+CSRF_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SAMESITE = "Lax"
+CSRF_COOKIE_SAMESITE = "Lax"
+SECURE_HSTS_SECONDS = int(os.getenv("SECURE_HSTS_SECONDS", "31536000" if IS_PRODUCTION else "0"))
+SECURE_HSTS_INCLUDE_SUBDOMAINS = env_bool("SECURE_HSTS_INCLUDE_SUBDOMAINS", IS_PRODUCTION)
+SECURE_HSTS_PRELOAD = env_bool("SECURE_HSTS_PRELOAD", IS_PRODUCTION)
+SECURE_CONTENT_TYPE_NOSNIFF = True
+X_FRAME_OPTIONS = "DENY"
+SECURE_REFERRER_POLICY = "strict-origin-when-cross-origin"
+
+DATA_UPLOAD_MAX_MEMORY_SIZE = int(os.getenv("DATA_UPLOAD_MAX_MEMORY_SIZE", str(5 * 1024 * 1024)))
+FILE_UPLOAD_MAX_MEMORY_SIZE = int(os.getenv("FILE_UPLOAD_MAX_MEMORY_SIZE", str(5 * 1024 * 1024)))
+
+RELEASE_VERSION = os.getenv("RELEASE_VERSION", os.getenv("GIT_COMMIT", "development"))[:80]
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "json": {"()": "core.observability.JsonFormatter"},
+        "verbose": {"format": "%(asctime)s %(levelname)s %(name)s %(message)s"},
+    },
+    "handlers": {"console": {"class": "logging.StreamHandler", "formatter": "json" if IS_PRODUCTION else "verbose"}},
+    "root": {"handlers": ["console"], "level": os.getenv("LOG_LEVEL", "INFO")},
+}
+
 # ── REST Framework ────────────────────────────────────────────────────────────
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
-        "rest_framework_simplejwt.authentication.JWTAuthentication",
+        "users.authentication.VersionedJWTAuthentication",
     ),
+    "EXCEPTION_HANDLER": "core.api.api_exception_handler",
+    "DEFAULT_SCHEMA_CLASS": "rest_framework.schemas.openapi.AutoSchema",
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.IsAuthenticated",
     ],
+    "DEFAULT_PAGINATION_CLASS": "core.api.V1PageNumberPagination",
+    "DEFAULT_FILTER_BACKENDS": [
+        "rest_framework.filters.OrderingFilter",
+    ],
+    "DEFAULT_THROTTLE_CLASSES": [
+        "rest_framework.throttling.AnonRateThrottle",
+        "rest_framework.throttling.UserRateThrottle",
+        "rest_framework.throttling.ScopedRateThrottle",
+    ],
+    "DEFAULT_THROTTLE_RATES": {
+        "anon": "100/day",
+        "user": "1000/day",
+        "login": "10/minute",
+        "register": "5/hour",
+        "otp": "5/hour",
+        "mfa": "10/hour",
+    },
 }
 
 # ── JWT ───────────────────────────────────────────────────────────────────────
 SIMPLE_JWT = {
-    "ACCESS_TOKEN_LIFETIME": timedelta(days=1),
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=15),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
-    "ROTATE_REFRESH_TOKENS": False,
+    "ROTATE_REFRESH_TOKENS": True,
+    "BLACKLIST_AFTER_ROTATION": True,
+    "UPDATE_LAST_LOGIN": True,
     "ALGORITHM": "HS256",
     "SIGNING_KEY": SECRET_KEY,
     "AUTH_HEADER_TYPES": ("Bearer",),

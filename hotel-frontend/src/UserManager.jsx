@@ -27,7 +27,7 @@ const UserManager = () => {
 
   const fetchUsers = async () => {
     try {
-      const token = localStorage.getItem('access');
+      const token = localStorage.getItem('access_token');
       const [usersRes, settingsRes] = await Promise.all([
         axios.get(USER_API, { headers: { Authorization: `Bearer ${token}` } }),
         axios.get(`${API_BASE_URL}/users/settings/`, { headers: { Authorization: `Bearer ${token}` } })
@@ -56,7 +56,7 @@ const UserManager = () => {
   const handleDelete = async (id) => {
     if (window.confirm("Are you sure you want to delete this user?")) {
       try {
-        const token = localStorage.getItem('access');
+        const token = localStorage.getItem('access_token');
         await axios.delete(`${USER_API}${id}/`, {
           headers: { Authorization: `Bearer ${token}` }
         });
@@ -107,7 +107,7 @@ const UserManager = () => {
     }
 
     try {
-      const token = localStorage.getItem('access');
+      const token = localStorage.getItem('access_token');
       const config = {
         headers: {
           'Content-Type': 'multipart/form-data',
@@ -146,7 +146,9 @@ const UserManager = () => {
 
   // --- Dynamic Roles Filtering ---
   const getAvailableRoles = () => {
-    const enabled = hotelSettings?.enabled_features || [];
+    const enabled = hotelSettings?.enabled_features?.length > 0
+      ? hotelSettings.enabled_features
+      : ['dashboard', 'orders', 'finance', 'food_beverage', 'rooms', 'inventory', 'users', 'settings'];
     let available = ['Admin'];
     
     if (enabled.includes('food_beverage')) {
@@ -157,8 +159,11 @@ const UserManager = () => {
       available.push('Reception');
     }
     
-    // Add others if needed
-    // available.push('Inventory', 'Delivery');
+    if (enabled.includes('finance') || enabled.includes('payments')) {
+      available.push('Finance');
+    }
+    
+    available.push('Inventory');
     
     return available;
   };
@@ -373,6 +378,7 @@ const getRoleBadgeStyle = (role) => {
   switch (role?.toLowerCase()) {
     case 'admin': return { ...base, backgroundColor: '#f1f5f9', color: '#64748b' };
     case 'waiter': return { ...base, backgroundColor: '#fef3c7', color: '#b45309' };
+    case 'finance': return { ...base, backgroundColor: '#e0f2fe', color: '#0369a1' };
     default: return { ...base, backgroundColor: '#f1f5f9', color: '#64748b' };
   }
 };

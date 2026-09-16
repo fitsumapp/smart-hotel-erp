@@ -49,11 +49,11 @@ const SystemSettingsManager = () => {
     };
 
     return (
-        <div style={{ padding: '30px', color: '#fff', maxWidth: '900px', margin: '0 auto', fontFamily: 'Inter, sans-serif' }}>
+        <div style={{ padding: '30px', color: '#0f172a', maxWidth: '900px', margin: '0 auto', fontFamily: 'Inter, sans-serif' }}>
             {/* Header Section */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' }}>
-                <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '12px', fontSize: '28px', fontWeight: '800' }}>
-                    <Settings2 color="#0ff" size={32} /> System Configuration
+                <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '12px', fontSize: '28px', fontWeight: '800', color: '#0f172a' }}>
+                    <Settings2 color="#0f766e" size={32} /> System Configuration
                 </h2>
                 <button onClick={handleSave} style={saveBtn}><Save size={20} /> Save Changes</button>
             </div>
@@ -93,13 +93,13 @@ const SystemSettingsManager = () => {
                             </div>
                         </div>
 
-                        <hr style={{ border: '0.5px solid #1f2937', margin: '10px 0' }} />
+                        <hr style={{ border: '0.5px solid #e2e8f0', margin: '10px 0' }} />
 
                         {/* Financial Rates in the same section */}
                         <div style={gridStyle}>
                             <div style={innerCard}>
                                 <div style={rowStyle}>
-                                    <span style={{fontWeight: '600', fontSize: '14px'}}>Enable VAT</span>
+                                    <span style={{fontWeight: '600', fontSize: '14px', color: '#0f172a'}}>Enable VAT</span>
                                     <button onClick={() => setSettings({...settings, vat_enabled: !settings.vat_enabled})} style={btnIcon}>
                                         {settings.vat_enabled ? <ToggleRight color="#10b981" size={35} /> : <ToggleLeft color="#64748b" size={35} />}
                                     </button>
@@ -110,7 +110,7 @@ const SystemSettingsManager = () => {
 
                             <div style={innerCard}>
                                 <div style={rowStyle}>
-                                    <span style={{fontWeight: '600', fontSize: '14px'}}>Enable Service Charge</span>
+                                    <span style={{fontWeight: '600', fontSize: '14px', color: '#0f172a'}}>Enable Service Charge</span>
                                     <button onClick={() => setSettings({...settings, service_charge_enabled: !settings.service_charge_enabled})} style={btnIcon}>
                                         {settings.service_charge_enabled ? <ToggleRight color="#10b981" size={35} /> : <ToggleLeft color="#64748b" size={35} />}
                                     </button>
@@ -120,7 +120,7 @@ const SystemSettingsManager = () => {
                             </div>
                         </div>
 
-                        <hr style={{ border: '0.5px solid #1f2937', margin: '10px 0' }} />
+                        <hr style={{ border: '0.5px solid #e2e8f0', margin: '10px 0' }} />
 
                         {/* Fiscal Hardware settings under Receipt section */}
                         <div style={gridStyle}>
@@ -154,7 +154,7 @@ const SystemSettingsManager = () => {
                                 <option value="80mm">80mm (Detailed Receipt)</option>
                                 <option value="58mm">58mm (Concise Receipt)</option>
                             </select>
-                            <p style={{ color: '#94a3b8', fontSize: '12px', marginTop: '10px' }}>
+                            <p style={{ color: '#64748b', fontSize: '12px', marginTop: '10px' }}>
                                 This will adjust the layout, font size, and layout format for all printed POS receipts, Guest Folios, and End of Day (Z/X) reports.
                             </p>
                         </div>
@@ -179,16 +179,16 @@ const SystemSettingsManager = () => {
 // --- Reusable Accordion Component ---
 const AccordionSection = ({ title, icon, isOpen, onToggle, children }) => {
     return (
-        <div style={{ backgroundColor: '#111827', borderRadius: '15px', border: '1px solid #1f2937', overflow: 'hidden' }}>
+        <div style={{ backgroundColor: '#fff', borderRadius: '15px', border: '1px solid rgba(148,163,184,0.16)', overflow: 'hidden', boxShadow: '0 12px 28px rgba(15,23,42,0.04)' }}>
             <div
                 onClick={onToggle}
-                style={{ padding: '20px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: isOpen ? '#1f2937' : 'transparent', transition: '0.3s' }}
+                style={{ padding: '20px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: isOpen ? '#f8fafc' : 'transparent', transition: '0.3s' }}
             >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-                    <div style={{ color: isOpen ? '#0ff' : '#94a3b8' }}>{icon}</div>
-                    <span style={{ fontSize: '16px', fontWeight: '700', color: isOpen ? '#fff' : '#94a3b8' }}>{title}</span>
+                    <div style={{ color: isOpen ? '#0f766e' : '#64748b' }}>{icon}</div>
+                    <span style={{ fontSize: '16px', fontWeight: '700', color: isOpen ? '#0f172a' : '#475569' }}>{title}</span>
                 </div>
-                {isOpen ? <ChevronUp size={20} color="#94a3b8" /> : <ChevronDown size={20} color="#94a3b8" />}
+                {isOpen ? <ChevronUp size={20} color="#64748b" /> : <ChevronDown size={20} color="#64748b" />}
             </div>
 
             <AnimatePresence>
@@ -199,7 +199,7 @@ const AccordionSection = ({ title, icon, isOpen, onToggle, children }) => {
                         exit={{ height: 0, opacity: 0 }}
                         style={{ overflow: 'hidden' }}
                     >
-                        <div style={{ padding: '25px', borderTop: '1px solid #1f2937', backgroundColor: '#0f172a' }}>
+                        <div style={{ padding: '25px', borderTop: '1px solid #f1f5f9', backgroundColor: '#fff' }}>
                             {children}
                         </div>
                     </motion.div>
@@ -211,14 +211,14 @@ const AccordionSection = ({ title, icon, isOpen, onToggle, children }) => {
 
 // --- Updated Styles ---
 const gridStyle = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' };
-const innerCard = { backgroundColor: '#1e293b', padding: '15px', borderRadius: '12px', border: '1px solid #334155' };
+const innerCard = { backgroundColor: '#f8fafc', padding: '15px', borderRadius: '12px', border: '1px solid #cbd5e1' };
 const labelStyle = { display: 'block', fontSize: '11px', marginBottom: '8px', color: '#64748b', textTransform: 'uppercase', fontWeight: '700' };
 const inputWrapper = { position: 'relative', display: 'flex', alignItems: 'center' };
 const inputIcon = { position: 'absolute', left: '12px', color: '#64748b' };
-const inputStyle = { width: '100%', padding: '12px', backgroundColor: '#0f172a', border: '1px solid #334155', borderRadius: '8px', color: '#fff', outline: 'none' };
+const inputStyle = { width: '100%', padding: '12px', backgroundColor: '#f1f5f9', border: '1px solid rgba(148,163,184,0.12)', borderRadius: '8px', color: '#0f172a', outline: 'none' };
 const inputWithIconStyle = { ...inputStyle, paddingLeft: '40px' };
 const rowStyle = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' };
 const btnIcon = { background: 'none', border: 'none', cursor: 'pointer', padding: 0 };
-const saveBtn = { padding: '12px 25px', backgroundColor: '#0ff', color: '#000', border: 'none', borderRadius: '10px', fontWeight: '900', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px' };
+const saveBtn = { padding: '12px 25px', backgroundColor: '#0f766e', color: '#fff', border: 'none', borderRadius: '10px', fontWeight: '900', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px', boxShadow: '0 4px 12px rgba(15,118,110,0.15)' };
 
 export default SystemSettingsManager;

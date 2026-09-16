@@ -165,3 +165,1063 @@
     background: transparent !important;
   }
 }
+
+/* ── Mobile & Tablet Responsiveness ── */
+
+.app-layout-container {
+  display: flex;
+  min-height: 100vh;
+  background: linear-gradient(180deg, #f4fbff 0%, #f8fafc 42%, #f2f7f5 100%);
+  color: #0f172a;
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+.main-content-container {
+  margin-left: 258px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  transition: margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.app-header {
+  height: 72px;
+  background-color: rgba(255, 255, 255, 0.78);
+  backdrop-filter: blur(16px);
+  padding: 0 30px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid rgba(148,163,184,0.16);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  transition: padding 0.3s ease;
+}
+
+.main-body-container {
+  padding: 28px 30px;
+  flex: 1;
+  overflow-y: auto;
+  transition: padding 0.3s ease;
+}
+
+.sidebar-container {
+  width: 258px;
+  height: 100vh;
+  background: linear-gradient(180deg, #0f172a 0%, #111827 60%, #0f172a 100%);
+  color: #e2e8f0;
+  position: fixed;
+  left: 0;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 6px 0 40px rgba(0,0,0,0.35);
+  z-index: 100;
+  border-right: 1px solid rgba(99,102,241,0.12);
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.mobile-toggle-btn {
+  display: none;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 8px;
+  color: #1e293b;
+  margin-right: 12px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background-color: #f1f5f9;
+  border: 1px solid rgba(148,163,184,0.15);
+}
+
+.mobile-sidebar-close {
+  display: none;
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  background: none;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 50%;
+  background-color: rgba(255, 255, 255, 0.05);
+  align-items: center;
+  justify-content: center;
+}
+
+.mobile-sidebar-overlay {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(15, 23, 42, 0.5);
+  backdrop-filter: blur(4px);
+  z-index: 90;
+}
+
+/* KPI responsive grid */
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 14px;
+}
+
+/* 2 Column Grid */
+.dashboard-two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+
+/* 3 Column Grid */
+.dashboard-three-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr 0.55fr;
+  gap: 20px;
+}
+
+/* Breakpoints */
+
+@media (max-width: 1300px) {
+  .kpi-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .main-content-container {
+    margin-left: 0 !important;
+  }
+  .sidebar-container {
+    transform: translateX(-100%);
+  }
+  .sidebar-container.open {
+    transform: translateX(0);
+    box-shadow: 10px 0 50px rgba(0, 0, 0, 0.6);
+  }
+  .mobile-toggle-btn {
+    display: flex;
+  }
+  .mobile-sidebar-close {
+    display: flex;
+  }
+  .mobile-sidebar-overlay.open {
+    display: block;
+  }
+  .app-header {
+    padding: 0 16px;
+  }
+  .main-body-container {
+    padding: 20px 16px;
+  }
+}
+
+@media (max-width: 900px) {
+  .dashboard-two-col {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+  .dashboard-three-col {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .kpi-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .dashboard-three-col {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+}
+
+@media (max-width: 480px) {
+  .kpi-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   GLOBAL RESPONSIVE RESETS & OVERRIDES
+   ───────────────────────────────────────────────────────────────────────────── */
+
+/* Localized box-sizing to keep the original desktop layout 100% identical */
+.app-layout-container,
+.app-layout-container *,
+.auth-container,
+.auth-container * {
+  box-sizing: border-box;
+}
+
+/* AuthPage (Login/Register) Mobile Overrides */
+@media (max-width: 480px) {
+  .auth-container {
+    padding: 16px !important;
+  }
+  .auth-glass-card {
+    padding: 24px 18px !important;
+    border-radius: 20px !important;
+    max-width: 92% !important;
+  }
+}
+
+/* Responsiveness overrides for other panels/grids */
+@media (max-width: 768px) {
+  /* Override general container grids (split panels) */
+  div[style*="gridTemplateColumns"][style*="1.2fr"],
+  div[style*="gridTemplateColumns"][style*="2fr"],
+  div[style*="gridTemplateColumns"][style*="1.5fr"],
+  div[style*="gridTemplateColumns"][style*="1.4fr"],
+  div[style*="gridTemplateColumns"][style*="1.35fr"],
+  div[style*="gridTemplateColumns"][style*="1.1fr"] {
+    grid-template-columns: 1fr !important;
+    gap: 20px !important;
+  }
+
+  /* Make form columns stack nicely */
+  div[style*="gridTemplateColumns"][style*="1fr 1fr"] {
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+
+  /* Metric/stats grids (usually repeat(4, ...)) */
+  div[style*="gridTemplateColumns"][style*="repeat(4"] {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 12px !important;
+  }
+  
+  /* Make sure header doesn't overflow search input */
+  .app-header {
+    height: auto !important;
+    min-height: 72px;
+    padding: 12px 16px !important;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  
+  .app-header div[style*="width: '300px'"],
+  .app-header div[style*="width: 300px"] {
+    width: 100% !important;
+    order: 3; /* push search bar to next line if crowded */
+  }
+}
+
+@media (max-width: 640px) {
+  /* Metric/stats grids stack to 1 column on mobile */
+  div[style*="gridTemplateColumns"][style*="repeat(4"],
+  div[style*="gridTemplateColumns"][style*="repeat(3"] {
+    grid-template-columns: 1fr !important;
+    gap: 10px !important;
+  }
+  
+  /* Ensure main container scrolls tables and scrollbars show up properly */
+  .main-body-container {
+    overflow-x: hidden;
+  }
+
+  /* Scroll wrapper for tabular lists */
+  .table-responsive,
+  div[style*="gridTemplateColumns"][style*="100px"],
+  div[style*="gridTemplateColumns"][style*="120px"],
+  div[style*="gridTemplateColumns"][style*="1.5fr 0.9fr"] {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+    width: 100% !important;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   ROLE-SPECIFIC DASHBOARD RESPONSIVE STYLES
+   Waiter · Cashier · Reception · Finance · Inventory
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Shared role-dashboard layout fix ── */
+/* All role dashboards use the same pattern:
+   styles.layout = { display: 'grid', gridTemplateColumns: '280px 1fr' }
+   We override this with a responsive CSS class */
+
+.role-layout {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 22px;
+  padding: 24px;
+  position: relative;
+  /* NOTE: Do NOT add z-index here — it creates a stacking context that
+     traps the fixed sidebar, making it appear behind the overlay */
+}
+
+.role-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ── Role dashboard top bar ── */
+.role-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 18px 24px;
+  backdrop-filter: blur(16px);
+  background: rgba(255,255,255,0.76);
+  border-bottom: 1px solid rgba(148,163,184,0.16);
+}
+
+/* Hamburger button — hidden on desktop */
+.role-hamburger {
+  display: none;
+  background: #f1f5f9;
+  border: 1px solid rgba(148,163,184,0.2);
+  border-radius: 8px;
+  padding: 8px;
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+  color: #334155;
+  flex-shrink: 0;
+}
+
+/* Mobile sidebar overlay */
+.role-sidebar-overlay {
+  display: none;
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(15,23,42,0.5);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  z-index: 9998;
+  cursor: pointer;
+}
+
+/* ── TABLET (≤1024px) ── */
+@media (max-width: 1024px) {
+  .role-layout {
+    grid-template-columns: 240px 1fr;
+    gap: 16px;
+    padding: 16px;
+  }
+}
+
+/* ── MOBILE & TABLET (≤768px) ── */
+@media (max-width: 768px) {
+  /* Show hamburger button */
+  .role-hamburger {
+    display: flex;
+  }
+
+  /* Collapse sidebar off-screen */
+  .role-layout {
+    grid-template-columns: 1fr !important;
+    padding: 12px !important;
+    gap: 12px !important;
+  }
+
+  .role-sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: min(280px, 85vw);
+    height: 100vh;
+    height: 100dvh;
+    background: #ffffff;
+    border-right: 1px solid rgba(148,163,184,0.25);
+    box-shadow: 4px 0 40px rgba(15,23,42,0.18);
+    z-index: 9999;
+    transform: translateX(-110%);
+    transition: transform 0.32s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    padding: 24px 16px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    will-change: transform;
+  }
+
+  .role-sidebar.open {
+    transform: translateX(0) !important;
+  }
+
+  .role-sidebar-overlay.open {
+    display: block;
+  }
+
+  /* Topbar padding */
+  .role-topbar {
+    padding: 14px 16px;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  /* Hide user pill text on mobile */
+  .role-topbar .user-pill-text {
+    display: none;
+  }
+
+  /* Fix inline-style fixed-column grids in role dashboards */
+  /* Cashier orders: gridTemplateColumns: '1fr 340px' */
+  div[style*="340px"] {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Hero section: gridTemplateColumns: '1.4fr 0.9fr' */
+  div[style*="1.4fr 0.9fr"] {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Dual grid: gridTemplateColumns: '1.1fr 0.9fr' */
+  div[style*="1.1fr 0.9fr"] {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Menu grid layout (waiter menu + cart) */
+  div[style*="menuGridLayout"],
+  .menu-grid-layout {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* ── SMALL MOBILE (≤480px) ── */
+@media (max-width: 480px) {
+  .role-topbar {
+    padding: 12px;
+  }
+
+  /* 4-column metric grids → 2 columns */
+  div[style*="repeat(4, minmax(0, 1fr))"] {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 10px !important;
+  }
+
+  /* Inventory / Finance stat grids */
+  div[style*="repeat(3, minmax(0, 1fr))"],
+  div[style*="repeat(3,1fr)"],
+  div[style*="repeat(3, 1fr)"] {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 10px !important;
+  }
+}
+
+/* ── Override: inline 280px sidebar in role layout ── */
+/* This catches the inline style gridTemplateColumns:'280px 1fr' */
+@media (max-width: 768px) {
+  div[style*="280px 1fr"] {
+    grid-template-columns: 1fr !important;
+  }
+
+  div[style*="280px 1fr"] > *:first-child {
+    display: none;
+  }
+}
+
+/* ── Reception Dashboard room grid ── */
+@media (max-width: 768px) {
+  /* Room grid: auto-fill rooms */
+  div[style*="auto-fill"][style*="minmax(140px"] {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+}
+
+/* ── Finance Dashboard chart/table areas ── */
+@media (max-width: 768px) {
+  /* Finance grid panels side by side → stack */
+  div[style*="1fr 380px"],
+  div[style*="1fr 360px"],
+  div[style*="1fr 320px"] {
+    grid-template-columns: 1fr !important;
+    gap: 16px !important;
+  }
+}
+
+/* ── Inventory category/product grid ── */
+@media (max-width: 640px) {
+  div[style*="repeat(auto-fill, minmax(200px"] {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+  div[style*="repeat(auto-fill, minmax(160px"] {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+}
+
+/* ── Menu cards grid (waiter) ── */
+@media (max-width: 640px) {
+  div[style*="repeat(auto-fill, minmax(180px"],
+  div[style*="repeat(auto-fill, minmax(170px"],
+  div[style*="repeat(auto-fill, minmax(150px"] {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+}
+
+/* ── Table chip grids ── */
+@media (max-width: 480px) {
+  div[style*="auto-fit, minmax(120px"],
+  div[style*="auto-fit, minmax(100px"] {
+    grid-template-columns: repeat(3, 1fr) !important;
+  }
+}
+
+/* Ensure all images and media inside role dashboards are responsive */
+.role-layout img {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Scrollable table wrappers in role dashboards */
+.role-layout .table-scroll-x {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   RECEPTION DASHBOARD RESPONSIVE
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Reception header: make tab group scrollable on mobile */
+@media (max-width: 768px) {
+  /* Reception header wraps */
+  div[style*="styles.header"],
+  header[style*="background: linear-gradient(135deg, #060e1e"],
+  header[style*="background: linear-gradient(135deg, #0f172a"] {
+    flex-wrap: wrap !important;
+    gap: 12px !important;
+    padding: 16px !important;
+  }
+
+  /* Tab group — make scrollable horizontally */
+  div[style*="tabGroup"],
+  div[style*="display: 'flex'"][style*="gap: '10px'"][style*="padding: '6px'"] {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    flex-wrap: nowrap !important;
+    padding-bottom: 4px !important;
+  }
+
+  /* Reception stats grid: 4 col → 2 col */
+  div[style*="repeat(4, 1fr)"][style*="marginBottom: '35px'"],
+  div[style*="repeat(4, 1fr)"][style*="gap: '20px'"] {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 12px !important;
+  }
+
+  /* Reception drawer: full width on mobile */
+  div[style*="width: '420px'"],
+  div[style*="width: 420px"] {
+    width: 100% !important;
+    max-width: 100vw !important;
+  }
+
+  /* Reception main: reduce padding */
+  main[style*="styles.main"],
+  section[style*="padding: '35px'"] {
+    padding: 16px !important;
+  }
+}
+
+@media (max-width: 480px) {
+  /* Reception stats: 4 col → 1 col on small mobile */
+  div[style*="repeat(4, 1fr)"][style*="marginBottom: '35px'"] {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   FINANCE DASHBOARD RESPONSIVE
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Finance page: fix padding */
+#finance-dashboard-root {
+  padding: 0;
+}
+
+@media (max-width: 768px) {
+  /* Finance main tab bar: allow wrapping (already has flexWrap: wrap) */
+  #finance-dashboard-root div[style*="mainTabBar"],
+  div[style*="backgroundColor: '#f1f5f9'"][style*="borderRadius: '14px'"][style*="padding: '4px'"] {
+    gap: 4px !important;
+    justify-content: flex-start !important;
+  }
+
+  /* Finance KPI grid: auto-fill already responsive */
+
+  /* Finance filter bar: stack on mobile */
+  div[style*="filterBar"],
+  div[style*="alignItems: 'center'"][style*="backgroundColor: '#fff'"][style*="borderRadius: '14px'"][style*="padding: '12px 16px'"] {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 10px !important;
+  }
+
+  /* Finance modal: full width */
+  #finance-dashboard-root div[style*="maxWidth"] {
+    max-width: calc(100vw - 32px) !important;
+    width: 100% !important;
+  }
+
+  /* Finance pageHeader: stack on mobile */
+  div[style*="pageHeader"],
+  div[id="finance-dashboard-root"] > div:first-child {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 10px !important;
+  }
+
+  /* Finance audit grid (6 cols → 2 cols on mobile) */
+  div[style*="1.2fr 0.5fr 1fr 0.8fr 0.8fr 1fr"] {
+    grid-template-columns: 1fr 1fr 1fr !important;
+    gap: 6px !important;
+  }
+
+  /* Finance payroll modal grid fields */
+  div[style*="gridTemplateColumns: '1fr 1fr 1fr 1fr'"] {
+    grid-template-columns: 1fr 1fr !important;
+  }
+  div[style*="gridTemplateColumns: '1fr 1fr 1fr'"] {
+    grid-template-columns: 1fr 1fr !important;
+  }
+}
+
+@media (max-width: 480px) {
+  /* Finance tab buttons: smaller text */
+  div[style*="backgroundColor: '#f1f5f9'"][style*="borderRadius: '14px'"] button {
+    font-size: 11px !important;
+    padding: 6px 10px !important;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   INVENTORY DASHBOARD RESPONSIVE
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+@media (max-width: 768px) {
+  /* Inventory header: reduce padding, stack items */
+  div[style*="background: linear-gradient(135deg, #072f2d"] {
+    padding: 16px 20px !important;
+    flex-wrap: wrap !important;
+    gap: 12px !important;
+  }
+
+  /* Inventory tab bar: scrollable horizontal */
+  div[style*="padding: '0 40px'"][style*="borderBottom"] {
+    padding: 0 16px !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    gap: 4px !important;
+  }
+
+  /* Inventory main body: reduce padding */
+  div[style*="padding: '30px 40px'"] {
+    padding: 16px !important;
+  }
+
+  /* Inventory stats grid: 4 col → 2 col */
+  div[style*="repeat(4, 1fr)"][style*="gap: '20px'"] {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 12px !important;
+  }
+
+  /* Inventory modal: full width */
+  div[style*="width: '480px'"],
+  div[style*="width: 480px"] {
+    width: calc(100vw - 32px) !important;
+    max-width: calc(100vw - 32px) !important;
+    padding: 20px !important;
+  }
+
+  /* Inventory form row (2 col) → 1 col */
+  div[style*="gridTemplateColumns: '1fr 1fr'"][style*="gap: '15px'"] {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Inventory filter bar: stack */
+  div[style*="filterBarStyle"],
+  div[style*="justifyContent: 'space-between'"][style*="padding: '20px'"][style*="borderRadius: '16px'"] {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 12px !important;
+  }
+}
+
+@media (max-width: 480px) {
+  /* Inventory stats: 4 col → 1 col on small phones */
+  div[style*="repeat(4, 1fr)"][style*="gap: '20px'"] {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Inventory header title: smaller */
+  div[style*="background: linear-gradient(135deg, #072f2d"] h1 {
+    font-size: 15px !important;
+  }
+
+  /* Inventory logout button text: hide on very small screens */
+  div[style*="background: linear-gradient(135deg, #072f2d"] button span {
+    display: none;
+  }
+}
+
+/* ── Reception header: tabGroup scrollable ── */
+@media (max-width: 900px) {
+  /* Reception tab group in header */
+  div[style*="tabGroup"] {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    flex-shrink: 1 !important;
+    min-width: 0 !important;
+  }
+  /* Reception header stacks */
+  header[style*="styles.header"],
+  header[style*="display: 'flex'"][style*="alignItems: 'center'"][style*="justifyContent: 'space-between'"][style*="backgroundColor: 'rgba(255"] {
+    flex-wrap: wrap !important;
+    gap: 12px !important;
+    height: auto !important;
+    padding: 16px 20px !important;
+  }
+}
+
+/* ── Global: all modals should be max-width: 95vw on small screens ── */
+@media (max-width: 600px) {
+  div[style*="position: 'fixed'"][style*="inset: 0"][style*="display: 'flex'"][style*="alignItems: 'center'"] > div,
+  div[style*="position: 'fixed'"][style*="inset: 0"] > div[style*="borderRadius"] {
+    max-width: 95vw !important;
+    width: 95vw !important;
+  }
+}
+
+/* ── Global: all tables should scroll on mobile ── */
+@media (max-width: 768px) {
+  div[style*="overflowX: 'auto'"],
+  div[style*="overflow-x: auto"],
+  div[style*="tableScroll"] {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Prevent fixed-width table columns from overflowing */
+  table {
+    min-width: max-content;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   RECEPTION DASHBOARD — className-based responsive rules
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.reception-header {
+  transition: padding 0.3s ease, height 0.3s ease;
+}
+
+.reception-tab-group {
+  transition: all 0.2s ease;
+}
+
+@media (max-width: 900px) {
+  .reception-header {
+    height: auto !important;
+    min-height: 64px;
+    padding: 14px 20px !important;
+    flex-wrap: wrap !important;
+    gap: 10px !important;
+  }
+
+  .reception-tab-group {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+    flex-wrap: nowrap !important;
+    flex-shrink: 1;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .reception-stats-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 12px !important;
+  }
+
+  .reception-main {
+    padding: 16px !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .reception-stats-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .reception-header {
+    padding: 12px !important;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   INVENTORY DASHBOARD — className-based responsive rules
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.inventory-header {
+  transition: padding 0.2s ease;
+}
+
+.inventory-tab-bar {
+  transition: padding 0.2s ease;
+}
+
+@media (max-width: 900px) {
+  .inventory-header {
+    padding: 16px 20px !important;
+    flex-wrap: wrap !important;
+    gap: 12px !important;
+  }
+
+  .inventory-tab-bar {
+    padding: 0 16px !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    flex-wrap: nowrap !important;
+    gap: 0 !important;
+    white-space: nowrap;
+  }
+
+  .inventory-tab-bar button {
+    flex-shrink: 0;
+    padding: 14px 10px !important;
+    font-size: 12px !important;
+  }
+
+  .inventory-main {
+    padding: 16px !important;
+  }
+
+  .inventory-stats-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 12px !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .inventory-header {
+    padding: 12px !important;
+  }
+
+  .inventory-header h1 {
+    font-size: 14px !important;
+  }
+
+  .inventory-logout-label {
+    display: none;
+  }
+
+  .inventory-stats-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .inventory-tab-bar button {
+    font-size: 11px !important;
+    padding: 12px 8px !important;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   FINANCE DASHBOARD — className-based rules for precise targeting
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+#finance-dashboard-root {
+  overflow-x: hidden;
+}
+
+@media (max-width: 768px) {
+  #finance-dashboard-root {
+    font-size: 13px;
+  }
+
+  /* Finance KPI grid already uses auto-fill — responsive by default */
+
+  /* Finance page header stack */
+  #finance-dashboard-root > div:first-child {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 10px !important;
+  }
+
+  /* Finance tab buttons: smaller and wrap */
+  #finance-dashboard-root > div:nth-child(2) {
+    gap: 4px !important;
+  }
+
+  #finance-dashboard-root > div:nth-child(2) button {
+    font-size: 11px !important;
+    padding: 6px 10px !important;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   WAITER DASHBOARD — className-based responsive rules
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Base transitions for smooth behaviour ── */
+.waiter-hero,
+.waiter-metric-grid,
+.waiter-dual-grid,
+.waiter-menu-grid {
+  transition: grid-template-columns 0.25s ease, gap 0.25s ease;
+}
+
+/* ── TABLET (≤1024px) ── */
+@media (max-width: 1024px) {
+  /* Hero: shrink the right column slightly */
+  .waiter-hero {
+    grid-template-columns: 1.2fr 1fr !important;
+    gap: 16px !important;
+  }
+
+  /* Metric cards: 2×2 on tablet */
+  .waiter-metric-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 14px !important;
+  }
+
+  /* Menu + cart: narrower cart */
+  .waiter-menu-grid {
+    grid-template-columns: 1.5fr 1fr !important;
+    gap: 16px !important;
+  }
+}
+
+/* ── TABLET PORTRAIT / LARGE PHONE (≤768px) ── */
+@media (max-width: 768px) {
+  /* Hero: single column, full width */
+  .waiter-hero {
+    grid-template-columns: 1fr !important;
+    gap: 16px !important;
+    padding: 20px !important;
+  }
+
+  /* Hero title: scale down to avoid overflow */
+  .waiter-hero-title {
+    font-size: 22px !important;
+    line-height: 1.2 !important;
+    max-width: 100% !important;
+  }
+
+  /* Hero sub: hide on small screens to save space */
+  .waiter-hero-sub {
+    font-size: 13px !important;
+    margin-top: 10px !important;
+    margin-bottom: 14px !important;
+  }
+
+  /* Hero panel: expand to full width below hero text */
+  .waiter-hero-panel {
+    width: 100% !important;
+  }
+
+  /* Metric grid: 2 columns */
+  .waiter-metric-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 12px !important;
+  }
+
+  /* Dual grid (Live Tables + Recent Alerts): single column */
+  .waiter-dual-grid {
+    grid-template-columns: 1fr !important;
+    gap: 14px !important;
+  }
+
+  /* Menu + cart: single column, cart below menu */
+  .waiter-menu-grid {
+    grid-template-columns: 1fr !important;
+    gap: 14px !important;
+  }
+
+  /* Cart panel: un-sticky on mobile */
+  .waiter-cart-panel {
+    position: static !important;
+    top: auto !important;
+  }
+
+  /* Section header row: stack label + refresh button */
+  .waiter-section-header {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 10px !important;
+  }
+
+  /* Order summary row: 2 columns */
+  .waiter-summary-row {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 10px !important;
+  }
+
+  /* Filter row: wrap inputs on mobile */
+  .waiter-filter-row {
+    flex-wrap: wrap !important;
+    gap: 8px !important;
+    padding: 0 12px 14px 12px !important;
+  }
+
+  .waiter-filter-row input[type="date"],
+  .waiter-filter-row select {
+    flex: 1 1 120px !important;
+    min-width: 100px !important;
+    max-width: 160px !important;
+  }
+
+  /* Brand subtitle: hide on mobile to keep topbar clean */
+  .waiter-brand-sub {
+    display: none;
+  }
+}
+
+/* ── SMALL PHONES (≤480px) ── */
+@media (max-width: 480px) {
+  /* Hero padding: very compact */
+  .waiter-hero {
+    padding: 14px !important;
+    border-radius: 20px !important;
+  }
+
+  /* Hero title: small phone size */
+  .waiter-hero-title {
+    font-size: 18px !important;
+  }
+
+  /* Metric grid: 1 column on tiny screens */
+  .waiter-metric-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 10px !important;
+  }
+
+  /* Order summary row: 1 column */
+  .waiter-summary-row {
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+  }
+
+  /* Filter row: stack vertically */
+  .waiter-filter-row {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 8px !important;
+    padding: 0 8px 12px 8px !important;
+  }
+
+  .waiter-filter-row input[type="date"],
+  .waiter-filter-row select {
+    max-width: 100% !important;
+    width: 100% !important;
+  }
+
+  /* Menu cards: 1 column on tiny phones */
+  .waiter-menu-grid .panel div[style*="repeat(auto-fill"] {
+    grid-template-columns: 1fr !important;
+  }
+}
+

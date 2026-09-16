@@ -15,9 +15,9 @@ const isNgrok = hostname.includes('ngrok-free.app');
 export const API_BASE_URL = (hostname === 'localhost' || hostname === '127.0.0.1')
     ? 'http://127.0.0.1:8000/api'
     : hostname.endsWith('.localhost')
-        ? 'http://127.0.0.1:8000/api'   // ← use 127.0.0.1, not barok.localhost
+        ? 'http://127.0.0.1:8000/api'
         : isProduction
-            ? `https://hotelerp.acrmatech.com/api`
+            ? `https://${hostname}/api`  // ← dynamic subdomain backend
             : isNgrok
                 ? `${window.location.protocol}//${hostname}/api`
                 : `http://127.0.0.1:8000/api`;
@@ -26,9 +26,9 @@ export const API_BASE_URL = (hostname === 'localhost' || hostname === '127.0.0.1
 export const BASE_URL = (hostname === 'localhost' || hostname === '127.0.0.1')
     ? 'http://127.0.0.1:8000'
     : hostname.endsWith('.localhost')
-        ? 'http://127.0.0.1:8000'       // ← use 127.0.0.1, not barok.localhost
+        ? 'http://127.0.0.1:8000'
         : isProduction
-            ? `https://hotelerp.acrmatech.com`
+            ? `https://${hostname}`      // ← dynamic subdomain base
             : isNgrok
                 ? `${window.location.protocol}//${hostname}`
                 : `http://127.0.0.1:8000`;

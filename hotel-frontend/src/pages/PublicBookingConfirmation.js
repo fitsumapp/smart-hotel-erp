@@ -3,14 +3,13 @@ import axios from 'axios';
 import { QRCodeSVG } from 'qrcode.react';
 import { CheckCircle2, LoaderCircle, ScanLine } from 'lucide-react';
 import { useParams, useSearchParams } from 'react-router-dom';
-import { API_BASE_URL, getTenantSchemaHint } from '../apiConfig';
+import { API_BASE_URL } from '../apiConfig';
 
 const API_BASE = `${API_BASE_URL}/users/`;
 
 const PublicBookingConfirmation = () => {
   const { token } = useParams();
   const [searchParams] = useSearchParams();
-  const tenantSchema = getTenantSchemaHint();
   const [reservation, setReservation] = useState(null);
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(true);
@@ -24,9 +23,7 @@ const PublicBookingConfirmation = () => {
   const fetchReservation = async () => {
     setLoading(true);
     try {
-      const detail = await axios.get(`${API_BASE}reservations/public/${token}/`, {
-        headers: tenantSchema ? { 'X-Tenant-Schema': tenantSchema } : {},
-      });
+      const detail = await axios.get(`${API_BASE}reservations/public/${token}/`);
       setReservation(detail.data);
       if (searchParams.get('payment') === 'returned') {
         await verifyPayment();
@@ -43,9 +40,6 @@ const PublicBookingConfirmation = () => {
       const txRef = searchParams.get('tx_ref') || searchParams.get('trx_ref');
       const res = await axios.post(`${API_BASE}reservations/public/${token}/verify/`, {
         tx_ref: txRef,
-        tenant: tenantSchema,
-      }, {
-        headers: tenantSchema ? { 'X-Tenant-Schema': tenantSchema } : {},
       });
       setReservation(res.data.reservation);
       setMessage(res.data.message || 'Reservation confirmed successfully.');
@@ -64,9 +58,6 @@ const PublicBookingConfirmation = () => {
     try {
       const res = await axios.post(`${API_BASE}reservations/qr-checkin/`, {
         qr_token: reservation.qr_token,
-        tenant: tenantSchema,
-      }, {
-        headers: tenantSchema ? { 'X-Tenant-Schema': tenantSchema } : {},
       });
       setReservation(res.data.reservation);
       setMessage(res.data.message || 'Checked in successfully.');

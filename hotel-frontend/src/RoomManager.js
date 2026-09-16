@@ -7,7 +7,7 @@ import {
   Globe, CalendarCheck2, ClipboardList, ScanLine,
   Receipt
 } from 'lucide-react';
-import { API_BASE_URL, getTenantSchemaHint } from './apiConfig';
+import { API_BASE_URL } from './apiConfig';
 
 const API_BASE = `${API_BASE_URL}/users/rooms/`;
 const RESERVE_API_BASE = `${API_BASE_URL}/users/rooms`;
@@ -75,7 +75,6 @@ const initialFormState = {
 };
 
 const RoomManager = ({ activeSection = 'rooms' }) => {
-  const tenantSchema = getTenantSchemaHint();
   const [rooms, setRooms] = useState([]);
   const [reservations, setReservations] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -108,12 +107,23 @@ const RoomManager = ({ activeSection = 'rooms' }) => {
   const [digitalRegForm, setDigitalRegForm] = useState({
     full_name: '', phone: '', nationality: '', id_type: 'national_id', id_number: ''
   });
+  const [checkinPayMethod, setCheckinPayMethod] = useState('Cash');
+  const [checkinBankRef, setCheckinBankRef] = useState('');
+  const [checkinChapaSession, setCheckinChapaSession] = useState(null);
+  const [verifyingCheckinPay, setVerifyingCheckinPay] = useState(false);
+
+  const [checkoutPaymentMethod, setCheckoutPaymentMethod] = useState('Cash');
+  const [checkoutBankRef, setCheckoutBankRef] = useState('');
+  const [checkoutChapaSession, setCheckoutChapaSession] = useState(null);
+  const [verifyingCheckoutPay, setVerifyingCheckoutPay] = useState(false);
+
   const [folioCharges, setFolioCharges] = useState([]);
-  const [newCharge, setNewCharge] = useState({ description: '', amount: '' });
+  const [newCharge, setNewCharge] = useState({ description: '', amount: '', inventory_item: '', quantity: 1 });
   const [finalBillData, setFinalBillData] = useState(null);
   const [activeReservationForFolio, setActiveReservationForFolio] = useState(null);
+  const [housekeepingItems, setHousekeepingItems] = useState([]);
 
-  useEffect(() => { fetchRooms(); fetchReservations(); fetchPublicSiteInfo(); }, []);
+  useEffect(() => { fetchRooms(); fetchReservations(); fetchPublicSiteInfo(); fetchHousekeepingItems(); }, []);
 
   const fetchRooms = async () => {
     try {
@@ -155,6 +165,17 @@ const RoomManager = ({ activeSection = 'rooms' }) => {
       const res = await axios.get(`${RESERVATIONS_API}${reservationId}/folio/`);
       setFolioCharges(res.data);
     } catch (err) { console.error(err); }
+  };
+
+  const fetchHousekeepingItems = async () => {
+    try {
+      const token = localStorage.getItem('access_token');
+      const headers = token ? { Authorization: `Bearer ${token}` } : {};
+      const res = await axios.get(`${API_BASE_URL}/users/inventory-items/`, { headers });
+      const allItems = Array.isArray(res.data) ? res.data : [];
+      // Filter items whose category has category_type === 'housekeeping'
+      setHousekeepingItems(allItems.filter(item => item.category_type === 'housekeeping' || item.category_name?.toLowerCase().includes('housekeeping') || item.category_name?.toLowerCase().includes('minibar') || item.category_name?.toLowerCase().includes('room')));
+    } catch (err) { console.error('Failed to fetch housekeeping items:', err); }
   };
 
   const getCounts = (status) => rooms.filter((room) => room.status === status).length;
@@ -284,24 +305,57 @@ const RoomManager = ({ activeSection = 'rooms' }) => {
       id_type: 'national_id',
       id_number: ''
     });
+    setCheckinPayMethod('Cash');
+    setCheckinBankRef('');
+    setCheckinChapaSession(null);
     setIsDigitalCheckInOpen(true);
   };
 
   const handleDigitalCheckIn = async (e) => {
-    e.preventDefault();
+    if (e) e.preventDefault();
     setActionLoading(prev => ({ ...prev, [selectedRoom.id]: 'checkin' }));
     try {
-      await axios.post(`${RESERVE_API_BASE}/${selectedRoom.id}/digital-checkin/`, {
-        guest_profile: digitalRegForm
+      const response = await axios.post(`${RESERVE_API_BASE}/${selectedRoom.id}/digital-checkin/`, {
+        guest_profile: digitalRegForm,
+        payment_method: checkinPayMethod,
+        payment_reference: checkinBankRef
       });
-      setIsDigitalCheckInOpen(false);
-      fetchRooms();
-      fetchReservations();
-      alert('Guest checked in and registered successfully.');
+      if (response.data?.status === 'payment_required') {
+        setCheckinChapaSession(response.data);
+      } else {
+        setIsDigitalCheckInOpen(false);
+        fetchRooms();
+        fetchReservations();
+        alert('Guest checked in and registered successfully.');
+      }
     } catch (err) {
       alert(err.response?.data?.error || 'Failed to check in.');
     } finally {
       setActionLoading(prev => ({ ...prev, [selectedRoom.id]: null }));
+    }
+  };
+
+  const handleVerifyCheckinDigitalPayment = async () => {
+    if (!checkinChapaSession) return;
+    setVerifyingCheckinPay(true);
+    try {
+      const res = await axios.post(
+        `${API_BASE_URL}/users/reservations/${checkinChapaSession.reservation_id}/verify-checkout-payment/`,
+        { tx_ref: checkinChapaSession.tx_ref }
+      );
+      if (res.data?.status === 'success') {
+        setIsDigitalCheckInOpen(false);
+        setCheckinChapaSession(null);
+        fetchRooms();
+        fetchReservations();
+        alert('Check-in payment verified! Room is now Occupied.');
+      } else {
+        alert('Payment is still pending. Please try again after guest pays.');
+      }
+    } catch (err) {
+      alert(err.response?.data?.error || 'Verification failed.');
+    } finally {
+      setVerifyingCheckinPay(false);
     }
   };
 
@@ -318,10 +372,21 @@ const RoomManager = ({ activeSection = 'rooms' }) => {
   const handleAddFolioCharge = async (e) => {
     e.preventDefault();
     try {
-      await axios.post(`${RESERVATIONS_API}${activeReservationForFolio.id}/folio/`, newCharge);
-      setNewCharge({ description: '', amount: '' });
+      const token = localStorage.getItem('access_token');
+      const headers = token ? { Authorization: `Bearer ${token}` } : {};
+      const payload = {
+        description: newCharge.description,
+        amount: newCharge.amount,
+        ...(newCharge.inventory_item ? { inventory_item: newCharge.inventory_item, quantity: newCharge.quantity || 1 } : {}),
+      };
+      await axios.post(`${RESERVATIONS_API}${activeReservationForFolio.id}/folio/`, payload, { headers });
+      setNewCharge({ description: '', amount: '', inventory_item: '', quantity: 1 });
       fetchFolioCharges(activeReservationForFolio.id);
-    } catch (err) { alert('Failed to add charge.'); }
+      fetchHousekeepingItems(); // refresh stock after deduction
+    } catch (err) {
+      const msg = err.response?.data?.error || err.response?.data?.detail || 'Failed to add charge.';
+      alert(msg);
+    }
   };
 
   const handleDeleteFolioCharge = async (chargeId) => {
@@ -340,8 +405,34 @@ const RoomManager = ({ activeSection = 'rooms' }) => {
     setActionLoading(prev => ({ ...prev, [room.id]: 'checkout' }));
     try {
       const response = await axios.get(`${RESERVATIONS_API}${res.id}/final-bill/`);
-      setFinalBillData(response.data);
-      setIsFinalBillOpen(true);
+      const billData = response.data;
+      setFinalBillData(billData);
+      
+      if (Number(billData.extras_total || 0) === 0) {
+        setActionLoading(prev => ({ ...prev, [room.id]: null }));
+        if (window.confirm(`Guest has no extra charges. Proceed with direct check-out for Room ${room.room_number}?`)) {
+          setActionLoading(prev => ({ ...prev, checkout_btn: true }));
+          try {
+            await axios.post(`${RESERVATIONS_API}${res.id}/enhanced-checkout/`, {
+              payment_method: 'None',
+              payment_status: 'paid',
+              payment_reference: 'No Extras'
+            });
+            alert(`Direct check-out completed for Room ${room.room_number}.`);
+            fetchRooms();
+            fetchReservations();
+          } catch (err) {
+            alert(err.response?.data?.error || 'Direct checkout failed.');
+          } finally {
+            setActionLoading(prev => ({ ...prev, checkout_btn: false }));
+          }
+        }
+      } else {
+        setCheckoutPaymentMethod('Cash');
+        setCheckoutBankRef('');
+        setCheckoutChapaSession(null);
+        setIsFinalBillOpen(true);
+      }
     } catch (err) {
       alert('Failed to generate final bill.');
     } finally {
@@ -421,7 +512,11 @@ const RoomManager = ({ activeSection = 'rooms' }) => {
   const handleEnhancedCheckout = async () => {
     setActionLoading(prev => ({ ...prev, checkout_btn: true }));
     try {
-      const res = await axios.post(`${RESERVATIONS_API}${activeReservationForFolio.id}/enhanced-checkout/`);
+      const res = await axios.post(`${RESERVATIONS_API}${activeReservationForFolio.id}/enhanced-checkout/`, {
+        payment_method: checkoutPaymentMethod,
+        payment_status: 'paid',
+        payment_reference: checkoutBankRef
+      });
       setFinalBillData(res.data.final_bill); // Update with final processed bill
       
       // We need to wait for the state update and render before printing
@@ -435,6 +530,49 @@ const RoomManager = ({ activeSection = 'rooms' }) => {
       alert(err.response?.data?.error || 'Failed to checkout.');
     } finally {
       setActionLoading(prev => ({ ...prev, checkout_btn: false }));
+    }
+  };
+
+  const handleInitiateCheckoutDigitalPayment = async () => {
+    if (!activeReservationForFolio) return;
+    setActionLoading(prev => ({ ...prev, checkout_btn: true }));
+    try {
+      const res = await axios.post(
+        `${API_BASE_URL}/users/reservations/${activeReservationForFolio.id}/checkout-payment-session/`,
+        {}
+      );
+      setCheckoutChapaSession(res.data);
+    } catch (err) {
+      alert(err.response?.data?.error || 'Failed to create payment session.');
+    } finally {
+      setActionLoading(prev => ({ ...prev, checkout_btn: false }));
+    }
+  };
+
+  const handleVerifyCheckoutDigitalPayment = async () => {
+    if (!activeReservationForFolio || !checkoutChapaSession) return;
+    setVerifyingCheckoutPay(true);
+    try {
+      const res = await axios.post(
+        `${API_BASE_URL}/users/reservations/${activeReservationForFolio.id}/verify-checkout-payment/`,
+        { tx_ref: checkoutChapaSession.tx_ref }
+      );
+      if (res.data?.status === 'success') {
+        setFinalBillData(res.data.final_bill || finalBillData);
+        setTimeout(() => {
+          handlePrintBill();
+          setIsFinalBillOpen(false);
+          setCheckoutChapaSession(null);
+          fetchRooms();
+          fetchReservations();
+        }, 500);
+      } else {
+        alert('Payment is still pending.');
+      }
+    } catch (err) {
+      alert(err.response?.data?.error || 'Verification failed.');
+    } finally {
+      setVerifyingCheckoutPay(false);
     }
   };
 
@@ -567,7 +705,7 @@ const RoomManager = ({ activeSection = 'rooms' }) => {
             </div>
           )}
           {isRoomsSection && <button onClick={openCreateModal} style={addNewBtn}><PlusCircle size={18} /> Add New Room</button>}
-          {isReservationSection && <button onClick={() => window.open(publicSiteUrl || `/customer-dashboard${tenantSchema ? `?tenant=${tenantSchema}` : ''}`, '_blank', 'noopener,noreferrer')} style={addNewBtn}><Globe size={18} /> Open Public Site</button>}
+          {isReservationSection && <button onClick={() => window.open(publicSiteUrl || '/customer-dashboard', '_blank', 'noopener,noreferrer')} style={addNewBtn}><Globe size={18} /> Open Public Site</button>}
         </div>
       </div>
 
@@ -914,20 +1052,92 @@ const RoomManager = ({ activeSection = 'rooms' }) => {
                 </div>
                 <X style={{ cursor: 'pointer' }} onClick={() => setIsDigitalCheckInOpen(false)} />
               </div>
-              <form onSubmit={handleDigitalCheckIn} style={reservationFormGrid}>
-                <input style={{...styledInput, gridColumn: 'span 2'}} required placeholder="Full Name *" value={digitalRegForm.full_name} onChange={e => setDigitalRegForm({...digitalRegForm, full_name: e.target.value})} />
-                <input style={styledInput} placeholder="Phone" value={digitalRegForm.phone} onChange={e => setDigitalRegForm({...digitalRegForm, phone: e.target.value})} />
-                <input style={styledInput} placeholder="Nationality" value={digitalRegForm.nationality} onChange={e => setDigitalRegForm({...digitalRegForm, nationality: e.target.value})} />
-                <select style={styledInput} value={digitalRegForm.id_type} onChange={e => setDigitalRegForm({...digitalRegForm, id_type: e.target.value})}>
-                  <option value="national_id">National ID</option>
-                  <option value="passport">Passport</option>
-                  <option value="driving_license">Driving License</option>
-                </select>
-                <input style={styledInput} placeholder="ID Number" required value={digitalRegForm.id_number} onChange={e => setDigitalRegForm({...digitalRegForm, id_number: e.target.value})} />
-                <button type="submit" disabled={actionLoading[selectedRoom.id] === 'checkin'} style={{...saveBtn, gridColumn: 'span 2'}}>
-                  {actionLoading[selectedRoom.id] === 'checkin' ? 'Checking in...' : 'Register & Check-In'}
-                </button>
-              </form>
+              
+              {checkinChapaSession ? (
+                <div style={{ textAlign: 'center', padding: '10px 0' }}>
+                  <div style={{ background: '#fff', border: '2px solid #0f766e', borderRadius: '16px', padding: '14px', marginBottom: '14px', display: 'inline-block' }}>
+                    <img
+                      src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(checkinChapaSession.checkout_url)}`}
+                      alt="Chapa Check-In QR"
+                      style={{ width: '180px', height: '180px', display: 'block' }}
+                    />
+                  </div>
+                  <h4 style={{ color: '#fff', margin: '0 0 6px' }}>Scan to Pay: ETB {checkinChapaSession.grand_total.toLocaleString()}</h4>
+                  <p style={{ color: '#94a3b8', fontSize: '12px', margin: '0 0 16px' }}>Scan QR → Pay via Chapa → Click Verify below</p>
+                  <div style={{ display: 'flex', gap: '10px' }}>
+                    <button
+                      onClick={() => window.open(checkinChapaSession.checkout_url, '_blank')}
+                      style={{ ...saveBtn, flex: 1, backgroundColor: 'transparent', color: '#0284c7', border: '1px solid #0284c7', marginTop: 0 }}
+                    >
+                      Open Link
+                    </button>
+                    <button
+                      disabled={verifyingCheckinPay}
+                      onClick={handleVerifyCheckinDigitalPayment}
+                      style={{ ...saveBtn, flex: 2, backgroundColor: '#0f766e', marginTop: 0 }}
+                    >
+                      {verifyingCheckinPay ? 'Verifying...' : 'Verify Payment'}
+                    </button>
+                  </div>
+                  <button
+                    onClick={() => setCheckinChapaSession(null)}
+                    style={{ ...saveBtn, backgroundColor: 'rgba(239, 68, 68, 0.2)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.3)', marginTop: '12px' }}
+                  >
+                    Change Payment Method
+                  </button>
+                </div>
+              ) : (
+                <form onSubmit={handleDigitalCheckIn} style={reservationFormGrid}>
+                  <input style={{...styledInput, gridColumn: 'span 2'}} required placeholder="Full Name *" value={digitalRegForm.full_name} onChange={e => setDigitalRegForm({...digitalRegForm, full_name: e.target.value})} />
+                  <input style={styledInput} placeholder="Phone" value={digitalRegForm.phone} onChange={e => setDigitalRegForm({...digitalRegForm, phone: e.target.value})} />
+                  <input style={styledInput} placeholder="Nationality" value={digitalRegForm.nationality} onChange={e => setDigitalRegForm({...digitalRegForm, nationality: e.target.value})} />
+                  <select style={styledInput} value={digitalRegForm.id_type} onChange={e => setDigitalRegForm({...digitalRegForm, id_type: e.target.value})}>
+                    <option value="national_id">National ID</option>
+                    <option value="passport">Passport</option>
+                    <option value="driving_license">Driving License</option>
+                  </select>
+                  <input style={styledInput} placeholder="ID Number" required value={digitalRegForm.id_number} onChange={e => setDigitalRegForm({...digitalRegForm, id_number: e.target.value})} />
+                  
+                  <div style={{ gridColumn: 'span 2', borderTop: '1px dashed #cbd5e1', paddingTop: '10px', marginTop: '10px' }}>
+                    <label style={{ fontSize: '11px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>PAYMENT METHOD FOR ROOM ONLY</label>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px', marginBottom: '10px' }}>
+                      {[
+                        { id: 'Cash', label: 'Cash' },
+                        { id: 'Digital Payment', label: 'Digital (QR)' },
+                        { id: 'Bank Transfer', label: 'Bank Transfer' },
+                      ].map(m => (
+                        <button
+                          key={m.id}
+                          type="button"
+                          onClick={() => { setCheckinPayMethod(m.id); setCheckinBankRef(''); }}
+                          style={{
+                            border: `2px solid ${checkinPayMethod === m.id ? '#0f766e' : '#1e293b'}`,
+                            background: checkinPayMethod === m.id ? 'rgba(15, 118, 110, 0.2)' : 'transparent',
+                            borderRadius: '10px', padding: '10px 8px', cursor: 'pointer',
+                            color: checkinPayMethod === m.id ? '#0f766e' : '#94a3b8',
+                            fontWeight: 700, fontSize: '11px', transition: 'all 0.15s',
+                          }}
+                        >
+                          {m.label}
+                        </button>
+                      ))}
+                    </div>
+                    {checkinPayMethod === 'Bank Transfer' && (
+                      <input
+                        required
+                        placeholder="Bank Reference Number"
+                        value={checkinBankRef}
+                        onChange={e => setCheckinBankRef(e.target.value)}
+                        style={styledInput}
+                      />
+                    )}
+                  </div>
+                  
+                  <button type="submit" disabled={actionLoading[selectedRoom.id] === 'checkin'} style={{...saveBtn, gridColumn: 'span 2'}}>
+                    {actionLoading[selectedRoom.id] === 'checkin' ? 'Checking in...' : 'Register & Check-In'}
+                  </button>
+                </form>
+              )}
             </motion.div>
           </div>
         )}
@@ -960,11 +1170,66 @@ const RoomManager = ({ activeSection = 'rooms' }) => {
                 {!folioCharges.length && <p style={{ color: '#64748b', fontSize: 13, textAlign: 'center', padding: 20 }}>No extra charges yet.</p>}
               </div>
 
-              <form onSubmit={handleAddFolioCharge} style={{ display: 'flex', gap: 10, borderTop: '1px solid #1e293b', paddingTop: 16 }}>
-                <input style={{ ...styledInput, marginTop: 0, flex: 2 }} required placeholder="Charge Description (e.g. Laundry)" value={newCharge.description} onChange={e => setNewCharge({...newCharge, description: e.target.value})} />
-                <input style={{ ...styledInput, marginTop: 0, flex: 1 }} type="number" required placeholder="Amount" value={newCharge.amount} onChange={e => setNewCharge({...newCharge, amount: e.target.value})} />
-                <button type="submit" style={{ ...saveBtn, marginTop: 0, width: 'auto', padding: '0 20px' }}>Add</button>
-              </form>
+              <div style={{ borderTop: '1px solid #1e293b', paddingTop: 16 }}>
+                {/* Minibar / Room Inventory quick-pick */}
+                <div style={{ marginBottom: 10 }}>
+                  <label style={{ display: 'block', fontSize: 11, color: '#64748b', marginBottom: 4 }}>🛎 Quick-add from Minibar / Room Inventory</label>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <select
+                      style={{ ...styledInput, marginTop: 0, flex: 3, fontSize: 13 }}
+                      value={newCharge.inventory_item}
+                      disabled={housekeepingItems.length === 0}
+                      onChange={e => {
+                        const itemId = e.target.value;
+                        if (!itemId) {
+                          setNewCharge(prev => ({ ...prev, inventory_item: '', description: '', amount: '' }));
+                          return;
+                        }
+                        const found = housekeepingItems.find(i => String(i.id) === String(itemId));
+                        setNewCharge(prev => ({
+                          ...prev,
+                          inventory_item: itemId,
+                          description: found ? `${found.name} (Minibar)` : prev.description,
+                          amount: found ? (parseFloat(found.selling_price || found.unit_cost || 0) * (prev.quantity || 1)).toFixed(2) : prev.amount,
+                        }));
+                      }}
+                    >
+                      {housekeepingItems.length === 0 ? (
+                        <option value="">No housekeeping/minibar items found (Add in Inventory first)</option>
+                      ) : (
+                        <>
+                          <option value="">-- Select inventory item (optional) --</option>
+                          {housekeepingItems.map(item => (
+                            <option key={item.id} value={item.id}>
+                              {item.name} — ETB {parseFloat(item.selling_price || item.unit_cost || 0).toFixed(2)} (Stock: {item.current_stock ?? '?'})
+                            </option>
+                          ))}
+                        </>
+                      )}
+                    </select>
+                    <input
+                      style={{ ...styledInput, marginTop: 0, width: 70, textAlign: 'center' }}
+                      type="number" min="1" placeholder="Qty"
+                      disabled={housekeepingItems.length === 0}
+                      value={newCharge.quantity}
+                      onChange={e => {
+                        const qty = parseInt(e.target.value) || 1;
+                        const found = housekeepingItems.find(i => String(i.id) === String(newCharge.inventory_item));
+                        setNewCharge(prev => ({
+                          ...prev,
+                          quantity: qty,
+                          amount: found ? (parseFloat(found.selling_price || found.unit_cost || 0) * qty).toFixed(2) : prev.amount,
+                        }));
+                      }}
+                    />
+                  </div>
+                </div>
+                <form onSubmit={handleAddFolioCharge} style={{ display: 'flex', gap: 10 }}>
+                  <input style={{ ...styledInput, marginTop: 0, flex: 2 }} required placeholder="Charge Description (e.g. Laundry)" value={newCharge.description} onChange={e => setNewCharge({...newCharge, description: e.target.value})} />
+                  <input style={{ ...styledInput, marginTop: 0, flex: 1 }} type="number" required placeholder="Amount" value={newCharge.amount} onChange={e => setNewCharge({...newCharge, amount: e.target.value})} />
+                  <button type="submit" style={{ ...saveBtn, marginTop: 0, width: 'auto', padding: '0 20px' }}>Add</button>
+                </form>
+              </div>
             </motion.div>
           </div>
         )}
@@ -1004,7 +1269,7 @@ const RoomManager = ({ activeSection = 'rooms' }) => {
                   <tbody>
                     <tr>
                       <td style={{ padding: '2px 0' }}>ROOM ACC ({finalBillData.nights} NTS)</td>
-                      <td style={{ textAlign: 'right', padding: '2px 0' }}>{finalBillData.room_total.toFixed(2)}</td>
+                      <td style={{ textAlign: 'right', padding: '2px 0', color: '#22c55e' }}>PAID (Check-In)</td>
                     </tr>
                     {finalBillData.folio_charges.map(c => (
                       <tr key={c.id}>
@@ -1016,8 +1281,8 @@ const RoomManager = ({ activeSection = 'rooms' }) => {
                 </table>
                 <div className="dashed-divider" />
                 <div className="item-row bold" style={{ fontSize: '14px' }}>
-                  <span>GRAND TOTAL</span>
-                  <span>ETB {finalBillData.grand_total.toFixed(2)}</span>
+                  <span>AMOUNT DUE (EXTRAS)</span>
+                  <span>ETB {finalBillData.extras_total.toFixed(2)}</span>
                 </div>
                 <div className="dashed-divider" />
 
@@ -1028,12 +1293,90 @@ const RoomManager = ({ activeSection = 'rooms' }) => {
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 20 }} className="no-print">
-                <div style={{ display: 'flex', gap: 10 }}>
-                  <button type="button" onClick={() => setIsFinalBillOpen(false)} style={{ ...saveBtn, marginTop: 0, backgroundColor: 'transparent', color: '#fff', border: '1px solid #334155' }}>Cancel</button>
-                  <button type="button" disabled={actionLoading.checkout_btn} onClick={handleEnhancedCheckout} style={{ ...saveBtn, marginTop: 0, backgroundColor: '#f59e0b', color: '#111827' }}>
-                    {actionLoading.checkout_btn ? 'Processing...' : 'Confirm Check-Out & Print'}
-                  </button>
-                </div>
+                {checkoutChapaSession ? (
+                  <div style={{ textAlign: 'center', padding: '10px 0', borderTop: '1px dashed #cbd5e1', paddingTop: '15px' }}>
+                    <div style={{ background: '#fff', border: '2px solid #0f766e', borderRadius: '16px', padding: '14px', marginBottom: '14px', display: 'inline-block' }}>
+                      <img
+                        src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(checkoutChapaSession.checkout_url)}`}
+                        alt="Chapa Checkout QR"
+                        style={{ width: '180px', height: '180px', display: 'block' }}
+                      />
+                    </div>
+                    <h4 style={{ color: '#fff', margin: '0 0 6px' }}>Scan to Pay: ETB {checkoutChapaSession.grand_total.toLocaleString()}</h4>
+                    <p style={{ color: '#94a3b8', fontSize: '12px', margin: '0 0 16px' }}>Scan QR → Pay via Chapa → Click Verify below</p>
+                    <div style={{ display: 'flex', gap: '10px' }}>
+                      <button
+                        onClick={() => window.open(checkoutChapaSession.checkout_url, '_blank')}
+                        style={{ ...saveBtn, flex: 1, backgroundColor: 'transparent', color: '#0284c7', border: '1px solid #0284c7', marginTop: 0 }}
+                      >
+                        Open Link
+                      </button>
+                      <button
+                        disabled={verifyingCheckoutPay}
+                        onClick={handleVerifyCheckoutDigitalPayment}
+                        style={{ ...saveBtn, flex: 2, backgroundColor: '#0f766e', marginTop: 0 }}
+                      >
+                        {verifyingCheckoutPay ? 'Verifying...' : 'Verify Payment'}
+                      </button>
+                    </div>
+                    <button
+                      onClick={() => setCheckoutChapaSession(null)}
+                      style={{ ...saveBtn, backgroundColor: 'rgba(239, 68, 68, 0.2)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.3)', marginTop: '12px' }}
+                    >
+                      Change Payment Method
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <div style={{ borderTop: '1px dashed #cbd5e1', paddingTop: '15px', marginTop: '5px' }}>
+                      <label style={{ fontSize: '11px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>PAYMENT METHOD FOR EXTRAS</label>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px', marginBottom: '10px' }}>
+                        {[
+                          { id: 'Cash', label: 'Cash' },
+                          { id: 'Digital Payment', label: 'Digital (QR)' },
+                          { id: 'Bank Transfer', label: 'Bank Transfer' },
+                        ].map(m => (
+                          <button
+                            key={m.id}
+                            type="button"
+                            onClick={() => { setCheckoutPaymentMethod(m.id); setCheckoutBankRef(''); }}
+                            style={{
+                              border: `2px solid ${checkoutPaymentMethod === m.id ? '#f59e0b' : '#1e293b'}`,
+                              background: checkoutPaymentMethod === m.id ? 'rgba(245, 158, 11, 0.2)' : 'transparent',
+                              borderRadius: '10px', padding: '10px 8px', cursor: 'pointer',
+                              color: checkoutPaymentMethod === m.id ? '#f59e0b' : '#94a3b8',
+                              fontWeight: 700, fontSize: '11px', transition: 'all 0.15s',
+                            }}
+                          >
+                            {m.label}
+                          </button>
+                        ))}
+                      </div>
+                      {checkoutPaymentMethod === 'Bank Transfer' && (
+                        <input
+                          required
+                          placeholder="Bank Reference Number"
+                          value={checkoutBankRef}
+                          onChange={e => setCheckoutBankRef(e.target.value)}
+                          style={{ ...styledInput, width: '100%', boxSizing: 'border-box' }}
+                        />
+                      )}
+                    </div>
+                    <div style={{ display: 'flex', gap: 10 }}>
+                      <button type="button" onClick={() => setIsFinalBillOpen(false)} style={{ ...saveBtn, marginTop: 0, backgroundColor: 'transparent', color: '#fff', border: '1px solid #334155' }}>Cancel</button>
+                      {checkoutPaymentMethod === 'Digital Payment' ? (
+                        <button type="button" disabled={actionLoading.checkout_btn} onClick={handleInitiateCheckoutDigitalPayment} style={{ ...saveBtn, marginTop: 0, backgroundColor: '#0284c7', color: '#fff' }}>
+                          Generate QR Code
+                        </button>
+                      ) : (
+                        <button type="button" disabled={actionLoading.checkout_btn || (checkoutPaymentMethod === 'Bank Transfer' && !checkoutBankRef.trim())} onClick={handleEnhancedCheckout} style={{ ...saveBtn, marginTop: 0, backgroundColor: '#f59e0b', color: '#111827' }}>
+                          {actionLoading.checkout_btn ? 'Processing...' : 'Confirm Check-Out & Print'}
+                        </button>
+                      )}
+                    </div>
+                  </>
+                )}
+                
                 <div style={{ padding: '8px 12px', backgroundColor: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: 8 }}>
                   <p style={{ margin: 0, fontSize: '11px', color: '#fcd34d', lineHeight: 1.4 }}>
                     💡 <strong>TIP:</strong> For the best result, set <strong>Scale: 100%</strong> and <strong>Margins: None</strong> in the print dialog.
@@ -1088,87 +1431,184 @@ const RoomManager = ({ activeSection = 'rooms' }) => {
 };
 
 // --- Styles ---
-const roomStatusPill = (status, reservedOnline) => ({
-  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-  padding: '5px 10px', borderRadius: '999px', fontSize: '11px', fontWeight: 700,
-  backgroundColor: reservedOnline ? 'rgba(59,130,246,0.18)' : status === 'Maintenance' ? 'rgba(100,116,139,0.18)' : 'rgba(190,242,100,0.12)',
-  color: reservedOnline ? '#93c5fd' : status === 'Maintenance' ? '#cbd5e1' : (status === 'Occupied' ? '#fca5a5' : '#bef264'),
-  border: reservedOnline ? '1px solid rgba(96,165,250,0.45)' : '1px solid rgba(190,242,100,0.18)',
-});
+const roomStatusPill = (status, reservedOnline) => {
+  const isMaintenance = status === 'Maintenance';
+  const isOccupied = status === 'Occupied';
+  const isReserved = status === 'Reserved' || reservedOnline;
+  const isCleaning = status === 'Cleaning';
+  
+  let bg = 'rgba(16, 185, 129, 0.1)';
+  let color = '#10b981';
+  let border = '1px solid rgba(16, 185, 129, 0.2)';
+  
+  if (isOccupied) {
+    bg = 'rgba(239, 68, 68, 0.1)';
+    color = '#ef4444';
+    border = '1px solid rgba(239, 68, 68, 0.2)';
+  } else if (isReserved) {
+    bg = 'rgba(59, 130, 246, 0.1)';
+    color = '#2563eb';
+    border = '1px solid rgba(59, 130, 246, 0.2)';
+  } else if (isCleaning) {
+    bg = 'rgba(245, 158, 11, 0.1)';
+    color = '#d97706';
+    border = '1px solid rgba(245, 158, 11, 0.2)';
+  } else if (isMaintenance) {
+    bg = 'rgba(100, 116, 139, 0.1)';
+    color = '#475569';
+    border = '1px solid rgba(100, 116, 139, 0.2)';
+  }
+  
+  return {
+    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+    padding: '5px 10px', borderRadius: '999px', fontSize: '11px', fontWeight: 700,
+    backgroundColor: bg, color: color, border: border
+  };
+};
 
-const reservationStatusPill = (status) => ({
-  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-  padding: '5px 10px', borderRadius: '999px', fontSize: '11px', fontWeight: 700,
-  backgroundColor: status === 'confirmed' ? 'rgba(37,99,235,0.18)' : status === 'checked_in' ? 'rgba(22,163,74,0.18)' : 'rgba(245,158,11,0.16)',
-  color: status === 'confirmed' ? '#93c5fd' : status === 'checked_in' ? '#86efac' : '#fcd34d',
-});
+const reservationStatusPill = (status) => {
+  let bg = 'rgba(245, 158, 11, 0.1)';
+  let color = '#d97706';
+  
+  if (status === 'confirmed') {
+    bg = 'rgba(37, 99, 235, 0.1)';
+    color = '#2563eb';
+  } else if (status === 'checked_in') {
+    bg = 'rgba(22, 163, 74, 0.1)';
+    color = '#16a34a';
+  } else if (status === 'checked_out') {
+    bg = 'rgba(100, 116, 139, 0.1)';
+    color = '#475569';
+  }
+  
+  return {
+    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+    padding: '5px 10px', borderRadius: '999px', fontSize: '11px', fontWeight: 700,
+    backgroundColor: bg, color: color
+  };
+};
 
-const heroCard = { background: 'linear-gradient(135deg, rgba(15,23,42,0.95) 0%, rgba(30,41,59,0.95) 50%, rgba(14,116,144,0.85) 100%)', border: '1px solid rgba(56,189,248,0.18)', borderRadius: '24px', padding: '24px', marginBottom: '22px', display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: '20px' };
-const heroEyebrow = { margin: 0, color: '#7dd3fc', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.12em', fontWeight: 700 };
-const heroTitle = { margin: '8px 0', fontSize: '28px' };
-const heroSubtitle = { margin: 0, color: '#cbd5e1', maxWidth: '760px', lineHeight: 1.6 };
+const heroCard = { 
+  background: 'linear-gradient(135deg, #0f766e 0%, #0d9488 100%)', 
+  border: 'none', 
+  borderRadius: '24px', 
+  padding: '24px', 
+  marginBottom: '22px', 
+  display: 'grid', 
+  gridTemplateColumns: '1.5fr 1fr', 
+  gap: '20px',
+  boxShadow: '0 12px 28px rgba(15,118,110,0.15)',
+  color: '#fff'
+};
+const heroEyebrow = { margin: 0, color: '#ccfbf1', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.12em', fontWeight: 700 };
+const heroTitle = { margin: '8px 0', fontSize: '28px', color: '#fff' };
+const heroSubtitle = { margin: 0, color: '#e2fbf7', maxWidth: '760px', lineHeight: 1.6 };
 const heroBadges = { display: 'flex', flexWrap: 'wrap', gap: '10px', alignContent: 'start', justifyContent: 'flex-end' };
-const heroPill = { display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '10px 14px', borderRadius: '999px', backgroundColor: 'rgba(15,23,42,0.45)', border: '1px solid rgba(125,211,252,0.22)', color: '#e0f2fe', fontSize: '12px', fontWeight: 600 };
+const heroPill = { display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '10px 14px', borderRadius: '999px', backgroundColor: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', fontSize: '12px', fontWeight: 600 };
 const statsGrid = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '15px', marginBottom: '25px' };
-const statCard = { backgroundColor: '#fff', padding: '15px', borderRadius: '15px', display: 'flex', alignItems: 'center', gap: '12px' };
+const statCard = { 
+  backgroundColor: '#fff', 
+  padding: '15px', 
+  borderRadius: '15px', 
+  display: 'flex', 
+  alignItems: 'center', 
+  gap: '12px',
+  border: '1px solid rgba(148,163,184,0.16)',
+  boxShadow: '0 12px 28px rgba(15,23,42,0.04)'
+};
 const iconBox = { width: '40px', height: '40px', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center' };
 const statLabel = { margin: 0, fontSize: '10px', fontWeight: 'bold', color: '#94a3b8' };
 const statCount = { margin: 0, fontSize: '20px', color: '#0f172a' };
 const headerStyle = { display: 'flex', justifyContent: 'space-between', marginBottom: '18px', gap: '12px', flexWrap: 'wrap' };
-const switcherContainer = { display: 'flex', backgroundColor: '#fff', padding: '4px', borderRadius: '30px', border: '1px solid #e2e8f0' };
+const switcherContainer = { display: 'flex', backgroundColor: '#fff', padding: '4px', borderRadius: '30px', border: '1px solid #cbd5e1' };
 const switchBtn = { border: 'none', padding: '8px 18px', borderRadius: '25px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', fontWeight: '600' };
-const addNewBtn = { backgroundColor: '#3f5d45', color: '#fff', border: 'none', padding: '10px 24px', borderRadius: '30px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' };
+const addNewBtn = { backgroundColor: '#0f766e', color: '#fff', border: 'none', padding: '10px 24px', borderRadius: '30px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 4px 12px rgba(15,118,110,0.2)' };
 const opsGrid = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px', marginBottom: '24px' };
-const opsCard = { backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '18px', padding: '18px' };
+const opsCard = { 
+  backgroundColor: '#fff', 
+  border: '1px solid rgba(148,163,184,0.16)', 
+  borderRadius: '18px', 
+  padding: '18px',
+  boxShadow: '0 12px 28px rgba(15,23,42,0.04)',
+  color: '#0f172a'
+};
 const opsTitleRow = { display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' };
-const opsText = { margin: 0, color: '#94a3b8', fontSize: '13px', lineHeight: 1.6 };
+const opsText = { margin: 0, color: '#475569', fontSize: '13px', lineHeight: 1.6 };
 const roomsGrid = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '20px' };
-const roomCard = { backgroundColor: '#0f172a', borderRadius: '16px', border: '1px solid #1e293b', overflow: 'hidden' };
-const reservedRoomCard = { border: '1px solid rgba(96,165,250,0.9)', boxShadow: '0 0 0 1px rgba(59,130,246,0.15), 0 12px 30px rgba(37,99,235,0.18)' };
-const cardImgWrapper = { height: '150px', position: 'relative', backgroundColor: '#1e293b' };
+const roomCard = { 
+  backgroundColor: '#fff', 
+  borderRadius: '16px', 
+  border: '1px solid rgba(148,163,184,0.16)', 
+  overflow: 'hidden',
+  boxShadow: '0 8px 24px rgba(15,23,42,0.04)',
+  color: '#0f172a'
+};
+const reservedRoomCard = { border: '1px solid rgba(59,130,246,0.5)', boxShadow: '0 12px 30px rgba(37,99,235,0.1)' };
+const cardImgWrapper = { height: '150px', position: 'relative', backgroundColor: '#f1f5f9' };
 const imgStyle = { width: '100%', height: '100%', objectFit: 'cover' };
-const noImg = { height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#4b5563' };
-const priceTagSmall = { position: 'absolute', top: '10px', left: '10px', backgroundColor: 'rgba(0,0,0,0.7)', color: '#bef264', padding: '3px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold' };
+const noImg = { height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8' };
+const priceTagSmall = { position: 'absolute', top: '10px', left: '10px', backgroundColor: 'rgba(255,255,255,0.92)', color: '#0f766e', padding: '3px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold', border: '1px solid rgba(15,118,110,0.15)' };
 const reservedBadge = { position: 'absolute', top: '10px', right: '10px', backgroundColor: '#2563eb', color: '#fff', padding: '4px 10px', borderRadius: '999px', fontSize: '11px', fontWeight: 700 };
 const bookingPanel = { display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: '8px', marginTop: '14px' };
-const miniInput = { backgroundColor: '#111827', border: '1px solid #334155', color: '#fff', padding: '10px', borderRadius: '10px', width: '100%', boxSizing: 'border-box' };
+const miniInput = { backgroundColor: '#f8fafc', border: '1px solid #cbd5e1', color: '#0f172a', padding: '10px', borderRadius: '10px', width: '100%', boxSizing: 'border-box', outline: 'none' };
 const frontDeskActions = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginTop: '10px' };
 const actionBtn = { border: 'none', padding: '10px 12px', borderRadius: '10px', cursor: 'pointer', fontWeight: 700, fontSize: '12px' };
 const reserveBtn = { backgroundColor: '#2563eb', color: '#fff' };
 const checkInBtn = { backgroundColor: '#16a34a', color: '#fff' };
 const checkOutBtn = { backgroundColor: '#f59e0b', color: '#111827' };
-const cardActionsSmall = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '10px', paddingTop: '10px', borderTop: '1px solid #1e293b' };
-const listContainer = { backgroundColor: '#0f172a', borderRadius: '15px', border: '1px solid #1e293b', overflow: 'hidden' };
+const cardActionsSmall = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '10px', paddingTop: '10px', borderTop: '1px solid #e2e8f0' };
+const listContainer = { 
+  backgroundColor: '#fff', 
+  borderRadius: '15px', 
+  border: '1px solid rgba(148,163,184,0.16)', 
+  overflow: 'hidden',
+  boxShadow: '0 12px 28px rgba(15,23,42,0.04)'
+};
 const tableStyle = { width: '100%', borderCollapse: 'collapse', textAlign: 'left' };
-const theadTr = { borderBottom: '1px solid #1e293b', backgroundColor: '#1e293b66' };
-const thStyle = { padding: '15px', fontSize: '13px', color: '#94a3b8' };
-const trStyle = { borderBottom: '1px solid #1e293b' };
-const listReservedRow = { backgroundColor: 'rgba(37,99,235,0.08)' };
-const tdStyle = { padding: '12px 15px', fontSize: '14px' };
-const modalOverlay = { position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000, padding: '20px' };
-const modalContent = { backgroundColor: '#0f172a', padding: '25px', borderRadius: '24px', width: 'min(1100px, 100%)', border: '1px solid #334155', maxHeight: '92vh', overflow: 'hidden' };
-const reservationModalContent = { backgroundColor: '#0f172a', padding: '25px', borderRadius: '24px', width: 'min(760px, 100%)', border: '1px solid #334155', maxHeight: '92vh', overflowY: 'auto', display: 'grid', gap: '18px' };
+const theadTr = { borderBottom: '2px solid #e2e8f0', backgroundColor: '#f8fafc' };
+const thStyle = { padding: '15px', fontSize: '12px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em' };
+const trStyle = { borderBottom: '1px solid #e2e8f0', color: '#0f172a' };
+const listReservedRow = { backgroundColor: 'rgba(37,99,235,0.04)' };
+const tdStyle = { padding: '12px 15px', fontSize: '14px', color: '#334155' };
+const modalOverlay = { position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(15,23,42,0.42)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000, padding: '20px', backdropFilter: 'blur(8px)' };
+const modalContent = { backgroundColor: '#fff', padding: '25px', borderRadius: '24px', width: 'min(1100px, 100%)', border: '1px solid rgba(148,163,184,0.16)', boxShadow: '0 30px 80px rgba(15,23,42,0.18)', maxHeight: '92vh', overflow: 'hidden', color: '#0f172a' };
+const reservationModalContent = { backgroundColor: '#fff', padding: '25px', borderRadius: '24px', width: 'min(760px, 100%)', border: '1px solid rgba(148,163,184,0.16)', boxShadow: '0 30px 80px rgba(15,23,42,0.18)', maxHeight: '92vh', overflowY: 'auto', display: 'grid', gap: '18px', color: '#0f172a' };
 const reservationFormGrid = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' };
-const auditBoard = { display: 'grid', gap: '18px' };
-const auditCard = { backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '20px', padding: '20px' };
+const auditBoard = { display: 'grid', gap: '18px', color: '#0f172a' };
+const auditCard = { 
+  backgroundColor: '#fff', 
+  border: '1px solid rgba(148,163,184,0.16)', 
+  borderRadius: '20px', 
+  padding: '20px',
+  boxShadow: '0 12px 28px rgba(15,23,42,0.04)'
+};
 const auditStatsGrid = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', marginTop: '18px' };
-const auditMiniCard = { backgroundColor: '#111827', border: '1px solid #1f2937', borderRadius: '16px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '8px', color: '#cbd5e1' };
-const tabsWrapperSmall = { display: 'flex', gap: '10px', overflowX: 'auto', marginBottom: '20px', paddingBottom: '8px', borderBottom: '1px solid #1e293b' };
+const auditMiniCard = { 
+  backgroundColor: '#f8fafc', 
+  border: '1px solid #cbd5e1', 
+  borderRadius: '16px', 
+  padding: '16px', 
+  display: 'flex', 
+  flexDirection: 'column', 
+  gap: '8px', 
+  color: '#334155' 
+};
+const tabsWrapperSmall = { display: 'flex', gap: '10px', overflowX: 'auto', marginBottom: '20px', paddingBottom: '8px', borderBottom: '1px solid #e2e8f0' };
 const tabBtnStyleSmall = { background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: '11px', fontWeight: '600', whiteSpace: 'nowrap' };
-const activeTabStyleSmall = { ...tabBtnStyleSmall, color: '#bef264', borderBottom: '2px solid #bef264' };
-const styledInput = { backgroundColor: '#1e293b', border: '1px solid #334155', color: '#fff', padding: '12px', borderRadius: '10px', width: '100%', boxSizing: 'border-box', marginTop: '5px' };
+const activeTabStyleSmall = { ...tabBtnStyleSmall, color: '#0f766e', borderBottom: '2px solid #0f766e' };
+const styledInput = { backgroundColor: '#f8fafc', border: '1px solid #cbd5e1', color: '#0f172a', padding: '12px', borderRadius: '10px', width: '100%', boxSizing: 'border-box', marginTop: '5px', outline: 'none' };
 const grid2 = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' };
-const saveBtn = { width: '100%', backgroundColor: '#bef264', color: '#000', border: 'none', padding: '14px', borderRadius: '12px', fontWeight: 'bold', marginTop: '20px', cursor: 'pointer' };
+const saveBtn = { width: '100%', backgroundColor: '#0f766e', color: '#fff', border: 'none', padding: '14px', borderRadius: '12px', fontWeight: 'bold', marginTop: '20px', cursor: 'pointer', boxShadow: '0 4px 12px rgba(15,118,110,0.15)' };
 const amenitiesGrid = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '10px' };
-const checkboxLabel = { display: 'flex', gap: '8px', fontSize: '13px', color: '#94a3b8', alignItems: 'center' };
-const checkboxField = { ...checkboxLabel, backgroundColor: '#111827', border: '1px solid #1f2937', borderRadius: '12px', padding: '12px' };
-const sectionLabel = { margin: '0 0 10px', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', color: '#7dd3fc', letterSpacing: '0.08em' };
-const uploadZone = { border: '2px dashed #334155', padding: '15px', textAlign: 'center', borderRadius: '12px' };
-const reservationRow = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', backgroundColor: '#111827', border: '1px solid #1f2937', borderRadius: '14px', padding: '12px' };
-const reservationMeta = { margin: '4px 0 0', color: '#94a3b8', fontSize: '12px' };
+const checkboxLabel = { display: 'flex', gap: '8px', fontSize: '13px', color: '#475569', alignItems: 'center' };
+const checkboxField = { ...checkboxLabel, backgroundColor: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: '12px', padding: '12px' };
+const sectionLabel = { margin: '0 0 10px', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', color: '#0f766e', letterSpacing: '0.08em' };
+const uploadZone = { border: '2px dashed #cbd5e1', padding: '15px', textAlign: 'center', borderRadius: '12px', backgroundColor: '#f8fafc' };
+const reservationRow = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '12px', color: '#0f172a' };
+const reservationMeta = { margin: '4px 0 0', color: '#64748b', fontSize: '12px' };
 const badgeStyle = { display: 'inline-flex', alignItems: 'center', gap: '8px', color: '#10b981', fontSize: '12px', fontWeight: 'bold', backgroundColor: 'rgba(16,185,129,0.1)', padding: '6px 12px', borderRadius: '20px' };
-const guestIconLarge = { width: '64px', height: '64px', backgroundColor: '#38bdf8', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto' };
-const miniDetailBox = { backgroundColor: '#111827', padding: '15px', borderRadius: '15px', border: '1px solid #1f2937', color: '#fff' };
+const guestIconLarge = { width: '64px', height: '64px', backgroundColor: '#0f766e', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto' };
+const miniDetailBox = { backgroundColor: '#f8fafc', padding: '15px', borderRadius: '15px', border: '1px solid #cbd5e1', color: '#0f172a' };
 const detailSmallLabel = { display: 'block', fontSize: '9px', fontWeight: '800', color: '#64748b', marginBottom: '4px', textTransform: 'uppercase' };
 
 export default RoomManager;

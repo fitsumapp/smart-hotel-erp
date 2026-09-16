@@ -1,0 +1,108 @@
+# Nginx Reverse Proxy Production Configuration Template for Smart Hotel ERP
+
+# Rate Limiting Zones
+limit_req_zone $binary_remote_addr zone=auth_limit:10m rate=5r/m;
+limit_req_zone $binary_remote_addr zone=otp_limit:10m rate=3r/m;
+limit_req_zone $binary_remote_addr zone=api_limit:10m rate=30r/m;
+limit_req_zone $binary_remote_addr zone=payment_limit:10m rate=10r/m;
+
+# Server Configuration (HTTP -> HTTPS Redirect)
+server {
+    listen 80;
+    listen [::]:80;
+    server_name hotelerp.acrmatech.com *.hotelerp.acrmatech.com;
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+# HTTPS Server Configuration
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name hotelerp.acrmatech.com *.hotelerp.acrmatech.com;
+
+    # SSL TLS Certificates and Ciphers
+    ssl_certificate /etc/letsencrypt/live/hotelerp.acrmatech.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/hotelerp.acrmatech.com/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384;
+    ssl_prefer_server_ciphers off;
+
+    # Global Body Size Limit
+    client_max_body_size 10M;
+    client_body_buffer_size 128k;
+
+    # Bot & Scanner Protection
+    if ($http_user_agent ~* (nikto|sqlmap|w3af|acunetix|nessus|dirbuster|gobuster|nmap)) {
+        return 403;
+    }
+
+    # Security Headers at Proxy Level
+    add_header X-Frame-Options "DENY" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
+
+    # Public Media Directory
+    location /media/ {
+        alias /home/acrmate1/hotelerp.acrmatech.com/media/;
+        expires 30d;
+        add_header Cache-Control "public, no-transform";
+
+        # Deny execution of any code inside media uploads
+        location ~ \.(php|py|sh|pl|cgi|exe|jsp|asp)$ {
+            deny all;
+            return 403;
+        }
+
+        # Block direct public access to private media directory
+        location ^~ /media/private/ {
+            deny all;
+            return 403;
+        }
+    }
+
+    # Static Files
+    location /static/ {
+        alias /home/acrmate1/hotelerp.acrmatech.com/staticfiles/;
+        expires 30d;
+        add_header Cache-Control "public, no-transform";
+    }
+
+    # Edge Rate Limiting for Auth Endpoints
+    location /api/v1/auth/login/ {
+        limit_req zone=auth_limit burst=3 nodelay;
+        proxy_pass http://127.0.0.1:8000;
+        include proxy_params;
+    }
+
+    location /api/v1/auth/verify-otp/ {
+        limit_req zone=otp_limit burst=2 nodelay;
+        proxy_pass http://127.0.0.1:8000;
+        include proxy_params;
+    }
+
+    location /api/v1/auth/register/ {
+        limit_req zone=auth_limit burst=2 nodelay;
+        proxy_pass http://127.0.0.1:8000;
+        include proxy_params;
+    }
+
+    location /api/v1/payments/ {
+        limit_req zone=payment_limit burst=5 nodelay;
+        proxy_pass http://127.0.0.1:8000;
+        include proxy_params;
+    }
+
+    # Default Application Proxy
+    location / {
+        limit_req zone=api_limit burst=20 nodelay;
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}

@@ -4,14 +4,17 @@ import { BrowserRouter } from 'react-router-dom';
 import './index.css';
 import App from './App';
 import reportWebVitals from './reportWebVitals';
+import { LoadingProvider } from './LoadingContext';
 
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(
   <React.StrictMode>
-    {/* 2. አፑን በ BrowserRouter እቀፈው */}
     <BrowserRouter>
-      <App />
+      {/* LoadingProvider hooks into all axios requests & shows overlay */}
+      <LoadingProvider>
+        <App />
+      </LoadingProvider>
     </BrowserRouter>
   </React.StrictMode>
 );

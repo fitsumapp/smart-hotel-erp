@@ -2,7 +2,7 @@ from django.contrib import admin
 from unfold.admin import ModelAdmin, TabularInline
 from .models import (
     Category, MenuItem, Room, RestaurantTable,
-    Order, OrderItem, Notification, SystemSettings
+    Order, OrderItem, Notification, PaymentAttempt, PaymentWebhookEvent, SystemSettings, AuditEvent
 )
 
 class OrderItemInline(TabularInline):
@@ -48,3 +48,51 @@ class MenuItemAdmin(ModelAdmin):
 class NotificationAdmin(ModelAdmin):
     list_display = ["id", "user_id_ref", "message", "is_read", "created_at"]
     list_filter = ["is_read"]
+
+
+@admin.register(PaymentAttempt)
+class PaymentAttemptAdmin(ModelAdmin):
+    list_display = ["id", "provider", "purpose", "provider_tx_ref", "status", "expected_amount", "currency", "verified_at"]
+    list_filter = ["provider", "purpose", "status", "currency", "reconciliation_status"]
+    search_fields = ["provider_tx_ref", "idempotency_key", "provider_event_ref"]
+    readonly_fields = [field.name for field in PaymentAttempt._meta.fields]
+    actions = None
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(PaymentWebhookEvent)
+class PaymentWebhookEventAdmin(ModelAdmin):
+    list_display = ["id", "provider", "event_ref", "tx_ref", "status", "received_at", "processed_at"]
+    list_filter = ["provider", "status", "signature_valid"]
+    search_fields = ["event_ref", "tx_ref", "payload_hash"]
+    readonly_fields = [field.name for field in PaymentWebhookEvent._meta.fields]
+    actions = None
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(AuditEvent)
+class AuditEventAdmin(ModelAdmin):
+    list_display = ["id", "action", "entity_type", "entity_id", "actor", "actor_role", "request_id", "created_at"]
+    list_filter = ["action", "entity_type", "actor_role", "created_at"]
+    search_fields = ["request_id", "entity_type", "entity_id", "actor__username"]
+    readonly_fields = [field.name for field in AuditEvent._meta.fields]
+    actions = None
+    def has_add_permission(self, request): return False
+    def has_change_permission(self, request, obj=None): return False
+    def has_delete_permission(self, request, obj=None): return False
