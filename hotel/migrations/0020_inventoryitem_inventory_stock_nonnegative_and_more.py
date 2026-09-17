@@ -3,6 +3,15 @@
 from django.db import migrations, models
 
 
+def fix_negative_inventory(apps, schema_editor):
+    InventoryItem = apps.get_model('hotel', 'InventoryItem')
+    InventoryItem.objects.filter(current_stock__lt=0).update(current_stock=0)
+    InventoryItem.objects.filter(unit_cost__lt=0).update(unit_cost=0)
+    StockTransaction = apps.get_model('hotel', 'StockTransaction')
+    StockTransaction.objects.filter(quantity__lte=0).update(quantity=1)
+    StockTransaction.objects.filter(unit_cost__lt=0).update(unit_cost=0)
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -10,6 +19,7 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        migrations.RunPython(fix_negative_inventory, reverse_code=migrations.RunPython.noop),
         migrations.AddConstraint(
             model_name='inventoryitem',
             constraint=models.CheckConstraint(condition=models.Q(('current_stock__gte', 0)), name='inventory_stock_nonnegative'),
