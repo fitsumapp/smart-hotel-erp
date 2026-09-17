@@ -50,6 +50,23 @@ axios.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
+axios.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response && error.response.status === 401) {
+      const code = error.response.data?.error?.code || error.response.data?.code;
+      if (code === 'token_not_valid') {
+        console.warn('Session expired. Refreshing auth state...');
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('refresh_token');
+        localStorage.removeItem('user_data');
+        window.location.reload();
+      }
+    }
+    return Promise.reject(error);
+  }
+);
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Inline SVG icons (no extra import needed)
 // ─────────────────────────────────────────────────────────────────────────────

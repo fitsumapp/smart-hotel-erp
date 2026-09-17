@@ -24,11 +24,14 @@ const CategoryManager = () => {
       const response = await axios.get(CATEGORY_API_BASE, {
         headers: getHeaders()
       });
-      // በደንብ እንዲታይ ዳታውን log አድርገው
-      console.log("Categories Loaded:", response.data);
-      setCategories(response.data);
+      const data = Array.isArray(response.data) ? response.data : (response.data?.results || []);
+      console.log("Categories Loaded:", data);
+      setCategories(data);
     } catch (error) {
       console.error("ዳታ መጫን አልተቻለም:", error);
+      if (error.response?.status === 401) {
+        alert("Session ጊዜው አልቋል (Session Expired)። እባክዎ Logout ብለው መልሰው Login ያድርጉ።");
+      }
     }
   };
 
@@ -71,7 +74,12 @@ const CategoryManager = () => {
       resetForm();
     } catch (error) {
       console.error("መመዝገብ አልተቻለም:", error);
-      alert("Error saving category. Check if Django is running and CORS is enabled.");
+      if (error.response?.status === 401) {
+        alert("Session ጊዜው አልቋል (Session Expired)። እባክዎ Logout ብለው መልሰው Login ያድርጉ።");
+      } else {
+        const msg = error.response?.data?.error?.message || error.response?.data?.name?.[0] || error.response?.data?.detail || "ካቴጎሪ መመዝገብ አልተቻለም።";
+        alert("ስህተት፦ " + msg);
+      }
     }
   };
 
