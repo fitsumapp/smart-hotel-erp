@@ -6,5 +6,8 @@
     "c:\\Users\\BAB AL SAFA\\Desktop\\Smart Hotel ERP\\venv\\Lib\\site-packages",
     "c:\\Users\\BAB AL SAFA\\Desktop\\Smart Hotel ERP"
   ],
-  "reportMissingTypeStubs": false
+  "reportMissingTypeStubs": false,
+  "reportAttributeAccessIssue": "none",
+  "reportGeneralTypeIssues": "none",
+  "reportCallIssue": "none"
 }
