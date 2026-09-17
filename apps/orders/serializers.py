@@ -52,9 +52,19 @@ class SystemSettingsSerializer(serializers.ModelSerializer):
 
 class OrderSerializer(serializers.ModelSerializer):
     items = OrderItemSerializer(many=True, read_only=True)
-    waiter_name = serializers.ReadOnlyField(source="waiter_username")
+    waiter_name = serializers.SerializerMethodField()
     table_code = serializers.ReadOnlyField(source="table.table_code")
     hotel_info = serializers.SerializerMethodField()
+
+    def get_waiter_name(self, obj):
+        if obj.waiter_username:
+            return obj.waiter_username
+        if obj.waiter_id_ref:
+            from users.models import User
+            w = User.objects.filter(id=obj.waiter_id_ref).first()
+            if w:
+                return w.username
+        return ""
 
     class Meta:
         model = Order

@@ -567,6 +567,7 @@ class CashierReceiptView(APIView):
             {
                 "order_id": order.id,
                 "table_code": order.table.table_code if order.table else "",
+                "waiter_name": order.waiter_username or (User.objects.filter(id=order.waiter_id_ref).values_list("username", flat=True).first() if order.waiter_id_ref else ""),
                 "items": items_data,
                 "sub_total": float(order.sub_total),
                 "service_charge": float(order.service_charge_amount),

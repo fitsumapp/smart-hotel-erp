@@ -86,6 +86,8 @@ const CashierDashboard = ({ userData, handleLogout }) => {
 
         setFiscalData({
           ...orderToPrint,
+          table_code: orderToPrint.table_code || (orderToPrint.table?.table_code ? orderToPrint.table.table_code : (orderToPrint.table ? `Table ${orderToPrint.table}` : 'N/A')),
+          waiter_name: orderToPrint.waiter_name || orderToPrint.waiter_username || 'N/A',
           summary: {
              sub_total: subTotal,
              vat: vat,
@@ -731,8 +733,10 @@ const CashierDashboard = ({ userData, handleLogout }) => {
 
                     <div style={{ fontSize: '11px', marginBottom: '10px' }}>
                       <div className="item-row"><span>ORD ID:</span><span>#ORD-{fiscalData?.id}</span></div>
+                      <div className="item-row"><span>TABLE:</span><span>{fiscalData?.table_code || (fiscalData?.table ? `Table ${fiscalData.table}` : 'N/A')}</span></div>
+                      <div className="item-row"><span>WAITER:</span><span>{(fiscalData?.waiter_name || fiscalData?.waiter_username || 'N/A').toUpperCase()}</span></div>
                       <div className="item-row"><span>DATE:</span><span>{fiscalData?.dateTime}</span></div>
-                      <div className="item-row"><span>CSHR:</span><span>{userData?.first_name?.toUpperCase() || 'ADMIN'}</span></div>
+                      <div className="item-row"><span>CSHR:</span><span>{userData?.first_name?.toUpperCase() || userData?.username?.toUpperCase() || 'CASHIER'}</span></div>
                     </div>
 
                     <table style={styles.receiptTable}>
