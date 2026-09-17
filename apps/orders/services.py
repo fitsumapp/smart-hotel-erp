@@ -52,13 +52,12 @@ def calculate_order_financials(order, settings_obj=None):
         ).quantize(TWOPLACES, rounding=ROUND_HALF_UP)
 
     vat_amount = Decimal("0.00")
-    taxable_amount = sub_total + service_amount
     if settings_obj.vat_enabled:
         vat_amount = (
-            taxable_amount * to_decimal(settings_obj.vat_percentage) / Decimal("100")
+            sub_total * to_decimal(settings_obj.vat_percentage) / Decimal("100")
         ).quantize(TWOPLACES, rounding=ROUND_HALF_UP)
 
-    grand_total = (taxable_amount + vat_amount).quantize(TWOPLACES, rounding=ROUND_HALF_UP)
+    grand_total = (sub_total + service_amount + vat_amount).quantize(TWOPLACES, rounding=ROUND_HALF_UP)
     return {
         "sub_total": sub_total,
         "service_charge": service_amount,

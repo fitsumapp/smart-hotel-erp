@@ -354,12 +354,12 @@ class GeneralLedgerIntegrationTests(TestCase):
         cash_item = entry.items.get(account__code="1000")
         revenue_item = entry.items.get(account__code="4100")
         
-        self.assertEqual(cash_item.amount_debit, Decimal("189.75"))
+        self.assertEqual(cash_item.amount_debit, Decimal("187.50"))
         self.assertEqual(revenue_item.amount_credit, Decimal("150.00"))
 
         vat_item = entry.items.get(account__code="2200")
         sc_item = entry.items.get(account__code="2300")
-        self.assertEqual(vat_item.amount_credit, Decimal("24.75"))
+        self.assertEqual(vat_item.amount_credit, Decimal("22.50"))
         self.assertEqual(sc_item.amount_credit, Decimal("15.00"))
 
     def test_inventory_purchase_and_issuance_posting(self):

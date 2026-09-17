@@ -81,9 +81,8 @@ const CashierDashboard = ({ userData, handleLogout }) => {
         const discount = parseFloat(discountValue || 0);
         const afterDiscount = subTotal - discount;
         const serviceCharge = afterDiscount * (serviceRate / 100);
-        const taxableAmount = afterDiscount + serviceCharge;
-        const vat = taxableAmount * (vatRate / 100);
-        const grandTotal = taxableAmount + vat;
+        const vat = afterDiscount * (vatRate / 100);
+        const grandTotal = afterDiscount + serviceCharge + vat;
 
         setFiscalData({
           ...orderToPrint,
@@ -251,9 +250,8 @@ const CashierDashboard = ({ userData, handleLogout }) => {
     const discount = parseFloat(discountValue || 0);
     const afterDiscount = subTotal - discount;
     const serviceCharge = afterDiscount * (serviceRate / 100);
-    const taxableAmount = afterDiscount + serviceCharge;
-    const vat = taxableAmount * (vatRate / 100);
-    const grandTotal = taxableAmount + vat;
+    const vat = afterDiscount * (vatRate / 100);
+    const grandTotal = afterDiscount + serviceCharge + vat;
     return { subTotal, discount, serviceCharge, vat, grandTotal: grandTotal > 0 ? grandTotal : 0 };
   };
 
