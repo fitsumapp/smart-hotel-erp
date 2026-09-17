@@ -135,9 +135,9 @@ class UserViewSet(viewsets.ModelViewSet):
             target=user, metadata={"role": user.role, "is_active": user.is_active},
         )
 
-    @transaction.atomic
     def perform_update(self, serializer):
-        target = User.objects.select_for_update().get(pk=serializer.instance.pk)
+        with transaction.atomic():
+            target = User.objects.select_for_update().get(pk=serializer.instance.pk)
         before = {"role": target.role, "is_active": target.is_active, "password": target.password}
         updated = serializer.save()
         sensitive_changed = (
