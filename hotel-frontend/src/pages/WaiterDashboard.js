@@ -72,7 +72,7 @@ function WaiterDashboard({ userData, handleLogout }) {
 
   const fetchDashboardData = async () => {
     try {
-      const [resOrders, resTables, resMenu] = await Promise.all([
+      const [resOrders, resTables, resMenu] = await Promise.allSettled([
         axios.get(`${API_BASE}waiter/my-orders/?start_date=${filterStartDate}&end_date=${filterEndDate}&limit=${filterLimit}&_cb=${new Date().getTime()}`, { 
           headers: {
             ...headers(),
@@ -83,9 +83,9 @@ function WaiterDashboard({ userData, handleLogout }) {
         axios.get(`${API_BASE}manage/`, { headers: headers() }),
         axios.get(`${API_BASE}menu-items/`, { headers: headers() }),
       ]);
-      setOrders(resOrders.data || []);
-      setTables(resTables.data || []);
-      setMenuItems(resMenu.data || []);
+      if (resOrders.status === 'fulfilled') setOrders(resOrders.value.data || []);
+      if (resTables.status === 'fulfilled') setTables(resTables.value.data || []);
+      if (resMenu.status === 'fulfilled') setMenuItems(resMenu.value.data || []);
     } catch (err) {
       console.error('Dashboard fetch failed', err);
     }

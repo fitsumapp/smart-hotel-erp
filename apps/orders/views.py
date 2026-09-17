@@ -215,6 +215,15 @@ class UpdateOrderStatusView(APIView):
             return Response({"error": "Unable to update order status."}, status=500)
 
 
+_WAITER_STATUS_PRIORITY = {
+    "ready": 0,
+    "pending": 1,
+    "preparing": 2,
+    "served": 3,
+    "bill_requested": 4,
+}
+
+
 class WaiterOrdersView(APIView):
     permission_classes = [IsWaiterOrAdmin]
 
