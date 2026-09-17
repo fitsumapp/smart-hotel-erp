@@ -87,3 +87,21 @@ class IsWaiterOrAdmin(BasePermission):
 
 class IsReceptionOrAdmin(IsReservationOperator):
     pass
+
+
+class IsAdminOrReadOnly(BasePermission):
+    """Allow read access to anyone (waiters, cashiers, guests), but only hotel admins can modify."""
+
+    message = "Hotel administrator access is required to modify."
+
+    def has_permission(self, request, view):
+        from rest_framework.permissions import SAFE_METHODS
+        if request.method in SAFE_METHODS:
+            return True
+        user = request.user
+        return bool(
+            user
+            and user.is_authenticated
+            and user.is_active
+            and (user.is_superuser or getattr(user, "role", "") == "admin")
+        )

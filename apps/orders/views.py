@@ -10,16 +10,17 @@ def finalize_paid_order(*args, **kwargs):
     return legacy_views.finalize_paid_order(*args, **kwargs)
 
 
+from users.permissions import IsAdminOrReadOnly
 from .selectors import select_admin_orders
 
 class CategoryViewSet(viewsets.ModelViewSet):
-    permission_classes = [IsHotelAdmin]
+    permission_classes = [IsAdminOrReadOnly]
     queryset = Category.objects.all()
     serializer_class = CategorySerializer
 
 
 class MenuItemViewSet(viewsets.ModelViewSet):
-    permission_classes = [IsHotelAdmin]
+    permission_classes = [IsAdminOrReadOnly]
     queryset = MenuItem.objects.all()
     serializer_class = MenuItemSerializer
 
