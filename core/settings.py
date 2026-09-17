@@ -112,12 +112,19 @@ if _neon_url:
     _db_config.setdefault("OPTIONS", {})["sslmode"] = "require"
     _db_config["CONN_MAX_AGE"] = int(os.getenv("DB_CONN_MAX_AGE", "60"))
     _db_config["CONN_HEALTH_CHECKS"] = True
-    _db_config["OPTIONS"]["options"] = f"-c statement_timeout={int(os.getenv('DB_STATEMENT_TIMEOUT_MS', '30000'))} -c lock_timeout={int(os.getenv('DB_LOCK_TIMEOUT_MS', '5000'))} -c idle_in_transaction_session_timeout={int(os.getenv('DB_IDLE_TX_TIMEOUT_MS', '60000'))}"
+    # Neon PgBouncer pooler (-pooler) rejects startup parameters like statement_timeout.
+    _is_pooler = "-pooler" in _neon_url or os.getenv("DB_IS_POOLER", "").lower() in ("true", "1")
+    if not _is_pooler and os.getenv("DB_ENABLE_TIMEOUT_OPTIONS", "false").lower() == "true":
+        _db_config["OPTIONS"]["options"] = f"-c statement_timeout={int(os.getenv('DB_STATEMENT_TIMEOUT_MS', '30000'))} -c lock_timeout={int(os.getenv('DB_LOCK_TIMEOUT_MS', '5000'))} -c idle_in_transaction_session_timeout={int(os.getenv('DB_IDLE_TX_TIMEOUT_MS', '60000'))}"
     DATABASES = {"default": _db_config}
 else:
     if IS_PRODUCTION:
         for _required_db_env in ("DB_NAME", "DB_USER", "DB_PASSWORD", "DB_HOST"):
             require_env(_required_db_env)
+    _db_options = {"sslmode": os.getenv("DB_SSLMODE", "prefer")}
+    _is_pooler = "-pooler" in os.getenv("DB_HOST", "") or os.getenv("DB_IS_POOLER", "").lower() in ("true", "1")
+    if not _is_pooler and os.getenv("DB_ENABLE_TIMEOUT_OPTIONS", "false").lower() == "true":
+        _db_options["options"] = f"-c statement_timeout={int(os.getenv('DB_STATEMENT_TIMEOUT_MS', '30000'))} -c lock_timeout={int(os.getenv('DB_LOCK_TIMEOUT_MS', '5000'))} -c idle_in_transaction_session_timeout={int(os.getenv('DB_IDLE_TX_TIMEOUT_MS', '60000'))}"
     DATABASES = {
         "default": {
             "ENGINE": "django.db.backends.postgresql",
@@ -128,10 +135,7 @@ else:
             "PORT": os.getenv("DB_PORT", "5432"),
             "CONN_MAX_AGE": int(os.getenv("DB_CONN_MAX_AGE", "60")),
             "CONN_HEALTH_CHECKS": True,
-            "OPTIONS": {
-                "sslmode": os.getenv("DB_SSLMODE", "prefer"),
-                "options": f"-c statement_timeout={int(os.getenv('DB_STATEMENT_TIMEOUT_MS', '30000'))} -c lock_timeout={int(os.getenv('DB_LOCK_TIMEOUT_MS', '5000'))} -c idle_in_transaction_session_timeout={int(os.getenv('DB_IDLE_TX_TIMEOUT_MS', '60000'))}",
-            },
+            "OPTIONS": _db_options,
         }
     }
 
