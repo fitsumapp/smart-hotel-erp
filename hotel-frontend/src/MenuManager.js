@@ -23,21 +23,44 @@ const MenuManager = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const [loading, setLoading] = useState(false);
+  const [fetchError, setFetchError] = useState("");
+
   const getHeaders = () => {
     const token = localStorage.getItem('access_token');
     return token ? { Authorization: `Bearer ${token}` } : {};
   };
 
   const fetchData = async () => {
+    setLoading(true);
+    setFetchError("");
     try {
-      const [resItems, resCats] = await Promise.all([
+      const [resItems, resCats] = await Promise.allSettled([
         axios.get(`${API_BASE}menu-items/`, { headers: getHeaders() }),
         axios.get(`${API_BASE}categories/`, { headers: getHeaders() })
       ]);
-      setItems(resItems.data);
-      setCategories(resCats.data);
+
+      if (resItems.status === 'fulfilled') {
+        const raw = resItems.value.data;
+        const list = Array.isArray(raw) ? raw : (raw?.results || []);
+        setItems(list);
+      } else {
+        console.error("Menu items fetch failed:", resItems.reason);
+      }
+
+      if (resCats.status === 'fulfilled') {
+        const raw = resCats.value.data;
+        const list = Array.isArray(raw) ? raw : (raw?.results || []);
+        setCategories(list);
+      } else {
+        console.error("Categories fetch failed:", resCats.reason);
+        setFetchError("ካቴጎሪዎችን መጫን አልተቻለም።");
+      }
     } catch (error) {
       console.error("ዳታ መጫን አልተቻለም፦", error);
+      setFetchError("ዳታ መጫን አልተቻለም፦ " + (error.message || "Network Error"));
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -190,15 +213,22 @@ const MenuManager = () => {
                   onChange={e => setNewItem({...newItem, name: e.target.value})}
                 />
 
-                <select
-                  required
-                  value={newItem.category}
-                  style={inputStyle}
-                  onChange={e => setNewItem({...newItem, category: e.target.value})}
-                >
-                  <option value="">Select Category</option>
-                  {categories.map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
-                </select>
+                <div>
+                  <select
+                    required
+                    value={newItem.category}
+                    style={inputStyle}
+                    onChange={e => setNewItem({...newItem, category: e.target.value})}
+                  >
+                    <option value="">{categories.length === 0 ? "⚠️ ምንም Category አልተገኘም (No Category)" : "Select Category"}</option>
+                    {categories.map(cat => <option key={cat.id} value={cat.id}>{cat.name} ({cat.station || 'Kitchen'})</option>)}
+                  </select>
+                  {categories.length === 0 && (
+                    <p style={{ margin: '6px 0 0 0', fontSize: '11px', color: '#e11d48', fontWeight: '600', lineHeight: '1.4' }}>
+                      ⚠️ የተመዘገበ Category አልተገኘም። እባክዎ ከግራ በኩል ባለው ሜኑ <b>"Food & Beverage ➔ Categories"</b> ገጽ ላይ Category መመዝገብዎን ያረጋግጡ።
+                    </p>
+                  )}
+                </div>
 
                 <input
                   required
