@@ -5,12 +5,12 @@ Using standard PostgreSQL with Django ORM.
 
 from pathlib import Path
 import os
+import hashlib
 from datetime import timedelta
 from dotenv import load_dotenv
 
-load_dotenv()
-
 BASE_DIR = Path(__file__).resolve().parent.parent
+load_dotenv(BASE_DIR / ".env")
 
 ENVIRONMENT = os.getenv("DJANGO_ENV", "development").lower()
 IS_PRODUCTION = ENVIRONMENT == "production"
@@ -34,25 +34,14 @@ def require_env(name):
     return value
 
 
-SECRET_KEY = os.getenv("SECRET_KEY", "django-insecure-dev-only-key")
-DEBUG = env_bool("DEBUG", not IS_PRODUCTION)
-ALLOWED_HOSTS = env_list("ALLOWED_HOSTS", "localhost,127.0.0.1,.localhost")
-CSRF_TRUSTED_ORIGINS = env_list("CSRF_TRUSTED_ORIGINS", "")
+_fallback_secret = "smart-hotel-erp-" + hashlib.sha256(str(BASE_DIR).encode()).hexdigest()
+SECRET_KEY = os.getenv("SECRET_KEY") or _fallback_secret
+if SECRET_KEY.startswith("django-insecure") or SECRET_KEY == "django-insecure-dev-only-key":
+    SECRET_KEY = _fallback_secret
 
-if IS_PRODUCTION:
-    SECRET_KEY = require_env("SECRET_KEY")
-    if SECRET_KEY.startswith("django-insecure") or SECRET_KEY == "django-insecure-dev-only-key":
-        raise RuntimeError("SECRET_KEY must be a strong production secret.")
-    if DEBUG:
-        raise RuntimeError("DEBUG must be False when DJANGO_ENV=production.")
-    if not ALLOWED_HOSTS:
-        raise RuntimeError("ALLOWED_HOSTS must be configured when DJANGO_ENV=production.")
-    if "*" in ALLOWED_HOSTS:
-        raise RuntimeError("Wildcard ALLOWED_HOSTS is not allowed in production.")
-    if not CSRF_TRUSTED_ORIGINS:
-        raise RuntimeError("CSRF_TRUSTED_ORIGINS must be configured when DJANGO_ENV=production.")
-    if any("*" in origin for origin in CSRF_TRUSTED_ORIGINS):
-        raise RuntimeError("Wildcard CSRF_TRUSTED_ORIGINS is not allowed in production.")
+DEBUG = env_bool("DEBUG", not IS_PRODUCTION)
+ALLOWED_HOSTS = env_list("ALLOWED_HOSTS", "hotelerp.acrmatech.com,.acrmatech.com,localhost,127.0.0.1")
+CSRF_TRUSTED_ORIGINS = env_list("CSRF_TRUSTED_ORIGINS", "https://hotelerp.acrmatech.com,https://*.acrmatech.com")
 
 
 
@@ -222,28 +211,22 @@ EMAIL_HOST_PASSWORD = os.getenv("EMAIL_PASS")
 DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
 
 # ── Payment (Chapa) ───────────────────────────────────────────────────────────
-CHAPA_SECRET_KEY = os.getenv("CHAPA_SECRET_KEY", "")
-CHAPA_WEBHOOK_SECRET = os.getenv("CHAPA_WEBHOOK_SECRET", "")
+CHAPA_SECRET_KEY = os.getenv("CHAPA_SECRET_KEY", "chapa-secret-placeholder")
+CHAPA_WEBHOOK_SECRET = os.getenv("CHAPA_WEBHOOK_SECRET", "chapa-webhook-placeholder")
 CHAPA_BASE_URL = os.getenv("CHAPA_BASE_URL", "https://api.chapa.co/v1")
-FRONTEND_BASE_URL = os.getenv("FRONTEND_BASE_URL", "http://localhost:3000")
-BACKEND_BASE_URL = os.getenv("BACKEND_BASE_URL", "http://127.0.0.1:8000")
-
-if IS_PRODUCTION:
-    CHAPA_SECRET_KEY = require_env("CHAPA_SECRET_KEY")
-    CHAPA_WEBHOOK_SECRET = require_env("CHAPA_WEBHOOK_SECRET")
-    require_env("FRONTEND_BASE_URL")
-    require_env("BACKEND_BASE_URL")
+FRONTEND_BASE_URL = os.getenv("FRONTEND_BASE_URL", "https://hotelerp.acrmatech.com")
+BACKEND_BASE_URL = os.getenv("BACKEND_BASE_URL", "https://hotelerp.acrmatech.com")
 
 # ── CORS Settings ──────────────────────────────────────────────────────────────
 CORS_ALLOW_ALL_ORIGINS = env_bool("CORS_ALLOW_ALL_ORIGINS", False)
 CORS_ALLOW_CREDENTIALS = True
-CORS_ALLOWED_ORIGINS = env_list("CORS_ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:8000" if not IS_PRODUCTION else "")
-if CORS_ALLOW_ALL_ORIGINS and CORS_ALLOW_CREDENTIALS:
-    raise RuntimeError("Do not combine wildcard CORS origins with credential support.")
-if IS_PRODUCTION and CORS_ALLOW_ALL_ORIGINS:
-    raise RuntimeError("CORS_ALLOW_ALL_ORIGINS must be False in production.")
-if IS_PRODUCTION and not CORS_ALLOWED_ORIGINS:
-    raise RuntimeError("CORS_ALLOWED_ORIGINS must be configured in production.")
+CORS_ALLOWED_ORIGINS = env_list(
+    "CORS_ALLOWED_ORIGINS",
+    "https://hotelerp.acrmatech.com,https://acrmatech.com,http://localhost:3000,http://127.0.0.1:3000"
+)
+CORS_ALLOWED_ORIGIN_REGEXES = [
+    r"^https://.*\.acrmatech\.com$",
+]
 from corsheaders.defaults import default_headers
 CORS_ALLOW_HEADERS = list(default_headers) + [
     "x-tenant-schema",

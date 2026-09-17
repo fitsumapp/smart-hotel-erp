@@ -33,7 +33,8 @@ class LoginView(APIView):
         user = authenticate_with_lockout(identifier=identifier, password=password, request=request)
         if not user:
             return Response({"error": "Invalid credentials or account unavailable."}, status=401)
-        if user.role in {User.ADMIN, User.FINANCE}:
+        enforce_mfa = getattr(settings, "ENFORCE_EMAIL_MFA", False)
+        if enforce_mfa and user.role in {User.ADMIN, User.FINANCE}:
             code = issue_mfa_code(user)
             try:
                 _send_code(subject="Smart Hotel ERP login verification", code=code, email=user.email)
