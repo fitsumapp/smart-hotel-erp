@@ -19,6 +19,15 @@ User = get_user_model()
 
 
 class HardeningProductionSettingsTest(TestCase):
+    def test_production_secret_validation_rejects_placeholders(self):
+        from core.settings import validate_production_secret
+        with self.assertRaises(RuntimeError):
+            validate_production_secret("SECRET_KEY", "replace-with-a-real-secret-that-is-long-enough")
+        with self.assertRaises(RuntimeError):
+            validate_production_secret("SECRET_KEY", "s" * 48)
+        valid_secret = "Xr7kQ2pL9mV4cB8nD6sF1hJ5wZ3aT0yUqEoG"
+        self.assertEqual(validate_production_secret("SECRET_KEY", valid_secret), valid_secret)
+
     def test_drf_throttling_rates_configured(self):
         from django.conf import settings
         rates = settings.REST_FRAMEWORK.get("DEFAULT_THROTTLE_RATES", {})
@@ -54,6 +63,10 @@ class SecurityHeadersTest(TestCase):
         self.assertEqual(response.headers.get("X-Frame-Options"), "DENY")
         self.assertEqual(response.headers.get("Referrer-Policy"), "strict-origin-when-cross-origin")
         self.assertIn("script-src 'self'", response.headers["Content-Security-Policy"])
+
+    def test_private_media_paths_are_never_served_by_django(self):
+        response = self.client.get("/media/private/guest_ids/known-id.jpg")
+        self.assertEqual(response.status_code, 403)
 
 
 class ErrorHandlingAndCorrelationTest(TestCase):

@@ -23,8 +23,8 @@ const MenuManager = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const [loading, setLoading] = useState(false);
-  const [fetchError, setFetchError] = useState("");
+  const [, setLoading] = useState(false);
+  const [, setFetchError] = useState("");
 
   const getHeaders = () => {
     const token = localStorage.getItem('access_token');

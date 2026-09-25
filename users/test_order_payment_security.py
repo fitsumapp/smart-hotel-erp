@@ -77,6 +77,18 @@ class OrderSecurityFixture(APITestCase):
 
 
 class OrderAuthorizationTests(OrderSecurityFixture):
+    def test_cash_payment_rolls_back_when_journal_posting_fails(self):
+        from apps.orders.services import finalize_paid_order
+        from hotel.models import JournalEntry
+
+        with patch("apps.orders.services.post_journal_entry", side_effect=ValueError("ledger unavailable")):
+            with self.assertRaises(ValueError):
+                finalize_paid_order(self.order, "Cash", cashier=self.cashier)
+
+        self.order.refresh_from_db()
+        self.assertEqual(self.order.payment_status, "pending")
+        self.assertFalse(JournalEntry.objects.exists())
+
     def test_customer_cannot_complete_order_as_paid(self):
         self.client.force_authenticate(self.customer)
         response = self.client.post(
@@ -269,4 +281,3 @@ class ChapaReservationVerificationTests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         verify.assert_not_called()
-

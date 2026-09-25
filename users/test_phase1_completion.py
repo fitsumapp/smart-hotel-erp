@@ -114,6 +114,14 @@ class LoginMFAAndSessionCompletionTests(APITestCase):
         replay = self.client.post(reverse("token-refresh"), {"refresh": refresh}, format="json")
         self.assertEqual(replay.status_code, 401)
 
+    def test_logout_blacklists_refresh_and_revokes_existing_access(self):
+        tokens = get_tokens_for_user(self.user)
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {tokens['access']}")
+        response = self.client.post(reverse("logout"), {"refresh": tokens["refresh"]}, format="json")
+        self.assertEqual(response.status_code, 204)
+        self.assertEqual(self.client.get("/api/users/users/").status_code, 401)
+        self.assertEqual(self.client.post(reverse("token-refresh"), {"refresh": tokens["refresh"]}, format="json").status_code, 401)
+
 
 class CentralRoleMatrixTests(APITestCase):
     def setUp(self):

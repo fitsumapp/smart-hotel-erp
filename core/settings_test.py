@@ -7,7 +7,7 @@ email to external recipients.
 
 import os
 
-os.environ.setdefault("DJANGO_ENV", "test")
+os.environ["DJANGO_ENV"] = "test"
 
 from .settings import *  # noqa: F403,E402
 
@@ -25,3 +25,5 @@ PASSWORD_HASHERS = [
     "django.contrib.auth.hashers.MD5PasswordHasher",
 ]
 
+
+TEST_RUNNER = "core.test_runner.IsolatedRunner"

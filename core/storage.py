@@ -8,12 +8,27 @@ from django.core.files.storage import FileSystemStorage
 
 
 class PrivateFileSystemStorage(FileSystemStorage):
-    """Storage backend for sensitive uploads stored in media/private/."""
+    """Keep new sensitive uploads outside public media; read legacy files safely."""
 
-    def __init__(self, **kwargs):
-        kwargs.setdefault("location", os.path.join(settings.MEDIA_ROOT, "private"))
-        kwargs.setdefault("base_url", None)
-        super().__init__(**kwargs)
+    @property
+    def location(self):
+        return os.path.abspath(settings.PRIVATE_MEDIA_ROOT)
+
+    @property
+    def base_location(self):
+        return self.location
+
+    def url(self, name):
+        raise ValueError("Private files require an authenticated download endpoint.")
+
+    def _open(self, name, mode="rb"):
+        try:
+            return super()._open(name, mode)
+        except FileNotFoundError:
+            if mode != "rb":
+                raise
+            legacy = FileSystemStorage(location=os.path.join(settings.MEDIA_ROOT, "private"))
+            return legacy.open(name, mode)
 
 
 private_storage = PrivateFileSystemStorage()

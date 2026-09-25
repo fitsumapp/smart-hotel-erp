@@ -12,6 +12,14 @@ class ReservationSerializer(serializers.ModelSerializer):
 
 
 class GuestProfileSerializer(serializers.ModelSerializer):
+    id_scan = serializers.ImageField(write_only=True, required=False, allow_null=True)
+    id_scan_url = serializers.SerializerMethodField()
+
+    def get_id_scan_url(self, obj):
+        if not obj.id_scan:
+            return None
+        return f"/api/v1/guest-profiles/{obj.pk}/id-scan/"
+
     class Meta:
         model = GuestProfile
         fields = "__all__"

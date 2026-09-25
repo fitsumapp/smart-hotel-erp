@@ -6,12 +6,14 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { API_BASE_URL } from './apiConfig';
+import { apiErrorMessage, clearSession, saveSession } from './apiClient';
 
 const API_BASE = `${API_BASE_URL}/users/`;
 
 const AuthPage = ({ onLoginSuccess }) => {
   const [isLogin, setIsLogin] = useState(true);
   const [isVerifying, setIsVerifying] = useState(false);
+  const [isMfa, setIsMfa] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -36,58 +38,23 @@ const AuthPage = ({ onLoginSuccess }) => {
     const endpoint = isLogin ? 'login/' : 'register/';
 
     try {
-      console.log("Attempting login at:", `${API_BASE}${endpoint}`);
       if (isLogin) {
-        // --- 1. CLEAN SLATE: ማንኛውንም የቆየ ዳታ እና ቶከን እናጽዳ ---
-        // ግን የ tenant schema hint ን እናስቀር (routing እንዲሰራ)
-        const currentTenant = localStorage.getItem('public_tenant_schema');
-        localStorage.clear();
-        if (currentTenant) localStorage.setItem('public_tenant_schema', currentTenant);
-        
-        delete axios.defaults.headers.common["Authorization"];
-
-        const loginData = {
-          username: formData.email, // Django 'username' ብሎ ስለሚቀበል ኢሜይሉን እዚህ እንልካለን
-          password: formData.password
-        };
-
-        // --- 2. ሪኩዌስት ስንልክ (Interceptor automatically adds Tenant header) ---
-        const res = await axios.post(`${API_BASE}${endpoint}`, loginData);
-
-        if (res.data.tokens && res.data.tokens.access) {
-          // ቶከኖችን ማስቀመጥ
-          localStorage.setItem('access_token', res.data.tokens.access);
-          localStorage.setItem('refresh_token', res.data.tokens.refresh);
-          localStorage.setItem('user', JSON.stringify(res.data.user));
-
-          // አዲሱን ቶከን ለቀጣይ ሪኩዌስቶች Setup እናድርግ
-          axios.defaults.headers.common["Authorization"] = `Bearer ${res.data.tokens.access}`;
-
-          const user = res.data.user;
-
-          if (onLoginSuccess) {
-            onLoginSuccess(user);
-          }
-
-          // --- SMART REDIRECTION ---
-          const currentHostname = window.location.hostname;
-          const userTenant = user?.tenant_schema;
-
-          if (userTenant && userTenant !== "public" && !user.is_platform_admin) {
-              const targetSubdomain = userTenant.replace('hotel_', '').replace('hotel', '');
-              
-              if (!currentHostname.startsWith(targetSubdomain) && currentHostname !== targetSubdomain) {
-                  const port = window.location.port ? `:${window.location.port}` : '';
-                  const domainParts = currentHostname.split('.');
-                  const baseDomain = domainParts.length > 1 ? domainParts.slice(-1)[0] : 'localhost';
-                  
-                  window.location.href = `${window.location.protocol}//${targetSubdomain}.${baseDomain}${port}/dashboard`;
-                  return;
-              }
-          }
+        clearSession();
+        const res = await axios.post(`${API_BASE}${endpoint}`, {
+          username: formData.email, password: formData.password
+        });
+        if (res.data.mfa_required) {
+          setIsMfa(true);
+          setIsVerifying(true);
+          setFormData(previous => ({ ...previous, password: '', otp: '' }));
+          setSuccess('Enter the login verification code sent to your email.');
+        } else {
+          saveSession(res.data);
+          onLoginSuccess?.(res.data.user);
           navigate('/dashboard');
         }
       } else {
+        setIsMfa(false);
         const nameParts = formData.full_name.trim().split(' ');
         const registerData = {
           first_name: nameParts[0] || '',
@@ -102,14 +69,7 @@ const AuthPage = ({ onLoginSuccess }) => {
         setIsVerifying(true);
       }
     } catch (err) {
-      console.error("Auth Error Details:", err.response?.data);
-      const detail = err.response?.data?.detail || err.response?.data?.error;
-
-      if (detail && (detail.includes("token") || detail.includes("credentials"))) {
-        setError("Invalid email or password. Please try again.");
-      } else {
-        setError(detail || "Authentication failed. Please check your internet connection.");
-      }
+      setError(apiErrorMessage(err, 'Authentication failed. Please try again.'));
     } finally {
       setLoading(false);
     }
@@ -120,18 +80,22 @@ const AuthPage = ({ onLoginSuccess }) => {
     setLoading(true);
     setError("");
     try {
-      await axios.post(`${API_BASE}verify-otp/`, {
-        email: formData.email,
-        otp: formData.otp
-      });
-
-      setSuccess("Account activated! You can now login with your password.");
-      setIsVerifying(false);
-      setIsLogin(true);
-      setFormData(prev => ({...prev, otp: ''}));
-
+      if (isMfa) {
+        const res = await axios.post(`${API_BASE}verify-mfa/`, { username: formData.email, code: formData.otp });
+        saveSession(res.data);
+        setIsMfa(false);
+        setIsVerifying(false);
+        onLoginSuccess?.(res.data.user);
+        navigate('/dashboard');
+      } else {
+        await axios.post(`${API_BASE}verify-otp/`, { email: formData.email, otp: formData.otp });
+        setSuccess('Account activated! You can now login with your password.');
+        setIsVerifying(false);
+        setIsLogin(true);
+        setFormData(previous => ({ ...previous, otp: '' }));
+      }
     } catch (err) {
-      setError(err.response?.data?.error || "Invalid code. Try again.");
+      setError(apiErrorMessage(err, 'Invalid or expired code. Please try again.'));
     } finally {
       setLoading(false);
     }
@@ -153,7 +117,7 @@ const AuthPage = ({ onLoginSuccess }) => {
           </div>
           <h1 style={mainTitleStyle}>ACRMA TECH</h1>
           <p style={subtitleStyle}>
-            {isVerifying ? "Verify Your Email" : isLogin ? "Welcome Back" : "Create New Account"}
+            {isVerifying ? (isMfa ? "Verify Your Login" : "Verify Your Email") : isLogin ? "Welcome Back" : "Create New Account"}
           </p>
         </div>
 
@@ -239,7 +203,7 @@ const AuthPage = ({ onLoginSuccess }) => {
             </p>
             <InputWithIcon
               icon={<ShieldCheck size={18} />}
-              type="text" name="otp"
+              type="text" name="otp" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6}
               placeholder="OTP Code"
               value={formData.otp}
               onChange={handleInputChange}
@@ -247,7 +211,7 @@ const AuthPage = ({ onLoginSuccess }) => {
             <button type="submit" disabled={loading} style={submitBtnStyle}>
               {loading ? "Verifying..." : "Verify"}
             </button>
-            <button type="button" onClick={() => setIsVerifying(false)} style={cancelBtnStyle}>
+            <button type="button" onClick={() => { setIsVerifying(false); setIsMfa(false); setIsLogin(true); setError(''); setSuccess(''); }} style={cancelBtnStyle}>
               Back to Login
             </button>
           </form>

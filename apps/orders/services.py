@@ -234,9 +234,7 @@ def finalize_paid_order(order, payment_method, payment_reference=None, tip_amoun
                 items=jv_items
             )
     except Exception as e:
-        if payment_attempt is not None:
-            raise
-        print(f"GL Auto-post error for Order #{order.id}: {e}")
+        raise ValueError(f"Accounting posting failed for Order #{order.id}.") from e
     if payment_attempt is not None and payment_entry is not None:
         PaymentAttempt.objects.filter(pk=payment_attempt.pk, accounting_entry__isnull=True).update(accounting_entry=payment_entry)
 

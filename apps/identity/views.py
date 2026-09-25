@@ -4,9 +4,9 @@ from django.core.exceptions import ValidationError
 from django.core.mail import send_mail
 from django.db import transaction
 from rest_framework import permissions, status, viewsets
+from rest_framework.exceptions import AuthenticationFailed
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework_simplejwt.tokens import RefreshToken
 
 from users.models import User
 from users.permissions import IsHotelAdmin
@@ -15,6 +15,7 @@ from .services import (
     audit_security_event, authenticate_with_lockout, get_tokens_for_user,
     issue_activation_otp, issue_mfa_code, verify_activation_otp, verify_mfa_code,
 )
+from rest_framework_simplejwt.tokens import RefreshToken
 
 
 def _send_code(*, subject, code, email):
@@ -33,8 +34,8 @@ class LoginView(APIView):
         user = authenticate_with_lockout(identifier=identifier, password=password, request=request)
         if not user:
             return Response({"error": "Invalid credentials or account unavailable."}, status=401)
-        enforce_mfa = getattr(settings, "ENFORCE_EMAIL_MFA", False)
-        if enforce_mfa and user.role in {User.ADMIN, User.FINANCE}:
+        enforce_mfa = settings.ENFORCE_EMAIL_MFA
+        if enforce_mfa and (user.is_superuser or user.role in {User.ADMIN, User.FINANCE}):
             code = issue_mfa_code(user)
             try:
                 _send_code(subject="Smart Hotel ERP login verification", code=code, email=user.email)
@@ -61,17 +62,26 @@ class VerifyMFAView(APIView):
 
 
 class LogoutView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.AllowAny]
 
     def post(self, request):
         raw_refresh = request.data.get("refresh")
         if not raw_refresh:
             return Response({"error": "Refresh token is required."}, status=400)
-        try:
-            RefreshToken(raw_refresh).blacklist()
-        except Exception:
-            return Response({"error": "Invalid refresh token."}, status=400)
-        audit_security_event(action="logout", request=request, actor=request.user, target=request.user)
+        with transaction.atomic():
+            try:
+                refresh = RefreshToken(raw_refresh)
+                user = User.objects.select_for_update().get(pk=refresh["user_id"])
+            except Exception as exc:
+                raise AuthenticationFailed("Invalid refresh token.", code="token_not_valid") from exc
+            if refresh.get("token_version") != user.token_version:
+                raise AuthenticationFailed("Session has already been revoked.", code="session_revoked")
+            refresh.blacklist()
+            user.token_version += 1
+            user.mfa_hash = ""
+            user.mfa_expires_at = None
+            user.save(update_fields=["token_version", "mfa_hash", "mfa_expires_at"])
+            audit_security_event(action="logout", request=request, actor=user, target=user)
         return Response(status=204)
 
 

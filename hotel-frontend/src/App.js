@@ -31,45 +31,9 @@ import OrdersManager from './pages/OrdersManager';
 import { Bell, Search, LogOut, Loader2, Menu } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
-import { API_BASE_URL, getTenantSchemaHint } from './apiConfig';
+import { API_BASE_URL } from './apiConfig';
+import { logoutSession } from './apiClient';
 
-// --- AXIOS INTERCEPTOR ---
-axios.interceptors.request.use(
-  (config) => {
-    const token = localStorage.getItem('access_token');
-    if (token) config.headers.Authorization = `Bearer ${token}`;
-    
-    // Add Tenant Schema Header automatically
-    const tenantHint = getTenantSchemaHint();
-    if (tenantHint) {
-      config.headers['X-Tenant-Schema'] = tenantHint;
-    }
-    
-    return config;
-  },
-  (error) => Promise.reject(error)
-);
-
-axios.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    if (error.response && error.response.status === 401) {
-      const code = error.response.data?.error?.code || error.response.data?.code;
-      if (code === 'token_not_valid') {
-        console.warn('Session expired. Refreshing auth state...');
-        localStorage.removeItem('access_token');
-        localStorage.removeItem('refresh_token');
-        localStorage.removeItem('user_data');
-        window.location.reload();
-      }
-    }
-    return Promise.reject(error);
-  }
-);
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Inline SVG icons (no extra import needed)
-// ─────────────────────────────────────────────────────────────────────────────
 const ShoppingCartIcon = () => (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
     <circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/>
@@ -506,6 +470,12 @@ const DashboardLayout = ({ activeTab, setActiveTab, userData, handleLogout }) =>
 function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [userData, setUserData]   = useState(null);
+  useEffect(() => {
+    const expired = () => { setUserData(null); window.location.replace('/'); };
+    window.addEventListener('hotel-session-expired', expired);
+    return () => window.removeEventListener('hotel-session-expired', expired);
+  }, []);
+
 
   useEffect(() => {
     const savedUser = localStorage.getItem('user');
@@ -526,11 +496,14 @@ function App() {
     }
   };
 
-  const handleLogout = () => {
-    localStorage.clear();
-    delete axios.defaults.headers.common['Authorization'];
-    setUserData(null);
-    window.location.replace('/');
+  const handleLogout = async () => {
+    try {
+      await logoutSession();
+      setUserData(null);
+      window.location.replace('/');
+    } catch (error) {
+      window.alert('Logout could not reach the server. Please retry to revoke your sessions.');
+    }
   };
 
   const renderDashboard = () => {

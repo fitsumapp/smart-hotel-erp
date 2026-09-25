@@ -157,7 +157,7 @@ def verify_mfa_code(*, identifier, code, request):
         normalized = str(identifier or "").strip().lower()
         user = User.objects.select_for_update().filter(Q(email__iexact=normalized) | Q(username__iexact=normalized)).first()
         now = timezone.now()
-        if not user or user.role not in {User.ADMIN, User.FINANCE} or not user.mfa_hash or not user.mfa_expires_at or now > user.mfa_expires_at or user.mfa_attempts >= MAX_OTP_ATTEMPTS:
+        if not user or not user.is_active or (not user.is_superuser and user.role not in {User.ADMIN, User.FINANCE}) or not user.mfa_hash or not user.mfa_expires_at or now > user.mfa_expires_at or user.mfa_attempts >= MAX_OTP_ATTEMPTS:
             metrics.increment("otp_mfa_failures_total")
             audit_security_event(action="mfa_failed", request=request, target=user, metadata={"reason": "invalid_or_expired"})
             return None

@@ -6,6 +6,8 @@ Using standard PostgreSQL with Django ORM.
 from pathlib import Path
 import os
 import hashlib
+import math
+from collections import Counter
 from datetime import timedelta
 from dotenv import load_dotenv
 
@@ -34,10 +36,26 @@ def require_env(name):
     return value
 
 
-_fallback_secret = "smart-hotel-erp-" + hashlib.sha256(str(BASE_DIR).encode()).hexdigest()
-SECRET_KEY = os.getenv("SECRET_KEY") or _fallback_secret
-if SECRET_KEY.startswith("django-insecure") or SECRET_KEY == "django-insecure-dev-only-key":
-    SECRET_KEY = _fallback_secret
+def validate_production_secret(name, value):
+    lowered = (value or "").lower()
+    frequencies = Counter(value or "")
+    entropy = -sum((count / max(len(value or ""), 1)) * math.log2(count / max(len(value or ""), 1)) for count in frequencies.values())
+    if (
+        len(value or "") < 32
+        or len(frequencies) < 16
+        or entropy < 3.2
+        or any(marker in lowered for marker in ("placeholder", "replace-with", "django-insecure", "dev-only", "smart-hotel-erp-"))
+    ):
+        raise RuntimeError(f"{name} must be a strong, explicitly configured production secret (at least 32 characters).")
+    return value
+
+
+SECRET_KEY = os.getenv("SECRET_KEY") or (
+    "dev-only-" + hashlib.sha256(str(BASE_DIR).encode()).hexdigest()
+)
+if IS_PRODUCTION:
+    SECRET_KEY = validate_production_secret("SECRET_KEY", require_env("SECRET_KEY"))
+ENFORCE_EMAIL_MFA = True
 
 DEBUG = env_bool("DEBUG", not IS_PRODUCTION)
 ALLOWED_HOSTS = env_list("ALLOWED_HOSTS", "hotelerp.acrmatech.com,.acrmatech.com,localhost,127.0.0.1")
@@ -83,7 +101,9 @@ CACHE_MIDDLEWARE_SECONDS = 0
 CACHE_MIDDLEWARE_KEY_PREFIX = ""
 CACHES = {
     "default": {
-        "BACKEND": "django.core.cache.backends.dummy.DummyCache",
+        "BACKEND": "django.core.cache.backends.db.DatabaseCache",
+        "LOCATION": "hotel_api_cache",
+        "OPTIONS": {"MAX_ENTRIES": 100000},
     }
 }
 
@@ -197,6 +217,9 @@ STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")
 STATICFILES_DIRS = []
 MEDIA_URL = "/media/"
 MEDIA_ROOT = os.path.join(BASE_DIR, "media")
+PRIVATE_MEDIA_ROOT = Path(os.getenv("PRIVATE_MEDIA_ROOT", str(BASE_DIR / "private_media"))).resolve()
+if PRIVATE_MEDIA_ROOT == Path(MEDIA_ROOT).resolve() or Path(MEDIA_ROOT).resolve() in PRIVATE_MEDIA_ROOT.parents:
+    raise RuntimeError("PRIVATE_MEDIA_ROOT must be outside the public media directory.")
 
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
@@ -211,8 +234,8 @@ EMAIL_HOST_PASSWORD = os.getenv("EMAIL_PASS")
 DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
 
 # ── Payment (Chapa) ───────────────────────────────────────────────────────────
-CHAPA_SECRET_KEY = os.getenv("CHAPA_SECRET_KEY", "chapa-secret-placeholder")
-CHAPA_WEBHOOK_SECRET = os.getenv("CHAPA_WEBHOOK_SECRET", "chapa-webhook-placeholder")
+CHAPA_SECRET_KEY = os.getenv("CHAPA_SECRET_KEY", "")
+CHAPA_WEBHOOK_SECRET = os.getenv("CHAPA_WEBHOOK_SECRET", "")
 CHAPA_BASE_URL = os.getenv("CHAPA_BASE_URL", "https://api.chapa.co/v1")
 FRONTEND_BASE_URL = os.getenv("FRONTEND_BASE_URL", "https://hotelerp.acrmatech.com")
 BACKEND_BASE_URL = os.getenv("BACKEND_BASE_URL", "https://hotelerp.acrmatech.com")
@@ -224,9 +247,7 @@ CORS_ALLOWED_ORIGINS = env_list(
     "CORS_ALLOWED_ORIGINS",
     "https://hotelerp.acrmatech.com,https://acrmatech.com,http://localhost:3000,http://127.0.0.1:3000"
 )
-CORS_ALLOWED_ORIGIN_REGEXES = [
-    r"^https://.*\.acrmatech\.com$",
-]
+CORS_ALLOWED_ORIGIN_REGEXES = env_list("CORS_ALLOWED_ORIGIN_REGEXES")
 from corsheaders.defaults import default_headers
 CORS_ALLOW_HEADERS = list(default_headers) + [
     "x-tenant-schema",
@@ -284,17 +305,18 @@ REST_FRAMEWORK = {
     ],
     "DEFAULT_THROTTLE_RATES": {
         "anon": "100/day",
-        "user": "1000/day",
+        "user": "120/minute",
         "login": "10/minute",
         "register": "5/hour",
         "otp": "5/hour",
         "mfa": "10/hour",
+        "refresh": "60/minute",
     },
 }
 
 # ── JWT ───────────────────────────────────────────────────────────────────────
 SIMPLE_JWT = {
-    "ACCESS_TOKEN_LIFETIME": timedelta(hours=12),
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=15),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
     "ROTATE_REFRESH_TOKENS": True,
     "BLACKLIST_AFTER_ROTATION": True,
@@ -303,3 +325,16 @@ SIMPLE_JWT = {
     "SIGNING_KEY": SECRET_KEY,
     "AUTH_HEADER_TYPES": ("Bearer",),
 }
+
+# Fail closed before serving production traffic; never print secret values.
+if IS_PRODUCTION:
+    for secret_name in ("CHAPA_SECRET_KEY", "CHAPA_WEBHOOK_SECRET"):
+        validate_production_secret(secret_name, require_env(secret_name))
+    for smtp_name in ("EMAIL_USER", "EMAIL_PASS"):
+        require_env(smtp_name)
+    for host_setting in ("ALLOWED_HOSTS", "CSRF_TRUSTED_ORIGINS", "CORS_ALLOWED_ORIGINS"):
+        require_env(host_setting)
+    if DEBUG or CORS_ALLOW_ALL_ORIGINS:
+        raise RuntimeError("Production requires DEBUG=False and explicit CORS origins.")
+    if not (SECURE_SSL_REDIRECT and SESSION_COOKIE_SECURE and CSRF_COOKIE_SECURE):
+        raise RuntimeError("Production requires HTTPS redirect and secure cookies.")

@@ -6,6 +6,6 @@ The base settings module performs the fail-closed environment validation.
 
 import os
 
-os.environ.setdefault("DJANGO_ENV", "production")
+os.environ["DJANGO_ENV"] = "production"
 
 from .settings import *  # noqa: F403,E402

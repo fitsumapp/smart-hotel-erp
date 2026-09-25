@@ -1,5 +1,9 @@
 """Production security controls shared by middleware and upload handling."""
 import logging
+import posixpath
+from urllib.parse import unquote
+from django.conf import settings
+from django.http import HttpResponseForbidden
 
 logger = logging.getLogger(__name__)
 
@@ -11,7 +15,12 @@ class SecurityHeadersMiddleware:
         self.get_response = get_response
 
     def __call__(self, request):
-        response = self.get_response(request)
+        path = posixpath.normpath(unquote(request.path_info).replace("\\", "/"))
+        private_prefix = settings.MEDIA_URL.rstrip("/") + "/private"
+        if path == private_prefix or path.startswith(private_prefix + "/"):
+            response = HttpResponseForbidden("Private files require authentication.")
+        else:
+            response = self.get_response(request)
 
         # Content-Security-Policy for React frontend and REST backend
         csp = (
