@@ -9,6 +9,13 @@ import { API_BASE_URL } from './apiConfig';
 
 const USER_API = `${API_BASE_URL}/users/users/`;
 
+const getApiList = (payload) => {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.results)) return payload.results;
+  if (Array.isArray(payload?.data)) return payload.data;
+  return [];
+};
+
 const getApiErrorMessages = (payload) => {
   const root = payload?.error_details?.details || payload?.details || payload;
   const messages = [];
@@ -54,8 +61,9 @@ const UserManager = () => {
         axios.get(`${API_BASE_URL}/users/settings/`, { headers: { Authorization: `Bearer ${token}` } })
       ]);
       
-      setUsers(Array.isArray(usersRes.data) ? usersRes.data : []);
-      const settingsData = Array.isArray(settingsRes.data) ? settingsRes.data[0] : settingsRes.data;
+      setUsers(getApiList(usersRes.data));
+      const settingsList = getApiList(settingsRes.data);
+      const settingsData = settingsList[0] || settingsRes.data;
       setHotelSettings(settingsData);
     } catch (err) {
       console.error("Fetch error:", err);
