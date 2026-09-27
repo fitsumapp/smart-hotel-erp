@@ -4,7 +4,7 @@ from datetime import timedelta
 from django.core import mail
 from django.core.exceptions import ValidationError
 from django.contrib.auth.hashers import check_password
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 from rest_framework.test import APIRequestFactory, APITestCase
@@ -86,7 +86,8 @@ class LoginMFAAndSessionCompletionTests(APITestCase):
         self.assertEqual(response.status_code, 401)
         self.assertTrue(AuthenticationAttempt.objects.filter(locked_until__gt=timezone.now()).exists())
 
-    def test_admin_login_requires_email_mfa_before_tokens(self):
+    @override_settings(ENFORCE_EMAIL_MFA=True)
+    def test_admin_login_requires_email_mfa_when_enabled(self):
         admin = User.objects.create_user(
             username="phase1-admin", email="phase1-admin@example.com",
             password="Phase1-admin-password-123!", role=User.ADMIN, is_active=True,
@@ -99,6 +100,15 @@ class LoginMFAAndSessionCompletionTests(APITestCase):
         verify = self.client.post(reverse("verify-mfa"), {"email": admin.email, "code": code}, format="json")
         self.assertEqual(verify.status_code, 200)
         self.assertIn("access", verify.data["tokens"])
+
+    def test_admin_login_returns_tokens_when_email_mfa_disabled(self):
+        admin = User.objects.create_user(
+            username="phase1-admin-no-mfa", email="phase1-admin-no-mfa@example.com",
+            password="Phase1-admin-password-123!", role=User.ADMIN, is_active=True,
+        )
+        login = self.client.post(reverse("login"), {"username": admin.email, "password": "Phase1-admin-password-123!"}, format="json")
+        self.assertEqual(login.status_code, 200)
+        self.assertIn("tokens", login.data)
 
     def test_token_version_revokes_existing_access_token(self):
         token = get_tokens_for_user(self.user)["access"]

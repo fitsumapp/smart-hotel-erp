@@ -55,7 +55,7 @@ SECRET_KEY = os.getenv("SECRET_KEY") or (
 )
 if IS_PRODUCTION:
     SECRET_KEY = validate_production_secret("SECRET_KEY", require_env("SECRET_KEY"))
-ENFORCE_EMAIL_MFA = True
+ENFORCE_EMAIL_MFA = env_bool("ENFORCE_EMAIL_MFA", False)
 
 DEBUG = env_bool("DEBUG", not IS_PRODUCTION)
 ALLOWED_HOSTS = env_list("ALLOWED_HOSTS", "hotelerp.acrmatech.com,.acrmatech.com,localhost,127.0.0.1")
