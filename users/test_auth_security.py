@@ -137,6 +137,23 @@ class UserManagementAuthorizationTests(APITestCase):
         self.assertTrue(cashier.check_password("Cashier-password-123!"))
         self.assertNotEqual(cashier.password, "Cashier-password-123!")
 
+    def test_admin_duplicate_staff_email_returns_validation_error(self):
+        self.client.force_authenticate(self.admin)
+        response = self.client.post(
+            self.list_url,
+            {
+                "username": "duplicate-admin-email",
+                "email": "ADMIN@example.com",
+                "password": "Cashier-password-123!",
+                "role": User.CASHIER,
+                "is_active": True,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("email", response.data["error"]["details"])
+
     def test_admin_password_update_is_hashed(self):
         self.client.force_authenticate(self.admin)
         response = self.client.patch(

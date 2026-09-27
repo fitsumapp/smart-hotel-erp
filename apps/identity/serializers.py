@@ -57,6 +57,15 @@ class UserSerializer(serializers.ModelSerializer):
         validate_password(value)
         return value
 
+    def validate_email(self, value):
+        normalized = value.strip().lower()
+        queryset = User.objects.filter(email__iexact=normalized)
+        if self.instance:
+            queryset = queryset.exclude(pk=self.instance.pk)
+        if queryset.exists():
+            raise serializers.ValidationError("An account with this email already exists.")
+        return normalized
+
     def create(self, validated_data):
         password = validated_data.pop("password", None)
         is_active = validated_data.pop("is_active", False)
