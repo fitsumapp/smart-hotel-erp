@@ -9,6 +9,27 @@ import { API_BASE_URL } from './apiConfig';
 
 const USER_API = `${API_BASE_URL}/users/users/`;
 
+const getApiErrorMessages = (payload) => {
+  const root = payload?.error_details?.details || payload?.details || payload;
+  const messages = [];
+
+  const collect = (value, label = '') => {
+    if (!value) return;
+    if (Array.isArray(value)) {
+      value.forEach(item => collect(item, label));
+      return;
+    }
+    if (typeof value === 'object') {
+      Object.entries(value).forEach(([key, nested]) => collect(nested, key));
+      return;
+    }
+    messages.push(label ? `${label}: ${value}` : String(value));
+  };
+
+  collect(root);
+  return messages.length ? messages.join('\n') : 'Request could not be completed.';
+};
+
 const UserManager = () => {
   const [users, setUsers] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -87,13 +108,13 @@ const UserManager = () => {
     const data = new FormData();
     const nameParts = formData.full_name.trim().split(' ');
 
-    // 1. የኢሜይሉን የመጀመሪያ ክፍል ለዩዘርኔም እንጠቀም (Unique እንዲሆን)
-    const generatedUsername = formData.email.split('@')[0];
+    const email = formData.email.trim().toLowerCase();
+    const generatedUsername = email;
 
     data.append('first_name', nameParts[0] || '');
     data.append('last_name', nameParts.slice(1).join(' ') || '');
     data.append('username', generatedUsername);
-    data.append('email', formData.email);
+    data.append('email', email);
     data.append('role', formData.role.toLowerCase());
     data.append('phone_number', formData.phone_number);
 
@@ -131,11 +152,10 @@ const UserManager = () => {
       fetchUsers();
     } catch (err) {
       console.error("Full Error details:", err.response?.data);
-      // ስህተቱን ለተጠቃሚው በግልጽ ለማሳየት
       const errorMsg = err.response?.data
-        ? JSON.stringify(err.response.data)
+        ? getApiErrorMessages(err.response.data)
         : "Network error occurred";
-      alert("Error saving: " + errorMsg);
+      alert("Unable to save user:\n" + errorMsg);
     }
   };
 
