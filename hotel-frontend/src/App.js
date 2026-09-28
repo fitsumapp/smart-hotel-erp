@@ -27,6 +27,7 @@ import FinanceDashboard from './pages/FinanceDashboard';
 import CustomerPaymentPage from './pages/CustomerPaymentPage';
 import PublicBookingConfirmation from './pages/PublicBookingConfirmation';
 import OrdersManager from './pages/OrdersManager';
+import HousekeepingManager from './pages/HousekeepingManager';
 
 import { Bell, Search, LogOut, Loader2, Menu } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -483,6 +484,7 @@ const DashboardLayout = ({ activeTab, setActiveTab, userData, handleLogout }) =>
             {['rooms', 'reservation_booking', 'checkin_checkout', 'night_audit'].includes(activeTab) && (
               <RoomManager activeSection={activeTab} />
             )}
+            {activeTab === 'housekeeping' && <HousekeepingManager userData={userData} />}
             {activeTab === 'bookings'  && <BookingsManager />}
             {activeTab === 'reports'   && <ReportsCenter />}
             {activeTab === 'finance'   && <FinanceDashboard />}

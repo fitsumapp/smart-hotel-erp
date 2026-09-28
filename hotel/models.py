@@ -89,6 +89,8 @@ class Room(models.Model):
         ("Available", "Available"),
         ("Occupied", "Occupied"),
         ("Cleaning", "Cleaning"),
+        ("Dirty", "Dirty"),
+        ("Inspected", "Inspected"),
         ("Maintenance", "Maintenance"),
         ("Reserved", "Reserved"),
     ]
@@ -1153,3 +1155,129 @@ class AuditEvent(models.Model):
 
     def delete(self, *args, **kwargs):
         raise ValidationError("Audit events are immutable.")
+
+
+# ── 23. Housekeeping Task ────────────────────────────────────────────────────
+
+class HousekeepingTask(models.Model):
+    TASK_TYPES = [
+        ("checkout_cleaning", "Checkout Cleaning"),
+        ("stayover_cleaning", "Stayover / Daily Cleaning"),
+        ("deep_cleaning", "Deep Cleaning"),
+        ("touch_up", "Touch Up / Inspection"),
+        ("turndown", "Turn-Down Service"),
+    ]
+    PRIORITY_CHOICES = [
+        ("low", "Low"),
+        ("normal", "Normal"),
+        ("high", "High"),
+        ("urgent", "Urgent (Incoming Guest)"),
+    ]
+    STATUS_CHOICES = [
+        ("pending", "Pending"),
+        ("in_progress", "In Progress"),
+        ("cleaned", "Cleaned (Awaiting Inspection)"),
+        ("inspected", "Inspected & Approved"),
+        ("failed", "Inspection Failed / Re-clean"),
+    ]
+
+    room = models.ForeignKey(Room, on_delete=models.CASCADE, related_name="housekeeping_tasks")
+    task_type = models.CharField(max_length=30, choices=TASK_TYPES, default="stayover_cleaning")
+    priority = models.CharField(max_length=20, choices=PRIORITY_CHOICES, default="normal")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="pending")
+    assigned_to_username = models.CharField(max_length=150, blank=True, default="")
+    assigned_by_username = models.CharField(max_length=150, blank=True, default="")
+    notes = models.TextField(blank=True, default="")
+    checklist = models.JSONField(default=list, blank=True)
+    started_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    inspected_by_username = models.CharField(max_length=150, blank=True, default="")
+    inspected_at = models.DateTimeField(null=True, blank=True)
+    inspection_notes = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-priority", "-created_at"]
+        indexes = [
+            models.Index(fields=["room", "status"], name="hk_room_status_idx"),
+            models.Index(fields=["status"], name="hk_status_idx"),
+            models.Index(fields=["assigned_to_username"], name="hk_assigned_idx"),
+        ]
+
+    def __str__(self):
+        return f"{self.get_task_type_display()} — Room {self.room.room_number} ({self.status})"
+
+
+# ── 24. Minibar Item ─────────────────────────────────────────────────────────
+
+class MinibarItem(models.Model):
+    room = models.ForeignKey(
+        Room,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="minibar_items",
+        help_text="Specific room, or blank for hotel-wide default standard template"
+    )
+    item = models.ForeignKey(
+        'InventoryItem',
+        on_delete=models.CASCADE,
+        related_name="minibar_items"
+    )
+    standard_quantity = models.IntegerField(default=2, help_text="Standard stock count for this item in minibar")
+    current_quantity = models.IntegerField(default=2, help_text="Current stock count in minibar")
+    price = models.DecimalField(max_digits=10, decimal_places=2, default=0.00, help_text="Charge price to guest")
+    last_restocked_at = models.DateTimeField(auto_now=True)
+    last_checked_by = models.CharField(max_length=150, blank=True, default="")
+
+    class Meta:
+        ordering = ["room", "item__name"]
+        indexes = [
+            models.Index(fields=["room"], name="minibar_room_idx"),
+        ]
+
+    def __str__(self):
+        room_label = f"Room {self.room.room_number}" if self.room else "Standard Template"
+        return f"{self.item.name} ({room_label}): {self.current_quantity}/{self.standard_quantity}"
+
+
+# ── 25. Lost and Found Item ──────────────────────────────────────────────────
+
+class LostAndFoundItem(models.Model):
+    STATUS_CHOICES = [
+        ("stored", "In Safe Storage"),
+        ("claimed", "Claimed / Returned"),
+        ("disposed", "Disposed / Donated"),
+    ]
+    item_name = models.CharField(max_length=200)
+    room = models.ForeignKey(
+        Room,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="lost_and_found_items"
+    )
+    location_found = models.CharField(max_length=200, blank=True, default="")
+    found_by_name = models.CharField(max_length=150)
+    found_date = models.DateField(default=timezone.now)
+    guest_name = models.CharField(max_length=200, blank=True, default="")
+    description = models.TextField(blank=True, default="")
+    storage_location = models.CharField(max_length=100, default="Housekeeping Safe Locker")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="stored")
+    claimed_by = models.CharField(max_length=200, blank=True, default="")
+    claimed_at = models.DateTimeField(null=True, blank=True)
+    claimant_phone = models.CharField(max_length=50, blank=True, default="")
+    notes = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-found_date", "-created_at"]
+        indexes = [
+            models.Index(fields=["status"], name="lost_found_status_idx"),
+            models.Index(fields=["room"], name="lost_found_room_idx"),
+        ]
+
+    def __str__(self):
+        return f"{self.item_name} ({self.get_status_display()}) — Found {self.found_date}"

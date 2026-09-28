@@ -8,7 +8,7 @@ from hotel.models import (
     MaintenanceLog, RoomHistory, GuestProfile, FolioCharge, DayAuditLog,
     InventoryCategory, Supplier, InventoryItem, StockTransaction, RecipeBOM,
     Account, JournalEntry, JournalEntryItem, ExpenseTransaction, Budget,
-    PayrollEntry,
+    PayrollEntry, HousekeepingTask, MinibarItem, LostAndFoundItem,
 )
 
 User = get_user_model()
@@ -86,7 +86,10 @@ User = get_user_model()
 # Backward-compatible serializer exports.
 from apps.identity.serializers import PublicRegistrationSerializer, UserSerializer  # noqa: E402,F401
 from apps.orders.serializers import CategorySerializer, MenuItemSerializer, NotificationSerializer, OrderItemSerializer, OrderSerializer, RestaurantTableSerializer, SystemSettingsSerializer  # noqa: E402,F401
-from apps.rooms.serializers import MaintenanceLogSerializer, RoomHistorySerializer, RoomSerializer  # noqa: E402,F401
+from apps.rooms.serializers import (
+    MaintenanceLogSerializer, RoomHistorySerializer, RoomSerializer,
+    HousekeepingTaskSerializer, MinibarItemSerializer, LostAndFoundItemSerializer
+)  # noqa: E402,F401
 from apps.reservations.serializers import FolioChargeSerializer, GuestProfileSerializer, ReservationSerializer  # noqa: E402,F401
 from apps.reporting.serializers import DayAuditLogSerializer  # noqa: E402,F401
 from apps.inventory.serializers import InventoryCategorySerializer, InventoryItemSerializer, RecipeBOMSerializer, StockTransactionSerializer, SupplierSerializer  # noqa: E402,F401

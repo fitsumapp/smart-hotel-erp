@@ -211,6 +211,15 @@ class UpdateRoomFrontDeskStatusView(APIView):
                 reservation, _ = transition_reservation(reservation_id=reservation.pk, to_status="checked_out")
                 reservation.checked_out_at = timezone.now()
                 reservation.save(update_fields=["status", "checked_out_at", "updated_at"])
+            try:
+                from apps.rooms.services import create_checkout_housekeeping_task
+                create_checkout_housekeeping_task(
+                    room=room,
+                    guest_name=reservation.guest_name if reservation else "",
+                    actor_username=request.user.username or "Front Desk",
+                )
+            except Exception as e:
+                print(f"Housekeeping auto-task error: {e}")
         else:
             return Response({"error": "Invalid action."}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -933,6 +942,15 @@ class EnhancedCheckoutView(APIView):
             room.status = "Cleaning"
             room.booking_source = "front_desk"
             room.save(update_fields=["status", "booking_source"])
+            try:
+                from apps.rooms.services import create_checkout_housekeeping_task
+                create_checkout_housekeeping_task(
+                    room=room,
+                    guest_name=reservation.guest_name,
+                    actor_username=request.user.username or "Front Desk",
+                )
+            except Exception as e:
+                print(f"Housekeeping auto-task error: {e}")
 
             RoomHistory.objects.create(
                 room=room,
@@ -1191,6 +1209,15 @@ class VerifyCheckoutPaymentView(APIView):
                 room.status = "Cleaning"
                 room.booking_source = "front_desk"
                 room.save(update_fields=["status", "booking_source"])
+                try:
+                    from apps.rooms.services import create_checkout_housekeeping_task
+                    create_checkout_housekeeping_task(
+                        room=room,
+                        guest_name=reservation.guest_name,
+                        actor_username="Digital Checkout",
+                    )
+                except Exception as e:
+                    print(f"Housekeeping auto-task error: {e}")
 
                 RoomHistory.objects.create(
                     room=room,

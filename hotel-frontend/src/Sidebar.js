@@ -8,7 +8,7 @@ import {
   Settings, ChevronDown, CalendarDays,
   ClipboardList, FileBarChart2, Package, TrendingUp,
   Hotel, BookOpen, Moon, BarChart2, Shield, BarChart3,
-  Activity, Layers, BookMarked, X
+  Activity, Layers, BookMarked, X, Sparkles
 } from 'lucide-react';
 
 // ── Menu structure with section groupings ─────────────────────────────────────
@@ -43,6 +43,7 @@ const menuGroups = [
           { id: 'rooms',               title: 'Rooms',                icon: <BedDouble     size={15} /> },
           { id: 'reservation_booking', title: 'Reservations',         icon: <CalendarDays  size={15} /> },
           { id: 'checkin_checkout',    title: 'Check In / Check Out', icon: <Users         size={15} /> },
+          { id: 'housekeeping',        title: 'Housekeeping & Minibar', icon: <Sparkles    size={15} /> },
           { id: 'night_audit',         title: 'Night Audit',          icon: <Moon          size={15} /> },
           { id: 'bookings',            title: 'Bookings Manager',     icon: <ClipboardList size={15} /> },
           { id: 'reports',             title: 'Reports Center',       icon: <FileBarChart2 size={15} /> },

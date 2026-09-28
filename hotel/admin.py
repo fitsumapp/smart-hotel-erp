@@ -8,7 +8,8 @@ from .models import (
     SystemSettings, AuditEvent, MaintenanceLog, RoomHistory, GuestProfile,
     FolioCharge, DayAuditLog, InventoryCategory, Supplier, InventoryItem,
     StockTransaction, RecipeBOM, Account, JournalEntry, JournalEntryItem,
-    ExpenseTransaction, Budget, PayrollEntry
+    ExpenseTransaction, Budget, PayrollEntry,
+    HousekeepingTask, MinibarItem, LostAndFoundItem
 )
 
 
@@ -151,6 +152,63 @@ class MaintenanceLogAdmin(ModelAdmin):
         "resolved": "success",
     })
     def display_status(self, obj):
+        return obj.status
+
+
+@admin.register(HousekeepingTask)
+class HousekeepingTaskAdmin(ModelAdmin):
+    list_display = ["id", "room", "task_type", "priority_badge", "status_badge", "assigned_to_username", "inspected_by_username", "created_at"]
+    list_filter = ["status", "task_type", "priority"]
+    search_fields = ["room__room_number", "assigned_to_username", "notes"]
+    list_filter_submit = True
+    list_per_page = 25
+
+    @display(description="Priority", label={
+        "urgent": "danger",
+        "high": "warning",
+        "normal": "info",
+        "low": "secondary",
+    })
+    def priority_badge(self, obj):
+        return obj.priority
+
+    @display(description="Status", label={
+        "inspected": "success",
+        "cleaned": "info",
+        "in_progress": "warning",
+        "failed": "danger",
+        "pending": "secondary",
+    })
+    def status_badge(self, obj):
+        return obj.status
+
+
+@admin.register(MinibarItem)
+class MinibarItemAdmin(ModelAdmin):
+    list_display = ["id", "display_room", "item", "current_quantity", "standard_quantity", "price", "last_restocked_at", "last_checked_by"]
+    list_filter = ["room"]
+    search_fields = ["item__name", "room__room_number", "last_checked_by"]
+    list_per_page = 25
+
+    def display_room(self, obj):
+        return f"Room {obj.room.room_number}" if obj.room else "Standard Template"
+    display_room.short_description = "Room"
+
+
+@admin.register(LostAndFoundItem)
+class LostAndFoundItemAdmin(ModelAdmin):
+    list_display = ["id", "item_name", "room", "found_by_name", "found_date", "storage_location", "status_badge", "claimed_by"]
+    list_filter = ["status", "found_date"]
+    search_fields = ["item_name", "room__room_number", "found_by_name", "guest_name", "claimed_by"]
+    list_filter_submit = True
+    list_per_page = 25
+
+    @display(description="Status", label={
+        "stored": "warning",
+        "claimed": "success",
+        "disposed": "secondary",
+    })
+    def status_badge(self, obj):
         return obj.status
 
 
