@@ -12,21 +12,31 @@ const BarDashboard = ({ userData, handleLogout }) => {
 
   const fetchBarOrders = useCallback(async () => {
     try {
-      const res = await axios.get(`${API_BASE}kitchen/orders/`);
-      // Filter to only Bar-station items if possible; otherwise show all active orders
-      const barOrders = res.data.filter(order =>
-        order.items && order.items.some(item =>
-          (item.category_station || '').toLowerCase() === 'bar' ||
-          (item.menu_item_name || '').toLowerCase().includes('drink') ||
-          (item.menu_item_name || '').toLowerCase().includes('juice') ||
-          (item.menu_item_name || '').toLowerCase().includes('beer') ||
-          (item.menu_item_name || '').toLowerCase().includes('wine') ||
-          (item.menu_item_name || '').toLowerCase().includes('coffee') ||
-          (item.menu_item_name || '').toLowerCase().includes('tea')
-        )
-      );
-      // If no bar-specific items found, show all active orders
-      setOrders(barOrders.length > 0 ? barOrders : res.data);
+      const token = localStorage.getItem('access_token');
+      const res = await axios.get(`${API_BASE}kitchen/orders/?station=Bar&_cb=${new Date().getTime()}`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache'
+        }
+      });
+      // Only keep orders with Bar items, and only render drink items in each ticket
+      const barOrders = (res.data || [])
+        .map(order => ({
+          ...order,
+          items: (order.items || []).filter(item => {
+            const st = (item.station || item.category_station || '').toLowerCase();
+            if (st === 'bar') return true;
+            if (st === 'kitchen') return false;
+            const cat = (item.category_name || '').toLowerCase();
+            const name = (item.menu_item_name || '').toLowerCase();
+            return /drink|beverage|juice|beer|wine|bar|cocktail|soda|coffee|tea|መጠጥ|ቢራ|ጭማቂ|አረቄ/i.test(cat) ||
+                   /drink|beverage|juice|beer|wine|bar|cocktail|soda|coffee|tea|መጠጥ|ቢራ|ጭማቂ|አረቄ/i.test(name);
+          })
+        }))
+        .filter(order => order.items.length > 0);
+
+      setOrders(barOrders);
       setLoading(false);
     } catch (err) {
       console.error('Bar orders fetch error:', err);
@@ -42,7 +52,12 @@ const BarDashboard = ({ userData, handleLogout }) => {
 
   const updateStatus = async (orderId, newStatus) => {
     try {
-      await axios.post(`${API_BASE}orders/${orderId}/update-status/`, { status: newStatus });
+      const token = localStorage.getItem('access_token');
+      await axios.post(
+        `${API_BASE}orders/${orderId}/update-status/`,
+        { status: newStatus },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
       fetchBarOrders();
     } catch (err) {
       console.error('Status update error:', err.response?.data);

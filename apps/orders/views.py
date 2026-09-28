@@ -165,13 +165,40 @@ class KitchenOrdersView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
+        from django.db import models
+        station = request.query_params.get("station")
         orders = (
             Order.objects.filter(status__in=["pending", "preparing"])
             .select_related("table")
-            .prefetch_related("items__menu_item")
+            .prefetch_related("items__menu_item__category")
             .order_by("created_at")
         )
-        return Response(OrderSerializer(orders, many=True).data)
+        if station and station.lower() == "bar":
+            orders = orders.filter(
+                models.Q(items__menu_item__category__station__iexact="Bar") |
+                models.Q(items__menu_item__category__name__icontains="drink") |
+                models.Q(items__menu_item__category__name__icontains="beverage") |
+                models.Q(items__menu_item__category__name__icontains="juice") |
+                models.Q(items__menu_item__category__name__icontains="beer") |
+                models.Q(items__menu_item__category__name__icontains="wine") |
+                models.Q(items__menu_item__category__name__icontains="መጠጥ")
+            ).distinct()
+        elif station and station.lower() == "kitchen":
+            orders = orders.filter(
+                models.Q(items__menu_item__category__station__iexact="Kitchen") |
+                models.Q(items__menu_item__category__station__isnull=True)
+            ).distinct()
+
+        serializer = OrderSerializer(
+            orders,
+            many=True,
+            context={"station": station} if station else None
+        )
+        data = [
+            order_data for order_data in serializer.data
+            if not station or len(order_data.get("items", [])) > 0
+        ]
+        return Response(data)
 
 
 class UpdateOrderStatusView(APIView):

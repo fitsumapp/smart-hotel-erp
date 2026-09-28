@@ -19,14 +19,28 @@ const KitchenDashboard = ({ userData, handleLogout }) => {
   const fetchKitchenOrders = async () => {
     try {
       const token = localStorage.getItem('access_token');
-      const res = await axios.get(`${API_BASE}kitchen/orders/?_cb=${new Date().getTime()}`, {
+      const res = await axios.get(`${API_BASE}kitchen/orders/?station=Kitchen&_cb=${new Date().getTime()}`, {
         headers: { 
           Authorization: `Bearer ${token}`,
           'Cache-Control': 'no-cache',
           'Pragma': 'no-cache'
         }
       });
-      setOrders(res.data);
+      // Only keep orders with Kitchen items, and only render food items in each ticket
+      const kitchenOrders = (res.data || [])
+        .map(order => ({
+          ...order,
+          items: (order.items || []).filter(item => {
+            const st = (item.station || item.category_station || '').toLowerCase();
+            if (st === 'kitchen') return true;
+            if (st === 'bar') return false;
+            const cat = (item.category_name || '').toLowerCase();
+            return !/drink|beverage|juice|beer|wine|bar|cocktail|soda|coffee|tea|መጠጥ|ቢራ|ጭማቂ/i.test(cat);
+          })
+        }))
+        .filter(order => order.items.length > 0);
+
+      setOrders(kitchenOrders);
     } catch (err) {
       console.error('Orders fetch failed', err);
     }

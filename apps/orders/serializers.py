@@ -37,10 +37,29 @@ class RestaurantTableSerializer(serializers.ModelSerializer):
 
 class OrderItemSerializer(serializers.ModelSerializer):
     menu_item_name = serializers.ReadOnlyField(source="menu_item.name")
+    category_name = serializers.ReadOnlyField(source="menu_item.category.name")
+    station = serializers.SerializerMethodField()
+    category_station = serializers.SerializerMethodField()
+
+    def get_station(self, obj):
+        if obj.menu_item and obj.menu_item.category:
+            st = (obj.menu_item.category.station or "").strip()
+            if st:
+                return st
+            cat_name = (obj.menu_item.category.name or "").lower()
+            if any(k in cat_name for k in ["drink", "beverage", "juice", "beer", "wine", "bar", "cocktail", "soda", "coffee", "tea", "መጠጥ", "ቢራ", "ጭማቂ"]):
+                return "Bar"
+        return "Kitchen"
+
+    def get_category_station(self, obj):
+        return self.get_station(obj)
 
     class Meta:
         model = OrderItem
-        fields = ["id", "menu_item", "menu_item_name", "quantity", "price_at_order"]
+        fields = [
+            "id", "menu_item", "menu_item_name", "category_name",
+            "station", "category_station", "quantity", "price_at_order"
+        ]
 
 
 class SystemSettingsSerializer(serializers.ModelSerializer):
@@ -51,10 +70,26 @@ class SystemSettingsSerializer(serializers.ModelSerializer):
 
 
 class OrderSerializer(serializers.ModelSerializer):
-    items = OrderItemSerializer(many=True, read_only=True)
+    items = serializers.SerializerMethodField()
     waiter_name = serializers.SerializerMethodField()
     table_code = serializers.ReadOnlyField(source="table.table_code")
     hotel_info = serializers.SerializerMethodField()
+
+    def get_items(self, obj):
+        station = self.context.get("station") if hasattr(self, "context") and self.context else None
+        serializer = OrderItemSerializer(obj.items.all(), many=True)
+        if not station:
+            return serializer.data
+
+        station_lower = station.lower()
+        filtered = []
+        for it in serializer.data:
+            st = (it.get("station") or "Kitchen").lower()
+            if station_lower == "bar" and st == "bar":
+                filtered.append(it)
+            elif station_lower == "kitchen" and st != "bar":
+                filtered.append(it)
+        return filtered
 
     def get_waiter_name(self, obj):
         if obj.waiter_username:
