@@ -243,40 +243,48 @@ def finalize_paid_order(order, payment_method, payment_reference=None, tip_amoun
         PaymentAttempt.objects.filter(pk=payment_attempt.pk, accounting_entry__isnull=True).update(accounting_entry=payment_entry)
 
     # Auto-deduct inventory ingredients based on Recipe BOM (with fail-safe)
-    total_ingredient_cost = Decimal("0.00")
+    settings = None
     try:
-        for order_item in order.items.all():
-            menu_item = order_item.menu_item
-            for bom_item in menu_item.ingredients_bom.all():
-                ingredient = bom_item.ingredient
-                qty_to_deduct = bom_item.quantity_required * Decimal(str(order_item.quantity))
-                locked_item, _ = record_stock_change(
-                    item_id=ingredient.pk, transaction_type="sale_deduction",
-                    quantity=qty_to_deduct, unit_cost=ingredient.unit_cost,
-                    reference_number=f"ORD-{order.id}",
-                    notes=f"Auto-deducted for menu item '{menu_item.name}' (qty: {order_item.quantity})",
-                    logged_by_username=cashier.username if cashier else "system_auto",
+        from users.models import SystemSettings
+        settings = SystemSettings.get_settings()
+    except Exception:
+        pass
+
+    if settings is None or getattr(settings, "module_inventory", True):
+        total_ingredient_cost = Decimal("0.00")
+        try:
+            for order_item in order.items.all():
+                menu_item = order_item.menu_item
+                for bom_item in menu_item.ingredients_bom.all():
+                    ingredient = bom_item.ingredient
+                    qty_to_deduct = bom_item.quantity_required * Decimal(str(order_item.quantity))
+                    locked_item, _ = record_stock_change(
+                        item_id=ingredient.pk, transaction_type="sale_deduction",
+                        quantity=qty_to_deduct, unit_cost=ingredient.unit_cost,
+                        reference_number=f"ORD-{order.id}",
+                        notes=f"Auto-deducted for menu item '{menu_item.name}' (qty: {order_item.quantity})",
+                        logged_by_username=cashier.username if cashier else "system_auto",
+                    )
+                    total_ingredient_cost += qty_to_deduct * to_decimal(locked_item.unit_cost)
+                    
+            if total_ingredient_cost > 0:
+                post_journal_entry(
+                    description=f"Auto JV: COGS for Order #{order.id}",
+                    items=[
+                        {
+                            "account_code": "5000",
+                            "debit": total_ingredient_cost,
+                            "credit": Decimal("0.00")
+                        },
+                        {
+                            "account_code": "1300",
+                            "debit": Decimal("0.00"),
+                            "credit": total_ingredient_cost
+                        }
+                    ]
                 )
-                total_ingredient_cost += qty_to_deduct * to_decimal(locked_item.unit_cost)
-                
-        if total_ingredient_cost > 0:
-            post_journal_entry(
-                description=f"Auto JV: COGS for Order #{order.id}",
-                items=[
-                    {
-                        "account_code": "5000",
-                        "debit": total_ingredient_cost,
-                        "credit": Decimal("0.00")
-                    },
-                    {
-                        "account_code": "1300",
-                        "debit": Decimal("0.00"),
-                        "credit": total_ingredient_cost
-                    }
-                ]
-            )
-    except Exception as e:
-        raise ValueError(f"Inventory deduction failed for Order #{order.id}: {e}") from e
+        except Exception as e:
+            raise ValueError(f"Inventory deduction failed for Order #{order.id}: {e}") from e
 
     if order.table:
         order.table.status = "available"

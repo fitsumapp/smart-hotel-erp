@@ -1,5 +1,6 @@
 """Finance transactional and business services."""
-from users.views import *  # noqa: F401,F403
+from hotel.models import Account
+from hotel.accounting import post_entry
 
 def ensure_default_accounts():
     """
@@ -41,6 +42,14 @@ def post_journal_entry(description, items, date=None):
     Creates a balanced double-entry JournalEntry and associated items.
     'items' is a list of dicts: [{'account_code': '1000', 'debit': Decimal('100.00'), 'credit': Decimal('0.00')}]
     """
+    try:
+        from users.models import SystemSettings
+        settings = SystemSettings.get_settings()
+        if not getattr(settings, "module_finance", True):
+            return None
+    except Exception:
+        pass
+
     ensure_default_accounts()
     try:
         return post_entry(description=description, lines=items, entry_date=date)
