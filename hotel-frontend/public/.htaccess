@@ -3,9 +3,11 @@
   RewriteEngine On
   RewriteBase /
 
-  # 1. Bypass rewriting for backend API and admin requests
-  RewriteCond %{REQUEST_URI} ^/api [NC,OR]
-  RewriteCond %{REQUEST_URI} ^/admin [NC]
+  # 1. Redirect /admin to /api/admin/
+  RewriteRule ^admin(/.*)?$ /api/admin$1 [R=301,L]
+
+  # 2. Bypass rewriting for backend API requests
+  RewriteCond %{REQUEST_URI} ^/api [NC]
   RewriteRule ^ - [L]
 
   # 2. Serve static files directly if they exist
