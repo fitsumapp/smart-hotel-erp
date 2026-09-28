@@ -4,10 +4,11 @@ hotel/models.py
   Each hotel gets its own PostgreSQL schema — total data isolation.
   Uses settings.AUTH_USER_MODEL for cross-schema ForeignKeys to User.
 """
+from decimal import Decimal
+from uuid import uuid4
 from django.conf import settings
 from django.db import models
 from django.core.exceptions import ValidationError
-from uuid import uuid4
 from django.utils import timezone
 from core.storage import (
     private_storage,
@@ -890,7 +891,6 @@ class Account(models.Model):
         **never** in hot paths.  Normal real-time updates are handled by
         the Django signal in hotel/signals.py.
         """
-        from decimal import Decimal
         from django.db.models import Sum
 
         debits  = self.ledger_items.aggregate(t=Sum("amount_debit"))["t"]  or Decimal("0.00")
