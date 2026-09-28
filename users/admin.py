@@ -29,9 +29,16 @@ class CustomUserAdmin(BaseUserAdmin, ModelAdmin):
     )
     add_fieldsets = BaseUserAdmin.add_fieldsets + (
         ("Hotel Staff Details", {
-            "fields": ("role", "email", "first_name", "last_name", "phone_number"),
+            "fields": ("role", "email", "first_name", "last_name", "phone_number", "is_active", "is_verified"),
         }),
     )
+
+    def save_model(self, request, obj, form, change):
+        if not change:
+            if obj.is_active is None or not change:
+                obj.is_active = True
+            obj.is_verified = True
+        super().save_model(request, obj, form, change)
 
     @display(
         description="Role",
