@@ -8,46 +8,137 @@
 {% endblock %}
 
 {% block content %}
-<div class="space-y-6">
-    <!-- ── Welcome Hero Banner ───────────────────────────────────────────── -->
-    <div class="bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-700 rounded-2xl p-6 text-white shadow-lg">
-        <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-            <div>
-                <h1 class="text-2xl font-bold tracking-tight">Smart Hotel ERP — Operations Control</h1>
-                <p class="text-emerald-100 mt-1 text-sm">Super Admin & Platform Operations Management Dashboard</p>
+<div class="erp-dashboard-container">
+
+    <!-- ── 1. Hero Operations Banner ─────────────────────────────────────── -->
+    <div class="erp-hero-banner">
+        <div class="erp-hero-content">
+            <div class="erp-hero-left">
+                <span class="erp-hero-badge">🏨 Smart Hotel ERP — Platform Control</span>
+                <h1 class="erp-hero-title">{{ hotel_name|default:"Smart Hotel ERP" }}</h1>
+                <p class="erp-hero-desc">Operations Dashboard & Management Suite</p>
             </div>
-            <div class="flex flex-wrap items-center gap-2">
-                <a href="{% url 'admin:hotel_room_changelist' %}" class="inline-flex items-center gap-1.5 px-3.5 py-2 bg-white/15 hover:bg-white/25 backdrop-blur text-white text-xs font-semibold rounded-lg transition-colors">
-                    <span class="material-symbols-outlined text-sm">hotel</span>
-                    Rooms
+            <div class="erp-hero-actions">
+                <a href="{% url 'admin:hotel_reservation_add' %}" class="erp-btn erp-btn-primary">
+                    <span class="material-symbols-outlined">add_circle</span>
+                    New Booking
                 </a>
-                <a href="{% url 'admin:hotel_reservation_changelist' %}" class="inline-flex items-center gap-1.5 px-3.5 py-2 bg-white/15 hover:bg-white/25 backdrop-blur text-white text-xs font-semibold rounded-lg transition-colors">
-                    <span class="material-symbols-outlined text-sm">book_online</span>
-                    Bookings
+                <a href="{% url 'admin:hotel_order_add' %}" class="erp-btn erp-btn-secondary">
+                    <span class="material-symbols-outlined">post_add</span>
+                    New POS Order
                 </a>
-                <a href="{% url 'admin:hotel_order_changelist' %}" class="inline-flex items-center gap-1.5 px-3.5 py-2 bg-white/15 hover:bg-white/25 backdrop-blur text-white text-xs font-semibold rounded-lg transition-colors">
-                    <span class="material-symbols-outlined text-sm">shopping_cart</span>
-                    Orders
-                </a>
-                <a href="{% url 'admin:hotel_systemsettings_changelist' %}" class="inline-flex items-center gap-1.5 px-3.5 py-2 bg-white text-emerald-900 hover:bg-emerald-50 text-xs font-bold rounded-lg shadow-sm transition-colors">
-                    <span class="material-symbols-outlined text-sm">tune</span>
+                <a href="{% url 'admin:hotel_systemsettings_changelist' %}" class="erp-btn erp-btn-outline">
+                    <span class="material-symbols-outlined">tune</span>
                     Module Toggles
                 </a>
             </div>
         </div>
+
+        <!-- Module Status Pills -->
+        <div class="erp-module-pills">
+            <span class="erp-pill-label">Active Modules:</span>
+            <span class="erp-pill {% if modules.rooms %}erp-pill-active{% else %}erp-pill-disabled{% endif %}">
+                <span class="material-symbols-outlined">hotel</span> Rooms & Front Desk
+            </span>
+            <span class="erp-pill {% if modules.pos %}erp-pill-active{% else %}erp-pill-disabled{% endif %}">
+                <span class="material-symbols-outlined">restaurant</span> F&B POS
+            </span>
+            <span class="erp-pill {% if modules.inventory %}erp-pill-active{% else %}erp-pill-disabled{% endif %}">
+                <span class="material-symbols-outlined">inventory_2</span> Inventory & Stock
+            </span>
+            <span class="erp-pill {% if modules.finance %}erp-pill-active{% else %}erp-pill-disabled{% endif %}">
+                <span class="material-symbols-outlined">payments</span> Finance & Accounts
+            </span>
+        </div>
     </div>
 
-    <!-- ── Main Grid: App Modules & Recent Actions ───────────────────────── -->
-    <div class="flex flex-col lg:flex-row gap-6">
-        <!-- Left: Applications List -->
-        <div class="grow min-w-0">
+    <!-- ── 2. Live KPI Statistics Cards ──────────────────────────────────── -->
+    <div class="erp-stats-grid">
+        <!-- Room Status Card -->
+        <a href="{% url 'admin:hotel_room_changelist' %}" class="erp-stat-card erp-stat-teal">
+            <div class="erp-stat-header">
+                <span class="erp-stat-title">Room Inventory</span>
+                <span class="erp-stat-icon material-symbols-outlined">hotel</span>
+            </div>
+            <div class="erp-stat-body">
+                <div class="erp-stat-value">{{ stats.available_rooms|default:"0" }} <span class="erp-stat-sub">/ {{ stats.total_rooms|default:"0" }} Free</span></div>
+                <div class="erp-stat-footer">
+                    <span class="erp-badge erp-badge-success">{{ stats.occupied_rooms|default:"0" }} Occupied</span>
+                    <span class="erp-stat-link">View Rooms &rarr;</span>
+                </div>
+            </div>
+        </a>
+
+        <!-- Reservations Card -->
+        <a href="{% url 'admin:hotel_reservation_changelist' %}" class="erp-stat-card erp-stat-blue">
+            <div class="erp-stat-header">
+                <span class="erp-stat-title">Reservations</span>
+                <span class="erp-stat-icon material-symbols-outlined">book_online</span>
+            </div>
+            <div class="erp-stat-body">
+                <div class="erp-stat-value">{{ stats.active_reservations|default:"0" }} <span class="erp-stat-sub">Active</span></div>
+                <div class="erp-stat-footer">
+                    <span class="erp-badge erp-badge-info">{{ stats.pending_reservations|default:"0" }} Pending</span>
+                    <span class="erp-stat-link">Manage &rarr;</span>
+                </div>
+            </div>
+        </a>
+
+        <!-- Food & Beverage Orders Card -->
+        <a href="{% url 'admin:hotel_order_changelist' %}" class="erp-stat-card erp-stat-amber">
+            <div class="erp-stat-header">
+                <span class="erp-stat-title">Restaurant & Bar POS</span>
+                <span class="erp-stat-icon material-symbols-outlined">restaurant_menu</span>
+            </div>
+            <div class="erp-stat-body">
+                <div class="erp-stat-value">{{ stats.today_orders|default:"0" }} <span class="erp-stat-sub">Today</span></div>
+                <div class="erp-stat-footer">
+                    <span class="erp-badge erp-badge-warning">{{ stats.active_orders|default:"0" }} In Kitchen/Bar</span>
+                    <span class="erp-stat-link">Orders &rarr;</span>
+                </div>
+            </div>
+        </a>
+
+        <!-- Inventory Stock Alerts Card -->
+        <a href="{% url 'admin:hotel_inventoryitem_changelist' %}" class="erp-stat-card erp-stat-rose">
+            <div class="erp-stat-header">
+                <span class="erp-stat-title">Inventory Alerts</span>
+                <span class="erp-stat-icon material-symbols-outlined">warning</span>
+            </div>
+            <div class="erp-stat-body">
+                <div class="erp-stat-value">{{ stats.low_stock_count|default:"0" }} <span class="erp-stat-sub">Low Stock</span></div>
+                <div class="erp-stat-footer">
+                    {% if stats.low_stock_count %}
+                        <span class="erp-badge erp-badge-danger">Reorder Required</span>
+                    {% else %}
+                        <span class="erp-badge erp-badge-success">Stock Healthy</span>
+                    {% endif %}
+                    <span class="erp-stat-link">Supplies &rarr;</span>
+                </div>
+            </div>
+        </a>
+    </div>
+
+    <!-- ── 3. Main Workspace: Application Modules & Recent Activity ─────── -->
+    <div class="erp-main-grid">
+        <!-- Left: Categorized Apps & Models -->
+        <div class="erp-apps-column">
+            <div class="erp-section-header">
+                <span class="material-symbols-outlined text-primary-600">apps</span>
+                <h2>System Apps & Operations Data</h2>
+            </div>
             {% include "unfold/helpers/app_list_default.html" %}
         </div>
 
-        <!-- Right: Recent Actions Sidebar -->
-        <div class="w-full lg:w-80 shrink-0">
+        <!-- Right: Recent Activity Log -->
+        <div class="erp-activity-column">
+            <div class="erp-section-header">
+                <span class="material-symbols-outlined text-primary-600">history</span>
+                <h2>Recent Activity</h2>
+            </div>
             {% include "unfold/helpers/history.html" %}
         </div>
     </div>
+
 </div>
 {% endblock %}

@@ -1,20 +1,44 @@
-/* ── Unfold Admin Custom Styling & Responsive Fixes ────────────────────────── */
+/* ══════════════════════════════════════════════════════════════════════════════
+   Smart Hotel ERP — Unfold Custom Theme & Responsive Layout System
+   ══════════════════════════════════════════════════════════════════════════════ */
 
-/* 1. Ensure the sidebar has a solid, opaque background on all screens */
-#nav-sidebar {
+/* ── 1. Global Reset & Layout ──────────────────────────────────────────────── */
+#page {
+    display: flex !important;
+    min-height: 100vh !important;
     background-color: #f8fafc !important;
+}
+
+.dark #page {
+    background-color: #0b1120 !important;
+}
+
+#main {
+    flex: 1 1 0% !important;
+    min-width: 0 !important;
+    background-color: #f8fafc !important;
+    display: flex !important;
+    flex-direction: column !important;
+}
+
+.dark #main {
+    background-color: #0b1120 !important;
+}
+
+/* ── 2. Sidebar Isolation (Solid, Opaque, Non-Overlapping) ─────────────────── */
+#nav-sidebar {
+    background-color: #ffffff !important;
     border-right: 1px solid #e2e8f0 !important;
-    box-shadow: 2px 0 12px rgba(0, 0, 0, 0.04) !important;
+    box-shadow: 2px 0 16px rgba(0, 0, 0, 0.04) !important;
     z-index: 50 !important;
 }
 
 .dark #nav-sidebar {
     background-color: #0f172a !important;
     border-right: 1px solid #1e293b !important;
-    box-shadow: 2px 0 12px rgba(0, 0, 0, 0.3) !important;
+    box-shadow: 2px 0 16px rgba(0, 0, 0, 0.4) !important;
 }
 
-/* 2. On desktop (>=1024px), make the sidebar container in-flow so it never overlaps the main area */
 @media (min-width: 1024px) {
     .navigation_wrapper,
     div[x-bind*="sidebarDesktopOpen"] {
@@ -33,53 +57,384 @@
     }
 }
 
-/* 3. On tablets and mobile (<1024px), make the drawer solid and clearly layered over the content */
 @media (max-width: 1023px) {
     #nav-sidebar {
-        box-shadow: 0 0 50px rgba(0, 0, 0, 0.4) !important;
+        box-shadow: 0 0 60px rgba(0, 0, 0, 0.45) !important;
     }
 }
 
-/* 4. Main content layout & spacing */
-#main {
-    min-width: 0 !important;
-    flex-grow: 1 !important;
+/* ── 3. Reset Django Float Bugs on Content-Related ─────────────────────────── */
+#content-related,
+#recent-actions-module {
+    float: none !important;
+    margin: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+}
+
+#content {
+    margin-right: 0 !important;
+    width: 100% !important;
+}
+
+/* ── 4. Dashboard Hero Banner ──────────────────────────────────────────────── */
+.erp-dashboard-container {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    padding-bottom: 2rem;
+}
+
+.erp-hero-banner {
+    background: linear-gradient(135deg, #0d9488 0%, #0f766e 40%, #0369a1 100%) !important;
+    border-radius: 1rem;
+    padding: 1.75rem 2rem;
+    color: #ffffff !important;
+    box-shadow: 0 10px 25px -5px rgba(13, 148, 136, 0.3), 0 8px 10px -6px rgba(13, 148, 136, 0.2);
+}
+
+.erp-hero-content {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1.25rem;
+}
+
+.erp-hero-badge {
+    display: inline-block;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    background-color: rgba(255, 255, 255, 0.18);
+    padding: 0.25rem 0.75rem;
+    border-radius: 9999px;
+    margin-bottom: 0.5rem;
+}
+
+.erp-hero-title {
+    font-size: 1.75rem;
+    font-weight: 800;
+    line-height: 1.2;
+    margin: 0;
+    color: #ffffff !important;
+}
+
+.erp-hero-desc {
+    font-size: 0.875rem;
+    color: #ccfbf1 !important;
+    margin-top: 0.25rem;
+}
+
+.erp-hero-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.erp-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.5rem 1rem;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    border-radius: 0.5rem;
+    text-decoration: none !important;
+    transition: all 0.15s ease-in-out;
+}
+
+.erp-btn-primary {
+    background-color: #ffffff !important;
+    color: #0f766e !important;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+}
+
+.erp-btn-primary:hover {
+    background-color: #f0fdfa !important;
+    transform: translateY(-1px);
+}
+
+.erp-btn-secondary {
+    background-color: rgba(255, 255, 255, 0.2) !important;
+    color: #ffffff !important;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.erp-btn-secondary:hover {
+    background-color: rgba(255, 255, 255, 0.3) !important;
+}
+
+.erp-btn-outline {
+    background-color: transparent !important;
+    color: #ffffff !important;
+    border: 1px solid rgba(255, 255, 255, 0.4);
+}
+
+.erp-btn-outline:hover {
+    background-color: rgba(255, 255, 255, 0.15) !important;
+}
+
+/* Module Status Pills */
+.erp-module-pills {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 1.25rem;
+    padding-top: 1rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.erp-pill-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #ccfbf1;
+    text-transform: uppercase;
+}
+
+.erp-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 0.2rem 0.625rem;
+    border-radius: 9999px;
+}
+
+.erp-pill-active {
+    background-color: rgba(16, 185, 129, 0.25);
+    color: #ffffff;
+    border: 1px solid rgba(16, 185, 129, 0.5);
+}
+
+.erp-pill-disabled {
+    background-color: rgba(0, 0, 0, 0.2);
+    color: #94a3b8;
+    border: 1px solid rgba(148, 163, 184, 0.3);
+}
+
+.erp-pill .material-symbols-outlined {
+    font-size: 1rem;
+}
+
+/* ── 5. KPI Statistics Cards Grid ──────────────────────────────────────────── */
+.erp-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 1.25rem;
+}
+
+.erp-stat-card {
     background-color: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.875rem;
+    padding: 1.25rem;
+    text-decoration: none !important;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    transition: all 0.2s ease-in-out;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 
-.dark #main {
-    background-color: #0b1120;
+.erp-stat-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px -4px rgba(0, 0, 0, 0.1);
 }
 
-/* 5. Header bar clarity */
-#header-inner {
-    border-bottom: 1px solid #f1f5f9;
+.dark .erp-stat-card {
+    background-color: #1e293b;
+    border-color: #334155;
 }
 
-.dark #header-inner {
-    border-bottom: 1px solid #1e293b;
+.erp-stat-teal { border-top: 4px solid #0d9488; }
+.erp-stat-blue { border-top: 4px solid #2563eb; }
+.erp-stat-amber { border-top: 4px solid #d97706; }
+.erp-stat-rose { border-top: 4px solid #e11d48; }
+
+.erp-stat-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.75rem;
 }
 
-/* 6. Dashboard table styling */
-.app-hotel table,
-.app-users table,
-.app-auth table {
+.erp-stat-title {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.025em;
+}
+
+.dark .erp-stat-title {
+    color: #94a3b8;
+}
+
+.erp-stat-icon {
+    font-size: 1.5rem !important;
+    padding: 0.375rem;
+    border-radius: 0.5rem;
+}
+
+.erp-stat-teal .erp-stat-icon { color: #0d9488; background-color: #f0fdfa; }
+.erp-stat-blue .erp-stat-icon { color: #2563eb; background-color: #eff6ff; }
+.erp-stat-amber .erp-stat-icon { color: #d97706; background-color: #fffbeb; }
+.erp-stat-rose .erp-stat-icon { color: #e11d48; background-color: #fff1f2; }
+
+.dark .erp-stat-teal .erp-stat-icon { background-color: rgba(13, 148, 136, 0.2); }
+.dark .erp-stat-blue .erp-stat-icon { background-color: rgba(37, 99, 235, 0.2); }
+.dark .erp-stat-amber .erp-stat-icon { background-color: rgba(217, 119, 6, 0.2); }
+.dark .erp-stat-rose .erp-stat-icon { background-color: rgba(225, 29, 72, 0.2); }
+
+.erp-stat-value {
+    font-size: 1.875rem;
+    font-weight: 800;
+    color: #0f172a;
+    line-height: 1.2;
+}
+
+.dark .erp-stat-value {
+    color: #f8fafc;
+}
+
+.erp-stat-sub {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: #64748b;
+}
+
+.erp-stat-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 1rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid #f1f5f9;
+}
+
+.dark .erp-stat-footer {
+    border-color: #334155;
+}
+
+.erp-badge {
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 0.2rem 0.5rem;
+    border-radius: 0.375rem;
+}
+
+.erp-badge-success { background-color: #dcfce7; color: #15803d; }
+.erp-badge-info { background-color: #e0f2fe; color: #0369a1; }
+.erp-badge-warning { background-color: #fef3c7; color: #b45309; }
+.erp-badge-danger { background-color: #ffe4e6; color: #be123c; }
+
+.dark .erp-badge-success { background-color: rgba(22, 163, 74, 0.2); color: #4ade80; }
+.dark .erp-badge-info { background-color: rgba(2, 132, 199, 0.2); color: #38bdf8; }
+.dark .erp-badge-warning { background-color: rgba(217, 119, 6, 0.2); color: #fbbf24; }
+.dark .erp-badge-danger { background-color: rgba(225, 29, 72, 0.2); color: #fb7185; }
+
+.erp-stat-link {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #64748b;
+}
+
+/* ── 6. Main Workspace Grid (Apps + History) ───────────────────────────────── */
+.erp-main-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+    margin-top: 0.5rem;
+}
+
+@media (min-width: 1024px) {
+    .erp-main-grid {
+        grid-template-columns: 1fr 340px;
+    }
+}
+
+.erp-section-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+.erp-section-header h2 {
+    font-size: 1.125rem;
+    font-weight: 700;
+    color: #1e293b;
+    margin: 0;
+}
+
+.dark .erp-section-header h2 {
+    color: #f1f5f9;
+}
+
+.erp-section-header .material-symbols-outlined {
+    font-size: 1.25rem;
+    color: #0d9488;
+}
+
+/* App list tables polish */
+.erp-apps-column .module {
+    margin-bottom: 1.25rem;
+}
+
+.erp-apps-column table {
     border-radius: 0.75rem !important;
     overflow: hidden !important;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05) !important;
-    margin-bottom: 1.5rem !important;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04) !important;
+    border: 1px solid #e2e8f0 !important;
 }
 
-.app-hotel caption a,
-.app-users caption a,
-.app-auth caption a {
+.dark .erp-apps-column table {
+    border-color: #334155 !important;
+}
+
+.erp-apps-column caption a {
     font-weight: 700 !important;
+    font-size: 1rem !important;
     color: #0f172a !important;
-    font-size: 1.05rem !important;
 }
 
-.dark .app-hotel caption a,
-.dark .app-users caption a,
-.dark .app-auth caption a {
+.dark .erp-apps-column caption a {
     color: #f8fafc !important;
+}
+
+/* Recent Actions List Polish */
+.erp-activity-column #recent-actions-module {
+    background-color: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+    border-radius: 0.875rem !important;
+    padding: 1.25rem !important;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04) !important;
+}
+
+.dark .erp-activity-column #recent-actions-module {
+    background-color: #1e293b !important;
+    border-color: #334155 !important;
+}
+
+.erp-activity-column #recent-actions-module h2 {
+    display: none; /* Hide default header since we have erp-section-header */
+}
+
+.erp-activity-column ul.actionlist li {
+    background-color: #f8fafc !important;
+    border: 1px solid #edf2f7 !important;
+    border-radius: 0.5rem !important;
+    padding: 0.75rem !important;
+    margin-bottom: 0.625rem !important;
+    font-size: 0.8125rem !important;
+}
+
+.dark .erp-activity-column ul.actionlist li {
+    background-color: #0f172a !important;
+    border-color: #334155 !important;
 }

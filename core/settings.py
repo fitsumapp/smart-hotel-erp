@@ -177,6 +177,7 @@ UNFOLD = {
     "SITE_SYMBOL": "hotel",
     "SHOW_HISTORY": True,
     "SHOW_VIEW_ON_SITE": True,
+    "DASHBOARD_CALLBACK": "hotel.views_admin.dashboard_callback",
     "STYLES": [
         "/static/css/unfold_custom.css",
     ],
