@@ -191,6 +191,11 @@ function WaiterDashboard({ userData, handleLogout }) {
       alert('Select a table and at least one item.');
       return;
     }
+    const unavailableInCart = cart.find((item) => item.is_available === false);
+    if (unavailableInCart) {
+      alert(`'${unavailableInCart.name}' በአሁኑ ሰዓት አይገኝም፤ እባክዎ ከካርት ያስወግዱት። ('${unavailableInCart.name}' is currently unavailable. Please remove it from the cart.)`);
+      return;
+    }
     setIsBusy(true);
     try {
       await axios.post(
@@ -213,6 +218,10 @@ function WaiterDashboard({ userData, handleLogout }) {
   };
 
   const addToCart = (item) => {
+    if (item.is_available === false) {
+      alert(`'${item.name}' በአሁኑ ሰዓት አይገኝም (This item is currently unavailable/out of stock).`);
+      return;
+    }
     const existing = cart.find((cartItem) => cartItem.id === item.id);
     if (existing) {
       setCart(cart.map((cartItem) => cartItem.id === item.id ? { ...cartItem, quantity: cartItem.quantity + 1 } : cartItem));
@@ -543,32 +552,61 @@ function WaiterDashboard({ userData, handleLogout }) {
                 </div>
 
                 <div style={styles.menuCards}>
-                  {topMenuItems.length ? topMenuItems.map((item) => (
-                    <button key={item.id} style={styles.menuCard} onClick={() => addToCart(item)}>
-                      <div style={styles.menuCardImageWrapper}>
-                        {item.image ? (
-                          <img 
-                            src={item.image.startsWith('http') ? item.image : `http://127.0.0.1:8000${item.image}`} 
-                            alt={item.name} 
-                            style={styles.menuCardImage}
-                          />
-                        ) : (
-                          <div style={styles.menuCardPlaceholder}>
-                            <UtensilsCrossed size={36} color="#cbd5e1" />
+                  {topMenuItems.length ? topMenuItems.map((item) => {
+                    const isAvail = item.is_available !== false;
+                    return (
+                      <button
+                        key={item.id}
+                        style={{
+                          ...styles.menuCard,
+                          opacity: isAvail ? 1 : 0.65,
+                          cursor: isAvail ? 'pointer' : 'not-allowed',
+                          position: 'relative',
+                        }}
+                        onClick={() => addToCart(item)}
+                      >
+                        <div style={styles.menuCardImageWrapper}>
+                          {item.image ? (
+                            <img 
+                              src={item.image.startsWith('http') ? item.image : `http://127.0.0.1:8000${item.image}`} 
+                              alt={item.name} 
+                              style={styles.menuCardImage}
+                            />
+                          ) : (
+                            <div style={styles.menuCardPlaceholder}>
+                              <UtensilsCrossed size={36} color="#cbd5e1" />
+                            </div>
+                          )}
+                          {!isAvail && (
+                            <span style={{
+                              position: 'absolute',
+                              top: '8px',
+                              right: '8px',
+                              background: '#ef4444',
+                              color: '#ffffff',
+                              fontSize: '10px',
+                              fontWeight: 700,
+                              padding: '2px 8px',
+                              borderRadius: '999px',
+                              textTransform: 'uppercase',
+                              boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+                            }}>
+                              Unavailable
+                            </span>
+                          )}
+                        </div>
+                        <div style={styles.menuCardContent}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
+                            <strong style={{ fontSize: '16px', color: '#0f172a', lineHeight: '1.2', fontWeight: 800 }}>{item.name}</strong>
                           </div>
-                        )}
-                      </div>
-                      <div style={styles.menuCardContent}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
-                          <strong style={{ fontSize: '16px', color: '#0f172a', lineHeight: '1.2', fontWeight: 800 }}>{item.name}</strong>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px' }}>
+                            <div style={styles.smallMuted}>{item.category_name || 'Menu'}</div>
+                            <span style={styles.pricePill}>ETB {Number(item.price || 0).toFixed(2)}</span>
+                          </div>
                         </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px' }}>
-                          <div style={styles.smallMuted}>{item.category_name || 'Menu'}</div>
-                          <span style={styles.pricePill}>ETB {Number(item.price || 0).toFixed(2)}</span>
-                        </div>
-                      </div>
-                    </button>
-                  )) : <div style={styles.emptyCard}>No menu items match the current filter.</div>}
+                      </button>
+                    );
+                  }) : <div style={styles.emptyCard}>No menu items match the current filter.</div>}
                 </div>
               </div>
 
@@ -585,12 +623,17 @@ function WaiterDashboard({ userData, handleLogout }) {
                     <div key={item.id} style={styles.cartItem}>
                       <div>
                         <strong>{item.name}</strong>
+                        {item.is_available === false && (
+                          <span style={{ color: '#ef4444', fontSize: '11px', fontWeight: 700, marginLeft: '6px' }}>
+                            (Unavailable)
+                          </span>
+                        )}
                         <div style={styles.smallMuted}>ETB {Number(item.price || 0).toFixed(2)} each</div>
                       </div>
                       <div style={styles.cartControls}>
                         <button style={styles.iconButton} onClick={() => updateQty(item.id, -1)}><Minus size={14} /></button>
                         <span style={styles.qtyValue}>{item.quantity}</span>
-                        <button style={styles.iconButton} onClick={() => updateQty(item.id, 1)}><Plus size={14} /></button>
+                        <button style={styles.iconButton} onClick={() => updateQty(item.id, 1)} disabled={item.is_available === false}><Plus size={14} /></button>
                         <button style={styles.iconButton} onClick={() => updateQty(item.id, -item.quantity)}><Trash2 size={14} /></button>
                       </div>
                     </div>

@@ -16,7 +16,7 @@ const MenuManager = () => {
   // ለ Modal እና ለፎርም ስቴቶች
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingId, setEditingId] = useState(null); // Edit ለማድረግ ID መያዣ
-  const [newItem, setNewItem] = useState({ name: '', category: '', price: '', description: '', image: null });
+  const [newItem, setNewItem] = useState({ name: '', category: '', price: '', description: '', image: null, is_available: true });
 
   useEffect(() => {
     fetchData();
@@ -72,6 +72,7 @@ const MenuManager = () => {
     formData.append('category', newItem.category);
     formData.append('price', newItem.price);
     formData.append('description', newItem.description);
+    formData.append('is_available', newItem.is_available ? 'true' : 'false');
 
     // አዲስ ምስል ከተመረጠ ብቻ ጨምር
     if (newItem.image instanceof File) {
@@ -123,13 +124,27 @@ const MenuManager = () => {
       category: item.category, // ID መሆኑን አረጋግጥ
       price: item.price,
       description: item.description,
-      image: item.image // ይህ URL ነው
+      image: item.image, // ይህ URL ነው
+      is_available: item.is_available !== false,
     });
     setIsModalOpen(true);
   };
 
+  const toggleAvailability = async (item) => {
+    try {
+      const nextStatus = item.is_available === false ? true : false;
+      await axios.patch(`${API_BASE}menu-items/${item.id}/`, { is_available: nextStatus }, {
+        headers: getHeaders()
+      });
+      setItems(items.map(it => it.id === item.id ? { ...it, is_available: nextStatus } : it));
+    } catch (error) {
+      console.error("Availability update failed:", error);
+      alert("ሁኔታውን መቀየር አልተቻለም።");
+    }
+  };
+
   const resetForm = () => {
-    setNewItem({ name: '', category: '', price: '', description: '', image: null });
+    setNewItem({ name: '', category: '', price: '', description: '', image: null, is_available: true });
     setEditingId(null);
   };
 
@@ -180,7 +195,26 @@ const MenuManager = () => {
               />
             </div>
             <div style={{ padding: '15px' }}>
-              <h4 style={{ margin: 0, color: '#0f172a' }}>{item.name}</h4>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                <h4 style={{ margin: 0, color: '#0f172a' }}>{item.name}</h4>
+                <button
+                  type="button"
+                  onClick={() => toggleAvailability(item)}
+                  title="Click to toggle availability"
+                  style={{
+                    border: 'none',
+                    borderRadius: '12px',
+                    padding: '3px 8px',
+                    fontSize: '11px',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    background: item.is_available !== false ? '#dcfce7' : '#fee2e2',
+                    color: item.is_available !== false ? '#15803d' : '#b91c1c'
+                  }}
+                >
+                  {item.is_available !== false ? '● In Stock' : '○ Out of Stock'}
+                </button>
+              </div>
               <p style={descStyle}>{item.description}</p>
               <div style={cardFooter}>
                 <div style={priceValue}>{item.price} <span style={{fontSize: '10px'}}>ETB</span></div>
@@ -250,6 +284,15 @@ const MenuManager = () => {
                   <label style={{ fontSize: '11px', fontWeight: '700', color: '#64748b' }}>Item Image</label>
                   <input type="file" onChange={e => setNewItem({...newItem, image: e.target.files[0]})} style={{ fontSize: '12px' }} />
                 </div>
+
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', color: '#334155', marginTop: '5px' }}>
+                  <input
+                    type="checkbox"
+                    checked={newItem.is_available !== false}
+                    onChange={e => setNewItem({...newItem, is_available: e.target.checked})}
+                  />
+                  <span>Available in Menu (ክምችት አለ / አገልግሎት ላይ ነው)</span>
+                </label>
 
                 <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
                   <button type="button" onClick={() => setIsModalOpen(false)} style={cancelBtnStyle}>Cancel</button>

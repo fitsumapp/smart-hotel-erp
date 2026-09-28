@@ -1,5 +1,5 @@
-"""Orders serializers."""
-from users.serializers import *  # noqa: F401,F403
+from rest_framework import serializers
+from .models import Category, MenuItem, Notification, Order, OrderItem, RestaurantTable, SystemSettings
 
 class CategorySerializer(serializers.ModelSerializer):
     class Meta:

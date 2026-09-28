@@ -110,9 +110,13 @@ def create_order_idempotently(*, table_id, items, waiter, idempotency_key=None):
     )
     for item in items:
         quantity = int(item["quantity"])
-        if quantity <= 0:
-            raise ValidationError("Order item quantity must be positive.")
-        menu_item = MenuItem.objects.get(pk=item["id"], is_available=True)
+        try:
+            menu_item = MenuItem.objects.get(pk=item["id"])
+        except MenuItem.DoesNotExist:
+            raise ValidationError(f"Menu item (ID {item.get('id')}) was not found or has been removed.")
+
+        if not menu_item.is_available:
+            raise ValidationError(f"'{menu_item.name}' is currently unavailable (አልቋል / አይገኝም). Please remove it from cart.")
         OrderItem.objects.create(order=order, menu_item=menu_item, quantity=quantity, price_at_order=menu_item.price)
     table.status = "occupied"
     table.save(update_fields=["status"])
