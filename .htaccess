@@ -1,4 +1,4 @@
-# ── React Router fix ─────────────────────────────────────────────────────────
+# ── React Router & Django Admin fix ──────────────────────────────────────────
 <IfModule mod_rewrite.c>
   RewriteEngine On
   RewriteBase /
@@ -6,7 +6,7 @@
   # 1. Redirect /admin to /api/admin/
   RewriteRule ^admin(/.*)?$ /api/admin$1 [R=301,L]
 
-  # 2. Bypass rewriting for backend API requests
+  # 2. Bypass rewriting for backend API requests (handled by Passenger)
   RewriteCond %{REQUEST_URI} ^/api [NC]
   RewriteRule ^ - [L]
 
@@ -14,31 +14,30 @@
   RewriteRule ^static/(unfold|admin|rest_framework)/(.*)$ staticfiles/$1/$2 [L]
   RewriteRule ^staticfiles/ - [L]
 
-  # 2. Serve static files directly if they exist
+  # 4. Serve static files directly if they exist
   RewriteRule ^index\.html$ - [L]
   RewriteCond %{REQUEST_FILENAME} !-f
   RewriteCond %{REQUEST_FILENAME} !-d
   RewriteCond %{REQUEST_FILENAME} !-l
 
-  # 3. Route all other requests to React index.html for client-side routing
+  # 5. Route all other requests to React index.html for client-side routing
   RewriteRule . /index.html [L]
 </IfModule>
 
 # ── Cache Control ─────────────────────────────────────────────────────────────
 <IfModule mod_headers.c>
-  # index.html — NEVER cache (so users always get the latest app)
+  # index.html — NEVER cache
   <FilesMatch "^index\.html$">
     Header set Cache-Control "no-store, no-cache, must-revalidate, max-age=0"
     Header set Pragma "no-cache"
     Header set Expires "0"
   </FilesMatch>
 
-  # JS/CSS bundles — cache for 1 year (React adds unique hash to filenames)
+  # CSS, JS, Fonts — cache for performance
   <FilesMatch "\.(js|css)$">
     Header set Cache-Control "public, max-age=31536000, immutable"
   </FilesMatch>
 
-  # Images, fonts — cache for 30 days
   <FilesMatch "\.(ico|png|jpg|jpeg|gif|svg|webp|woff|woff2|ttf|eot)$">
     Header set Cache-Control "public, max-age=2592000"
   </FilesMatch>

@@ -26,7 +26,6 @@ phase1_*.py
 local_settings.py
 db.sqlite3
 media/
-staticfiles/
 
 # Environment variables — NEVER upload secrets!
 .env

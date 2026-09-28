@@ -27,10 +27,16 @@ urlpatterns = [
     path("users/", include("users.urls")),  # Fallback for cPanel Passenger /api mount point
 ]
 
-# Serve media and static files in development
+from django.views.static import serve
+from django.urls import re_path
+
+# Serve media files
 urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
-if settings.DEBUG:
-    urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
+
+# Serve static files (development and production fallback for Passenger/LiteSpeed)
+urlpatterns += [
+    re_path(r"^static/(?P<path>.*)$", serve, {"document_root": settings.STATIC_ROOT}),
+]
 
 handler500 = "core.views.custom_500_handler"
 handler404 = "core.views.custom_404_handler"
