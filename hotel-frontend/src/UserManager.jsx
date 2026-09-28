@@ -174,25 +174,40 @@ const UserManager = () => {
 
   // --- Dynamic Roles Filtering ---
   const getAvailableRoles = () => {
-    const enabled = hotelSettings?.enabled_features?.length > 0
-      ? hotelSettings.enabled_features
-      : ['dashboard', 'orders', 'finance', 'food_beverage', 'rooms', 'inventory', 'users', 'settings'];
     let available = ['Admin'];
-    
-    if (enabled.includes('food_beverage')) {
+
+    const hasPos = hotelSettings?.module_pos !== undefined
+      ? Boolean(hotelSettings.module_pos)
+      : (hotelSettings?.enabled_features?.includes('food_beverage') ?? true);
+
+    const hasRooms = hotelSettings?.module_rooms !== undefined
+      ? Boolean(hotelSettings.module_rooms)
+      : (hotelSettings?.enabled_features?.includes('rooms') ?? true);
+
+    const hasFinance = hotelSettings?.module_finance !== undefined
+      ? Boolean(hotelSettings.module_finance)
+      : (hotelSettings?.enabled_features?.includes('finance') ?? true);
+
+    const hasInventory = hotelSettings?.module_inventory !== undefined
+      ? Boolean(hotelSettings.module_inventory)
+      : (hotelSettings?.enabled_features?.includes('inventory') ?? true);
+
+    if (hasPos) {
       available.push('Cashier', 'Waiter', 'Kitchen', 'Bar');
     }
-    
-    if (enabled.includes('rooms')) {
+
+    if (hasRooms) {
       available.push('Reception');
     }
-    
-    if (enabled.includes('finance') || enabled.includes('payments')) {
+
+    if (hasFinance) {
       available.push('Finance');
     }
-    
-    available.push('Inventory');
-    
+
+    if (hasInventory) {
+      available.push('Inventory');
+    }
+
     return available;
   };
 

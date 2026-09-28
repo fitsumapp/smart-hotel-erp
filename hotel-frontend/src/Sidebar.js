@@ -48,7 +48,7 @@ const menuGroups = [
           { id: 'reports',             title: 'Reports Center',       icon: <FileBarChart2 size={15} /> },
         ]
       },
-      { id: 'inventory', title: 'Inventory Control', icon: <Package size={17} /> },
+      { id: 'inventory', title: 'Inventory Control', icon: <Package size={17} />, pkg: 'inventory' },
     ]
   },
   {
@@ -143,11 +143,35 @@ const Sidebar = ({ activeTab, setActiveTab, handleLogout, isOpen, setIsOpen }) =
 
   const toggleSubmenu = (id) => setOpenSubmenu(openSubmenu === id ? null : id);
 
+  const isChildVisible = (child) => {
+    if (['report_police', 'report_occupancy', 'report_bookings'].includes(child.id)) {
+      if (hotelSettings?.module_rooms === false) return false;
+    }
+    if (child.id === 'report_inventory') {
+      if (hotelSettings?.module_inventory === false) return false;
+    }
+    if (['report_xreport', 'report_zreport'].includes(child.id)) {
+      if (hotelSettings?.module_finance === false && hotelSettings?.module_pos === false) return false;
+    }
+    return true;
+  };
+
   const isItemVisible = (item) => {
+    if (hotelSettings) {
+      if ((item.pkg === 'rooms' || item.id === 'rooms_pkg') && hotelSettings.module_rooms === false) return false;
+      if ((item.pkg === 'food_beverage' || item.pkg === 'orders' || item.id === 'orders') && hotelSettings.module_pos === false) return false;
+      if ((item.pkg === 'inventory' || item.id === 'inventory') && hotelSettings.module_inventory === false) return false;
+      if ((item.pkg === 'finance' || item.id === 'finance') && hotelSettings.module_finance === false) return false;
+    }
+
     if (item.pkg) {
       const enabled = enabledFeatures.includes(item.pkg) ||
         (item.pkg === 'finance' && enabledFeatures.includes('payments'));
       if (!enabled) return false;
+    }
+    if (item.children) {
+      const visibleChildren = item.children.filter(isChildVisible);
+      if (visibleChildren.length === 0) return false;
     }
     if (userRole === 'finance' && !['dashboard', 'finance', 'inventory'].includes(item.id)) return false;
     return true;
@@ -349,7 +373,7 @@ const Sidebar = ({ activeTab, setActiveTab, handleLogout, isOpen, setIsOpen }) =
                             flexDirection: 'column',
                             gap: '1px'
                           }}>
-                            {item.children.map(child => {
+                            {item.children.filter(isChildVisible).map(child => {
                               const isChildActive = activeTab === child.id;
                               return (
                                 <motion.div

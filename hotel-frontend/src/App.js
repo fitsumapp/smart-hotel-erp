@@ -191,7 +191,7 @@ const RoomStatusPill = ({ label, count, color, bg }) => (
 // ─────────────────────────────────────────────────────────────────────────────
 // 1. ADMIN DASHBOARD CONTENT
 // ─────────────────────────────────────────────────────────────────────────────
-const DashboardContent = () => {
+const DashboardContent = ({ hotelSettings }) => {
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -234,26 +234,31 @@ const DashboardContent = () => {
   const fmt  = (n) => (n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const fmtN = (n) => (n || 0).toLocaleString();
 
+  const hasPos = hotelSettings?.module_pos !== false;
+  const hasRooms = hotelSettings?.module_rooms !== false;
+  const hasInv = hotelSettings?.module_inventory !== false;
+  const hasFin = hotelSettings?.module_finance !== false;
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
 
       {/* ── ROW 1: KPI Strip ────────────────────────────────────────────── */}
       <div className="kpi-grid">
-        <KpiCard label="Today's Revenue"    value={`ETB ${fmt(pos.todayRevenue)}`}           icon="💰" color="#0f766e" bg="#f0fdfa" />
-        <KpiCard label="Total POS Revenue"  value={`ETB ${fmt(pos.revenue)}`}                icon="🧾" color="#3b82f6" bg="#eff6ff" />
-        <KpiCard label="Occupancy Rate"     value={`${rooms.occupancyPct || 0}%`}            icon="🏨" color="#8b5cf6" bg="#f5f3ff" />
-        <KpiCard label="Active Reservations" value={fmtN(reservations.active)}               icon="📅" color="#f59e0b" bg="#fffbeb" />
-        <KpiCard label="Low Stock Alerts"   value={fmtN(inventory.lowStockAlerts)}           icon="⚠️" color="#ef4444" bg="#fef2f2" alert={inventory.lowStockAlerts > 0} />
-        <KpiCard label="Net Profit"         value={`ETB ${fmt(finance.netProfit)}`}          icon="📈"
+        {hasPos && <KpiCard label="Today's Revenue"    value={`ETB ${fmt(pos.todayRevenue)}`}           icon="💰" color="#0f766e" bg="#f0fdfa" />}
+        {hasPos && <KpiCard label="Total POS Revenue"  value={`ETB ${fmt(pos.revenue)}`}                icon="🧾" color="#3b82f6" bg="#eff6ff" />}
+        {hasRooms && <KpiCard label="Occupancy Rate"     value={`${rooms.occupancyPct || 0}%`}            icon="🏨" color="#8b5cf6" bg="#f5f3ff" />}
+        {hasRooms && <KpiCard label="Active Reservations" value={fmtN(reservations.active)}               icon="📅" color="#f59e0b" bg="#fffbeb" />}
+        {hasInv && <KpiCard label="Low Stock Alerts"   value={fmtN(inventory.lowStockAlerts)}           icon="⚠️" color="#ef4444" bg="#fef2f2" alert={inventory.lowStockAlerts > 0} />}
+        {hasFin && <KpiCard label="Net Profit"         value={`ETB ${fmt(finance.netProfit)}`}          icon="📈"
           color={finance.netProfit >= 0 ? '#10b981' : '#ef4444'}
-          bg={finance.netProfit >= 0 ? '#f0fdf4' : '#fef2f2'} />
+          bg={finance.netProfit >= 0 ? '#f0fdf4' : '#fef2f2'} />}
       </div>
 
       {/* ── ROW 2: POS + Rooms ──────────────────────────────────────────── */}
       <div className="dashboard-two-col">
 
         {/* POS / Food & Beverage */}
-        <SectionCard title="Point of Sale" subtitle="Food & Beverage Orders" iconBg="#eff6ff" iconColor="#3b82f6" icon={<ShoppingCartIcon />}>
+        {hasPos && <SectionCard title="Point of Sale" subtitle="Food & Beverage Orders" iconBg="#eff6ff" iconColor="#3b82f6" icon={<ShoppingCartIcon />}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
             <MetricBox label="Total Orders"    value={fmtN(pos.totalOrders)}            accent="#3b82f6" />
             <MetricBox label="Today's Orders"  value={fmtN(pos.todayOrders)}            accent="#0f766e" />
@@ -269,10 +274,10 @@ const DashboardContent = () => {
             <span style={labelSmall}>Total Lifetime Revenue</span>
             <span style={{ fontWeight: '700', fontSize: '14px', color: '#1e293b' }}>ETB {fmt(pos.revenue)}</span>
           </div>
-        </SectionCard>
+        </SectionCard>}
 
         {/* Front Office & Rooms */}
-        <SectionCard title="Front Office & Rooms" subtitle="Room Status Overview" iconBg="#f5f3ff" iconColor="#8b5cf6" icon={<BedIcon />}>
+        {hasRooms && <SectionCard title="Front Office & Rooms" subtitle="Room Status Overview" iconBg="#f5f3ff" iconColor="#8b5cf6" icon={<BedIcon />}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px' }}>
             <RoomStatusPill label="Available"   count={rooms.available   || 0} color="#10b981" bg="#f0fdf4" />
             <RoomStatusPill label="Occupied"    count={rooms.occupied    || 0} color="#8b5cf6" bg="#f5f3ff" />
@@ -299,14 +304,14 @@ const DashboardContent = () => {
               🚪 {reservations.checkOutsToday || 0} Check-outs Today
             </div>
           </div>
-        </SectionCard>
+        </SectionCard>}
       </div>
 
       {/* ── ROW 3: Inventory + Finance + Staff ──────────────────────────── */}
       <div className="dashboard-three-col">
 
         {/* Inventory */}
-        <SectionCard title="Inventory Control" subtitle="Stock & Asset Overview" iconBg="#fffbeb" iconColor="#f59e0b" icon={<BoxIcon />}>
+        {hasInv && <SectionCard title="Inventory Control" subtitle="Stock & Asset Overview" iconBg="#fffbeb" iconColor="#f59e0b" icon={<BoxIcon />}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
             <MetricBox label="Total SKUs"       value={fmtN(inventory.totalItems)}     accent="#f59e0b" />
             <MetricBox label="Low Stock Items"  value={fmtN(inventory.lowStockAlerts)} accent="#ef4444" alert={inventory.lowStockAlerts > 0} />
@@ -321,10 +326,10 @@ const DashboardContent = () => {
               ⚠️ {inventory.lowStockAlerts} item{inventory.lowStockAlerts !== 1 ? 's' : ''} below reorder level
             </div>
           )}
-        </SectionCard>
+        </SectionCard>}
 
         {/* Finance */}
-        <SectionCard title="Finance & Accounts" subtitle="Income, Expenses & Profit" iconBg="#f0fdf4" iconColor="#10b981" icon={<TrendUpIcon />}>
+        {hasFin && <SectionCard title="Finance & Accounts" subtitle="Income, Expenses & Profit" iconBg="#f0fdf4" iconColor="#10b981" icon={<TrendUpIcon />}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', backgroundColor: '#f0fdf4', borderRadius: '12px', border: '1px solid rgba(16,185,129,0.15)' }}>
               <div>
@@ -352,7 +357,7 @@ const DashboardContent = () => {
               <span style={{ fontWeight: '700', fontSize: '13px', color: '#8b5cf6' }}>ETB {fmt(reservations.roomRevenue)}</span>
             </div>
           </div>
-        </SectionCard>
+        </SectionCard>}
 
         {/* Staff */}
         <SectionCard title="Staff" subtitle="Active Team Members" iconBg="#f0fdfa" iconColor="#0f766e" icon={<PeopleIcon />}>
@@ -376,6 +381,34 @@ const DashboardContent = () => {
 // ─────────────────────────────────────────────────────────────────────────────
 const DashboardLayout = ({ activeTab, setActiveTab, userData, handleLogout }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [hotelSettings, setHotelSettings] = useState(null);
+
+  useEffect(() => {
+    const token = localStorage.getItem('access_token');
+    if (token) {
+      axios.get(`${API_BASE_URL}/users/settings/`, {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+        .then(res => {
+          const data = Array.isArray(res.data) ? res.data[0] : res.data;
+          setHotelSettings(data);
+        })
+        .catch(err => console.error('Failed to load hotel settings in layout:', err));
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!hotelSettings) return;
+    const isRoomsTab = ['rooms', 'reservation_booking', 'checkin_checkout', 'night_audit', 'bookings', 'report_police', 'report_occupancy', 'report_bookings'].includes(activeTab);
+    const isPosTab = ['orders', 'menus', 'categories', 'tables'].includes(activeTab);
+    const isInvTab = ['inventory', 'report_inventory'].includes(activeTab);
+    const isFinTab = ['finance', 'report_xreport', 'report_zreport'].includes(activeTab);
+
+    if (isRoomsTab && hotelSettings.module_rooms === false) setActiveTab('dashboard');
+    if (isPosTab && hotelSettings.module_pos === false) setActiveTab('dashboard');
+    if (isInvTab && hotelSettings.module_inventory === false) setActiveTab('dashboard');
+    if (isFinTab && hotelSettings.module_finance === false) setActiveTab('dashboard');
+  }, [hotelSettings, activeTab, setActiveTab]);
 
   return (
     <div className="app-layout-container">
@@ -435,7 +468,7 @@ const DashboardLayout = ({ activeTab, setActiveTab, userData, handleLogout }) =>
             {activeTab === 'dashboard' && (
               <motion.div key="dash" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}>
                 <h1 style={pageTitle}>Admin Dashboard Overview</h1>
-                <DashboardContent />
+                <DashboardContent hotelSettings={hotelSettings} />
               </motion.div>
             )}
             {activeTab === 'orders'               && <OrdersManager userData={userData} />}

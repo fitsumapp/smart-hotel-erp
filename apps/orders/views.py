@@ -393,10 +393,14 @@ class SystemSettingsView(APIView):
         return Response(SystemSettingsSerializer(get_system_settings()).data)
 
     def post(self, request):
-        if request.user.role != "admin":
+        if request.user.role != "admin" and not request.user.is_superuser:
             return Response({"error": "Only admins can modify system settings."}, status=403)
         settings_obj = get_system_settings()
-        serializer = SystemSettingsSerializer(settings_obj, data=request.data, partial=True)
+        data = request.data.copy() if hasattr(request.data, "copy") else dict(request.data)
+        if not request.user.is_superuser:
+            for mod_field in ["module_rooms", "module_pos", "module_inventory", "module_finance"]:
+                data.pop(mod_field, None)
+        serializer = SystemSettingsSerializer(settings_obj, data=data, partial=True)
         if serializer.is_valid():
             serializer.save()
             return Response(serializer.data)

@@ -63,10 +63,26 @@ class OrderItemSerializer(serializers.ModelSerializer):
 
 
 class SystemSettingsSerializer(serializers.ModelSerializer):
+    enabled_features = serializers.SerializerMethodField()
+
     class Meta:
         model = SystemSettings
         fields = "__all__"
-        read_only_fields = ["logo"]
+        read_only_fields = [
+            "logo", "module_rooms", "module_pos", "module_inventory", "module_finance"
+        ]
+
+    def get_enabled_features(self, obj):
+        features = ["dashboard", "users", "settings"]
+        if getattr(obj, "module_rooms", True):
+            features.extend(["rooms", "rooms_pkg", "reservations", "front_desk"])
+        if getattr(obj, "module_pos", True):
+            features.extend(["orders", "food_beverage", "pos", "kitchen", "bar"])
+        if getattr(obj, "module_inventory", True):
+            features.append("inventory")
+        if getattr(obj, "module_finance", True):
+            features.extend(["finance", "payments"])
+        return features
 
 
 class OrderSerializer(serializers.ModelSerializer):

@@ -68,7 +68,7 @@ class UserSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         password = validated_data.pop("password", None)
-        is_active = validated_data.pop("is_active", False)
+        is_active = validated_data.pop("is_active", True)
         user = User(**validated_data)
         user.is_active = is_active
         if password:
