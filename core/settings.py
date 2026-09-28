@@ -166,32 +166,209 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "core.wsgi.application"
 
+from django.urls import reverse_lazy
+from django.utils.translation import gettext_lazy as _
+
 UNFOLD = {
     "SITE_TITLE": "Smart Hotel ERP",
-    "SITE_HEADER": "Hotel Management System",
-    "SITE_URL": "/",
-    # Logo via external URL (no local static file required)
-    "SITE_LOGO": {
-        "light": lambda request: "https://dummyimage.com/150x50/1e3a8a/ffffff.png&text=SMART+ERP",
-        "dark": lambda request: "https://dummyimage.com/150x50/0f172a/ffffff.png&text=SMART+ERP",
-    },
+    "SITE_HEADER": "Smart Hotel ERP",
+    "SITE_SUBHEADER": "Enterprise Hotel & Operations Management",
+    "SITE_URL": "/dashboard",
+    "SITE_SYMBOL": "hotel",
+    "SHOW_HISTORY": True,
+    "SHOW_VIEW_ON_SITE": True,
     "COLORS": {
         "primary": {
-            "50": "#eff6ff",
-            "100": "#dbeafe",
-            "200": "#bfdbfe",
-            "300": "#93c5fd",
-            "400": "#60a5fa",
-            "500": "#3b82f6",
-            "600": "#2563eb",
-            "700": "#1d4ed8",
-            "800": "#1e40af",  # Midnight Blue
-            "900": "#1e3a8a",
+            "50": "240 253 250",
+            "100": "204 251 241",
+            "200": "153 246 228",
+            "300": "94 234 212",
+            "400": "45 212 191",
+            "500": "20 184 166",
+            "600": "13 148 136",
+            "700": "15 118 110",
+            "800": "17 94 89",
+            "900": "19 78 74",
+            "950": "4 47 46",
         },
     },
     "SIDEBAR": {
         "show_search": True,
-        "show_all_applications": True,
+        "show_all_applications": False,
+        "navigation": [
+            {
+                "title": _("System & Settings"),
+                "separator": True,
+                "collapsible": True,
+                "items": [
+                    {
+                        "title": _("System Settings & Modules"),
+                        "icon": "settings",
+                        "link": reverse_lazy("admin:hotel_systemsettings_changelist"),
+                    },
+                    {
+                        "title": _("Operational Audits"),
+                        "icon": "shield",
+                        "link": reverse_lazy("admin:hotel_auditevent_changelist"),
+                    },
+                    {
+                        "title": _("Security Audits"),
+                        "icon": "verified_user",
+                        "link": reverse_lazy("admin:users_securityauditevent_changelist"),
+                    },
+                ],
+            },
+            {
+                "title": _("User & Staff Management"),
+                "separator": True,
+                "collapsible": True,
+                "items": [
+                    {
+                        "title": _("Staff Users"),
+                        "icon": "group",
+                        "link": reverse_lazy("admin:users_user_changelist"),
+                    },
+                ],
+            },
+            {
+                "title": _("Rooms & Front Desk"),
+                "separator": True,
+                "collapsible": True,
+                "items": [
+                    {
+                        "title": _("Rooms"),
+                        "icon": "hotel",
+                        "link": reverse_lazy("admin:hotel_room_changelist"),
+                    },
+                    {
+                        "title": _("Reservations"),
+                        "icon": "book_online",
+                        "link": reverse_lazy("admin:hotel_reservation_changelist"),
+                    },
+                    {
+                        "title": _("Guest Profiles"),
+                        "icon": "person",
+                        "link": reverse_lazy("admin:hotel_guestprofile_changelist"),
+                    },
+                    {
+                        "title": _("Folio Charges"),
+                        "icon": "receipt_long",
+                        "link": reverse_lazy("admin:hotel_foliocharge_changelist"),
+                    },
+                    {
+                        "title": _("Room History"),
+                        "icon": "history",
+                        "link": reverse_lazy("admin:hotel_roomhistory_changelist"),
+                    },
+                    {
+                        "title": _("Maintenance Logs"),
+                        "icon": "build",
+                        "link": reverse_lazy("admin:hotel_maintenancelog_changelist"),
+                    },
+                ],
+            },
+            {
+                "title": _("Food, Beverage & POS"),
+                "separator": True,
+                "collapsible": True,
+                "items": [
+                    {
+                        "title": _("Categories"),
+                        "icon": "category",
+                        "link": reverse_lazy("admin:hotel_category_changelist"),
+                    },
+                    {
+                        "title": _("Menu Items"),
+                        "icon": "restaurant_menu",
+                        "link": reverse_lazy("admin:hotel_menuitem_changelist"),
+                    },
+                    {
+                        "title": _("Restaurant Tables"),
+                        "icon": "table_restaurant",
+                        "link": reverse_lazy("admin:hotel_restauranttable_changelist"),
+                    },
+                    {
+                        "title": _("Orders"),
+                        "icon": "shopping_cart",
+                        "link": reverse_lazy("admin:hotel_order_changelist"),
+                    },
+                ],
+            },
+            {
+                "title": _("Inventory & Stock"),
+                "separator": True,
+                "collapsible": True,
+                "items": [
+                    {
+                        "title": _("Inventory Items"),
+                        "icon": "inventory_2",
+                        "link": reverse_lazy("admin:hotel_inventoryitem_changelist"),
+                    },
+                    {
+                        "title": _("Inventory Categories"),
+                        "icon": "folder",
+                        "link": reverse_lazy("admin:hotel_inventorycategory_changelist"),
+                    },
+                    {
+                        "title": _("Suppliers"),
+                        "icon": "local_shipping",
+                        "link": reverse_lazy("admin:hotel_supplier_changelist"),
+                    },
+                    {
+                        "title": _("Stock Transactions"),
+                        "icon": "sync_alt",
+                        "link": reverse_lazy("admin:hotel_stocktransaction_changelist"),
+                    },
+                    {
+                        "title": _("Recipes (BOM)"),
+                        "icon": "menu_book",
+                        "link": reverse_lazy("admin:hotel_recipebom_changelist"),
+                    },
+                ],
+            },
+            {
+                "title": _("Finance & Accounting"),
+                "separator": True,
+                "collapsible": True,
+                "items": [
+                    {
+                        "title": _("Chart of Accounts"),
+                        "icon": "account_balance",
+                        "link": reverse_lazy("admin:hotel_account_changelist"),
+                    },
+                    {
+                        "title": _("Journal Entries"),
+                        "icon": "menu_book",
+                        "link": reverse_lazy("admin:hotel_journalentry_changelist"),
+                    },
+                    {
+                        "title": _("Expense Transactions"),
+                        "icon": "payments",
+                        "link": reverse_lazy("admin:hotel_expensetransaction_changelist"),
+                    },
+                    {
+                        "title": _("Budgets"),
+                        "icon": "trending_up",
+                        "link": reverse_lazy("admin:hotel_budget_changelist"),
+                    },
+                    {
+                        "title": _("Payroll Entries"),
+                        "icon": "badge",
+                        "link": reverse_lazy("admin:hotel_payrollentry_changelist"),
+                    },
+                    {
+                        "title": _("Payment Attempts"),
+                        "icon": "credit_card",
+                        "link": reverse_lazy("admin:hotel_paymentattempt_changelist"),
+                    },
+                    {
+                        "title": _("Webhook Receipts"),
+                        "icon": "receipt",
+                        "link": reverse_lazy("admin:hotel_paymentwebhookevent_changelist"),
+                    },
+                ],
+            },
+        ],
     },
 }
 

@@ -488,7 +488,11 @@ class SystemSettings(models.Model):
     address = models.TextField(default="Bole Sub-City, Woreda 03, H.No 033")
     phone_number = models.CharField(max_length=50, default="0116187432")
     logo = models.ImageField(upload_to="settings/", blank=True, null=True)
-    enabled_features = models.JSONField(default=list, blank=True)
+    # Active System Modules (Super Admin Module Control)
+    module_rooms = models.BooleanField(default=True, verbose_name="Enable Rooms & Reservations")
+    module_pos = models.BooleanField(default=True, verbose_name="Enable Restaurant POS & Kitchen/Bar")
+    module_inventory = models.BooleanField(default=True, verbose_name="Enable Inventory & Stock Control")
+    module_finance = models.BooleanField(default=True, verbose_name="Enable Finance & Accounting")
 
     # Tax
     vat_enabled = models.BooleanField(default=True)
