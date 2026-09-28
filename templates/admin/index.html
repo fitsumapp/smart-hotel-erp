@@ -8,124 +8,189 @@
 {% endblock %}
 
 {% block content %}
-<div class="erp-dashboard-container">
+<div class="dash-container">
 
-    <!-- ── 1. Hero Operations Banner ─────────────────────────────────────── -->
-    <div class="erp-hero-banner">
-        <div class="erp-hero-content">
-            <div class="erp-hero-left">
-                <span class="erp-hero-badge">🏨 Smart Hotel ERP — Platform Control</span>
-                <h1 class="erp-hero-title">{{ hotel_name|default:"Smart Hotel ERP" }}</h1>
-                <p class="erp-hero-desc">Operations Dashboard & Management Suite</p>
-            </div>
-            <div class="erp-hero-actions">
-                <a href="{% url 'admin:hotel_reservation_add' %}" class="erp-btn erp-btn-primary">
-                    <span class="material-symbols-outlined">add_circle</span>
-                    New Booking
-                </a>
-                <a href="{% url 'admin:hotel_order_add' %}" class="erp-btn erp-btn-secondary">
-                    <span class="material-symbols-outlined">post_add</span>
-                    New POS Order
-                </a>
-                <a href="{% url 'admin:hotel_systemsettings_changelist' %}" class="erp-btn erp-btn-outline">
-                    <span class="material-symbols-outlined">tune</span>
-                    Module Toggles
-                </a>
-            </div>
+    <!-- ── 1. Dashboard Top Header Bar ───────────────────────────────────── -->
+    <div class="dash-header">
+        <div class="dash-title-group">
+            <h1 class="dash-title">Dashboard</h1>
+            <span class="dash-date-range">{{ date_range|default:"Sep 01, 2026 - Sep 28, 2026" }}</span>
         </div>
-
-        <!-- Module Status Pills -->
-        <div class="erp-module-pills">
-            <span class="erp-pill-label">Active Modules:</span>
-            <span class="erp-pill {% if modules.rooms %}erp-pill-active{% else %}erp-pill-disabled{% endif %}">
-                <span class="material-symbols-outlined">hotel</span> Rooms & Front Desk
-            </span>
-            <span class="erp-pill {% if modules.pos %}erp-pill-active{% else %}erp-pill-disabled{% endif %}">
-                <span class="material-symbols-outlined">restaurant</span> F&B POS
-            </span>
-            <span class="erp-pill {% if modules.inventory %}erp-pill-active{% else %}erp-pill-disabled{% endif %}">
-                <span class="material-symbols-outlined">inventory_2</span> Inventory & Stock
-            </span>
-            <span class="erp-pill {% if modules.finance %}erp-pill-active{% else %}erp-pill-disabled{% endif %}">
-                <span class="material-symbols-outlined">payments</span> Finance & Accounts
-            </span>
+        <div class="dash-actions">
+            <a href="{% url 'admin:hotel_reservation_add' %}" class="dash-btn-primary">
+                <span class="material-symbols-outlined">add</span>
+                Add Reservation
+            </a>
+            <a href="{% url 'admin:hotel_order_add' %}" class="dash-btn-secondary">
+                <span class="material-symbols-outlined">add_shopping_cart</span>
+                New POS Order
+            </a>
         </div>
     </div>
 
-    <!-- ── 2. Live KPI Statistics Cards ──────────────────────────────────── -->
-    <div class="erp-stats-grid">
-        <!-- Room Status Card -->
-        <a href="{% url 'admin:hotel_room_changelist' %}" class="erp-stat-card erp-stat-teal">
-            <div class="erp-stat-header">
-                <span class="erp-stat-title">Room Inventory</span>
-                <span class="erp-stat-icon material-symbols-outlined">hotel</span>
-            </div>
-            <div class="erp-stat-body">
-                <div class="erp-stat-value">{{ stats.available_rooms|default:"0" }} <span class="erp-stat-sub">/ {{ stats.total_rooms|default:"0" }} Free</span></div>
-                <div class="erp-stat-footer">
-                    <span class="erp-badge erp-badge-success">{{ stats.occupied_rooms|default:"0" }} Occupied</span>
-                    <span class="erp-stat-link">View Rooms &rarr;</span>
+    <!-- ── 2. Top 5 KPI Cards Row ────────────────────────────────────────── -->
+    <div class="kpi-grid">
+        <!-- Card 1: Total Rooms -->
+        <a href="{% url 'admin:hotel_room_changelist' %}" class="kpi-card kpi-card-blue">
+            <div class="kpi-header">
+                <div class="kpi-icon-box">
+                    <span class="material-symbols-outlined">group</span>
                 </div>
+                <span class="kpi-badge kpi-badge-rose">{{ stats.occupied_pct|default:"0" }}%</span>
             </div>
+            <div class="kpi-value">{{ stats.total_rooms|default:"0" }}</div>
+            <div class="kpi-label">TOTAL ROOMS</div>
+            <div class="kpi-sub">{{ stats.occupied_rooms|default:"0" }} currently occupied</div>
         </a>
 
-        <!-- Reservations Card -->
-        <a href="{% url 'admin:hotel_reservation_changelist' %}" class="erp-stat-card erp-stat-blue">
-            <div class="erp-stat-header">
-                <span class="erp-stat-title">Reservations</span>
-                <span class="erp-stat-icon material-symbols-outlined">book_online</span>
-            </div>
-            <div class="erp-stat-body">
-                <div class="erp-stat-value">{{ stats.active_reservations|default:"0" }} <span class="erp-stat-sub">Active</span></div>
-                <div class="erp-stat-footer">
-                    <span class="erp-badge erp-badge-info">{{ stats.pending_reservations|default:"0" }} Pending</span>
-                    <span class="erp-stat-link">Manage &rarr;</span>
+        <!-- Card 2: Available Rooms -->
+        <a href="{% url 'admin:hotel_room_changelist' %}?status__exact=Available" class="kpi-card kpi-card-amber">
+            <div class="kpi-header">
+                <div class="kpi-icon-box">
+                    <span class="material-symbols-outlined">hotel</span>
                 </div>
+                <span class="kpi-badge kpi-badge-rose">+{{ stats.available_rooms|default:"0" }}</span>
             </div>
+            <div class="kpi-value">{{ stats.available_rooms|default:"0" }}</div>
+            <div class="kpi-label">AVAILABLE ROOMS</div>
+            <div class="kpi-sub">ready for guest check-in</div>
         </a>
 
-        <!-- Food & Beverage Orders Card -->
-        <a href="{% url 'admin:hotel_order_changelist' %}" class="erp-stat-card erp-stat-amber">
-            <div class="erp-stat-header">
-                <span class="erp-stat-title">Restaurant & Bar POS</span>
-                <span class="erp-stat-icon material-symbols-outlined">restaurant_menu</span>
-            </div>
-            <div class="erp-stat-body">
-                <div class="erp-stat-value">{{ stats.today_orders|default:"0" }} <span class="erp-stat-sub">Today</span></div>
-                <div class="erp-stat-footer">
-                    <span class="erp-badge erp-badge-warning">{{ stats.active_orders|default:"0" }} In Kitchen/Bar</span>
-                    <span class="erp-stat-link">Orders &rarr;</span>
+        <!-- Card 3: Active Reservations -->
+        <a href="{% url 'admin:hotel_reservation_changelist' %}" class="kpi-card kpi-card-teal">
+            <div class="kpi-header">
+                <div class="kpi-icon-box">
+                    <span class="material-symbols-outlined">calendar_today</span>
                 </div>
             </div>
+            <div class="kpi-value">{{ stats.active_reservations|default:"0" }}</div>
+            <div class="kpi-label">ACTIVE RESERVATIONS</div>
+            <div class="kpi-sub">{{ stats.pending_reservations|default:"0" }} on hold / pending</div>
         </a>
 
-        <!-- Inventory Stock Alerts Card -->
-        <a href="{% url 'admin:hotel_inventoryitem_changelist' %}" class="erp-stat-card erp-stat-rose">
-            <div class="erp-stat-header">
-                <span class="erp-stat-title">Inventory Alerts</span>
-                <span class="erp-stat-icon material-symbols-outlined">warning</span>
+        <!-- Card 4: POS Orders -->
+        <a href="{% url 'admin:hotel_order_changelist' %}" class="kpi-card kpi-card-purple">
+            <div class="kpi-header">
+                <div class="kpi-icon-box">
+                    <span class="material-symbols-outlined">restaurant</span>
+                </div>
             </div>
-            <div class="erp-stat-body">
-                <div class="erp-stat-value">{{ stats.low_stock_count|default:"0" }} <span class="erp-stat-sub">Low Stock</span></div>
-                <div class="erp-stat-footer">
-                    {% if stats.low_stock_count %}
-                        <span class="erp-badge erp-badge-danger">Reorder Required</span>
+            <div class="kpi-value">{{ stats.today_orders|default:"0" }}</div>
+            <div class="kpi-label">OPEN POS ORDERS</div>
+            <div class="kpi-sub">{{ stats.active_orders|default:"0" }} active in kitchen/bar</div>
+        </a>
+
+        <!-- Card 5: Inventory & Maintenance Alerts -->
+        <a href="{% url 'admin:hotel_inventoryitem_changelist' %}" class="kpi-card kpi-card-green">
+            <div class="kpi-header">
+                <div class="kpi-icon-box">
+                    <span class="material-symbols-outlined">inventory_2</span>
+                </div>
+            </div>
+            <div class="kpi-value">{{ stats.low_stock_count|default:"0" }}</div>
+            <div class="kpi-label">INVENTORY ALERTS</div>
+            <div class="kpi-sub">{{ stats.maintenance_rooms|default:"0" }} maintenance logs</div>
+        </a>
+    </div>
+
+    <!-- ── 3. Middle Section: Two Columns (Charts & Availability) ────────── -->
+    <div class="charts-grid">
+        <!-- Left: Operations & Bookings Growth Chart -->
+        <div class="chart-card">
+            <div class="chart-card-header">
+                <h3 class="chart-card-title">Workforce & Operations Growth</h3>
+                <span class="chart-card-subtitle">New bookings & orders by month</span>
+            </div>
+            <div class="bar-chart-wrap">
+                <svg class="bar-chart-svg" viewBox="0 0 700 240" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+                    <!-- Dotted Horizontal Grid lines -->
+                    <line x1="40" y1="30" x2="680" y2="30" stroke="#e2e8f0" stroke-dasharray="4 4" stroke-width="1"/>
+                    <line x1="40" y1="80" x2="680" y2="80" stroke="#e2e8f0" stroke-dasharray="4 4" stroke-width="1"/>
+                    <line x1="40" y1="130" x2="680" y2="130" stroke="#e2e8f0" stroke-dasharray="4 4" stroke-width="1"/>
+                    <line x1="40" y1="180" x2="680" y2="180" stroke="#e2e8f0" stroke-dasharray="4 4" stroke-width="1"/>
+                    <line x1="40" y1="210" x2="680" y2="210" stroke="#cbd5e1" stroke-width="1"/>
+
+                    <!-- Month X Labels -->
+                    <text x="65" y="230" fill="#94a3b8" font-size="12" font-family="sans-serif" text-anchor="middle">Jan</text>
+                    <text x="135" y="230" fill="#94a3b8" font-size="12" font-family="sans-serif" text-anchor="middle">Feb</text>
+                    <text x="205" y="230" fill="#94a3b8" font-size="12" font-family="sans-serif" text-anchor="middle">Mar</text>
+                    <text x="275" y="230" fill="#94a3b8" font-size="12" font-family="sans-serif" text-anchor="middle">Apr</text>
+                    <text x="345" y="230" fill="#94a3b8" font-size="12" font-family="sans-serif" text-anchor="middle">May</text>
+                    <text x="415" y="230" fill="#94a3b8" font-size="12" font-family="sans-serif" text-anchor="middle">Jun</text>
+                    <text x="485" y="230" fill="#94a3b8" font-size="12" font-family="sans-serif" text-anchor="middle">Jul</text>
+                    <text x="555" y="230" fill="#94a3b8" font-size="12" font-family="sans-serif" text-anchor="middle">Aug</text>
+                    <text x="625" y="230" fill="#94a3b8" font-size="12" font-family="sans-serif" text-anchor="middle">Sep</text>
+
+                    <!-- Subtle Historical Base Bars -->
+                    <rect x="58" y="195" width="14" height="15" rx="3" fill="#e2e8f0"/>
+                    <rect x="128" y="190" width="14" height="20" rx="3" fill="#e2e8f0"/>
+                    <rect x="198" y="180" width="14" height="30" rx="3" fill="#e2e8f0"/>
+                    <rect x="268" y="185" width="14" height="25" rx="3" fill="#e2e8f0"/>
+                    <rect x="338" y="175" width="14" height="35" rx="3" fill="#e2e8f0"/>
+                    <rect x="408" y="165" width="14" height="45" rx="3" fill="#e2e8f0"/>
+                    <rect x="478" y="150" width="14" height="60" rx="3" fill="#e2e8f0"/>
+
+                    <!-- August Live Bars (Dual Bar) -->
+                    <rect x="548" y="110" width="14" height="100" rx="4" fill="#0284c7"/>
+
+                    <!-- September Live Bars (Dual Stack/Bar like reference) -->
+                    <rect x="618" y="70" width="14" height="65" rx="4" fill="#f59e0b"/>
+                    <rect x="618" y="135" width="14" height="75" rx="4" fill="#0284c7"/>
+                </svg>
+            </div>
+        </div>
+
+        <!-- Right: Staff & Room Availability Donut Chart Card -->
+        <div class="chart-card">
+            <div class="chart-card-header">
+                <h3 class="chart-card-title">Staff & Room Availability</h3>
+                <span class="chart-card-subtitle">Current status distribution</span>
+            </div>
+
+            <div class="donut-wrap">
+                <!-- Clean Modern SVG Donut Chart -->
+                <svg class="donut-svg" viewBox="0 0 100 100">
+                    <!-- Base ring (Available / Sky Blue: #0ea5e9) -->
+                    <circle cx="50" cy="50" r="38" fill="transparent" stroke="#0ea5e9" stroke-width="18" />
+                    <!-- Occupied segment (Green: #22c55e) -->
+                    <circle cx="50" cy="50" r="38" fill="transparent" stroke="#22c55e" stroke-width="18"
+                            stroke-dasharray="{% if stats.total_rooms %}{{ stats.occupied_pct|default:'35' }} 238{% else %}60 238{% endif %}"
+                            stroke-dashoffset="0" />
+                </svg>
+
+                <div class="donut-legend">
+                    <div class="legend-item">
+                        <span class="legend-dot legend-dot-occupied"></span>
+                        <span>Placed / Occupied</span>
+                    </div>
+                    <div class="legend-item">
+                        <span class="legend-dot legend-dot-available"></span>
+                        <span>Available</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Bottom Alert Notification Box -->
+            <div class="alert-callout">
+                <div class="alert-callout-title">14-Day Operations Alert</div>
+                <p class="alert-callout-desc">
+                    {% if stats.low_stock_count or stats.maintenance_rooms %}
+                        {{ stats.low_stock_count }} inventory item(s) &amp; {{ stats.maintenance_rooms }} room maintenance logs need review.
                     {% else %}
-                        <span class="erp-badge erp-badge-success">Stock Healthy</span>
+                        All operations, rooms, and stock levels are in optimal condition.
                     {% endif %}
-                    <span class="erp-stat-link">Supplies &rarr;</span>
-                </div>
+                </p>
             </div>
-        </a>
+        </div>
     </div>
 
-    <!-- ── 3. Main Workspace: Application Modules & Recent Activity ─────── -->
+    <!-- ── 4. Main Workspace: Application Modules & Recent Activity ─────── -->
     <div class="erp-main-grid">
         <!-- Left: Categorized Apps & Models -->
         <div class="erp-apps-column">
             <div class="erp-section-header">
-                <span class="material-symbols-outlined text-primary-600">apps</span>
-                <h2>System Apps & Operations Data</h2>
+                <span class="material-symbols-outlined">apps</span>
+                <h2>System Apps &amp; Operations Data</h2>
             </div>
             {% include "unfold/helpers/app_list_default.html" %}
         </div>
@@ -133,7 +198,7 @@
         <!-- Right: Recent Activity Log -->
         <div class="erp-activity-column">
             <div class="erp-section-header">
-                <span class="material-symbols-outlined text-primary-600">history</span>
+                <span class="material-symbols-outlined">history</span>
                 <h2>Recent Activity</h2>
             </div>
             {% include "unfold/helpers/history.html" %}

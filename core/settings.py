@@ -178,6 +178,21 @@ UNFOLD = {
     "SHOW_HISTORY": True,
     "SHOW_VIEW_ON_SITE": True,
     "DASHBOARD_CALLBACK": "hotel.views_admin.dashboard_callback",
+    "COLORS": {
+        "primary": {
+            "50": "#f0f9ff",
+            "100": "#e0f2fe",
+            "200": "#bae6fd",
+            "300": "#7dd3fc",
+            "400": "#38bdf8",
+            "500": "#0ea5e9",
+            "600": "#0284c7",
+            "700": "#0369a1",
+            "800": "#075985",
+            "900": "#0c4a6e",
+            "950": "#082f49",
+        },
+    },
     "STYLES": [
         "/static/css/unfold_custom.css",
     ],
@@ -380,7 +395,9 @@ USE_TZ = True
 # ── Static & Media ────────────────────────────────────────────────────────────
 STATIC_URL = "/static/"
 STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")
-STATICFILES_DIRS = []
+STATICFILES_DIRS = [
+    os.path.join(BASE_DIR, "static"),
+]
 MEDIA_URL = "/media/"
 MEDIA_ROOT = os.path.join(BASE_DIR, "media")
 PRIVATE_MEDIA_ROOT = Path(os.getenv("PRIVATE_MEDIA_ROOT", str(BASE_DIR / "private_media"))).resolve()
