@@ -47,6 +47,9 @@ export default function OrdersManager({ userData }) {
   // Payment states
   const [paymentMethod, setPaymentMethod] = useState('Cash');
   const [paymentReference, setPaymentReference] = useState('');
+  const [occupiedRooms, setOccupiedRooms] = useState([]);
+  const [selectedReservationId, setSelectedReservationId] = useState('');
+  const [loadingOccupiedRooms, setLoadingOccupiedRooms] = useState(false);
   
   // Receipt Printing states
   const [showReceipt, setShowReceipt] = useState(false);
@@ -56,6 +59,18 @@ export default function OrdersManager({ userData }) {
   const getHeaders = () => {
     const token = localStorage.getItem('access_token');
     return { Authorization: `Bearer ${token}` };
+  };
+
+  const fetchOccupiedRooms = async () => {
+    try {
+      setLoadingOccupiedRooms(true);
+      const res = await axios.get(`${API_BASE}occupied-rooms/`, { headers: getHeaders() });
+      setOccupiedRooms(Array.isArray(res.data) ? res.data : []);
+    } catch (err) {
+      console.error('Failed to load occupied rooms:', err);
+    } finally {
+      setLoadingOccupiedRooms(false);
+    }
   };
 
   const fetchOrders = async (showLoader = false) => {
@@ -120,16 +135,28 @@ export default function OrdersManager({ userData }) {
 
   const handleProcessPayment = async () => {
     if (!selectedOrder) return;
+    if (paymentMethod === 'Room Charge' && !selectedReservationId) {
+      alert('Please select a checked-in guest room to charge this order to.');
+      return;
+    }
     try {
+      const selectedRes = occupiedRooms.find(r => String(r.reservation_id) === String(selectedReservationId));
+      const refText = paymentMethod === 'Room Charge'
+        ? `Room ${selectedRes?.room_number || ''} - ${selectedRes?.guest_name || ''}`
+        : (paymentReference || `ADMIN-PAY-${selectedOrder.id}-${new Date().getTime()}`);
+
       const payload = {
         payment_method: paymentMethod,
-        payment_reference: paymentReference || `ADMIN-PAY-${selectedOrder.id}-${new Date().getTime()}`
+        payment_reference: refText,
+        reservation_id: paymentMethod === 'Room Charge' ? selectedReservationId : undefined,
       };
       const res = await axios.post(PROCESS_PAYMENT_API(selectedOrder.id), payload, { headers: getHeaders() });
       
       setFiscalData({
         ...selectedOrder,
         summary: res.data.receipt_data || res.data,
+        payment_method: paymentMethod,
+        payment_reference: refText,
         tin: settings?.tin_number || "0002915740",
         address: settings?.address || "Bole Sub-City, Addis Ababa",
         phone: settings?.phone_number || "0116187432",
@@ -140,6 +167,7 @@ export default function OrdersManager({ userData }) {
 
       setShowReceipt(true);
       setPaymentReference('');
+      setSelectedReservationId('');
       fetchOrders(false);
     } catch (err) {
       alert('Payment processing failed: ' + (err.response?.data?.error || err.message));
@@ -478,23 +506,58 @@ export default function OrdersManager({ userData }) {
                       {/* Manual Payment Section */}
                       {['served', 'bill_requested', 'ready'].includes(selectedOrder.status) && (
                         <div style={styles.paymentBox}>
-                          <div style={{ fontSize: 13, fontWeight: '700', marginBottom: 8, color: '#334155' }}>Process cash payment:</div>
+                          <div style={{ fontSize: 13, fontWeight: '700', marginBottom: 8, color: '#334155' }}>Process order payment:</div>
                           <div style={styles.payMethods}>
-                            {['Cash', 'Telebirr', 'Card'].map(m => (
+                            {['Cash', 'Telebirr', 'Card', 'Room Charge'].map(m => (
                               <button 
                                 key={m} 
-                                onClick={() => setPaymentMethod(m)} 
+                                onClick={() => {
+                                  setPaymentMethod(m);
+                                  if (m === 'Room Charge' && occupiedRooms.length === 0) {
+                                    fetchOccupiedRooms();
+                                  }
+                                }} 
                                 style={{
                                   ...styles.payMethodBtn,
-                                  backgroundColor: paymentMethod === m ? '#1e293b' : '#ffffff',
-                                  color: paymentMethod === m ? '#ffffff' : '#1e293b'
+                                  backgroundColor: paymentMethod === m ? (m === 'Room Charge' ? '#0f766e' : '#1e293b') : '#ffffff',
+                                  color: paymentMethod === m ? '#ffffff' : '#1e293b',
+                                  border: paymentMethod === m ? 'none' : '1px solid #cbd5e1',
                                 }}
                               >
-                                {m}
+                                {m === 'Room Charge' ? '🏨 Room Charge' : m}
                               </button>
                             ))}
                           </div>
-                          {paymentMethod !== 'Cash' && (
+
+                          {paymentMethod === 'Room Charge' && (
+                            <div style={{ marginTop: '10px' }}>
+                              <label style={{ fontSize: '12px', fontWeight: '700', color: '#0f766e', display: 'block', marginBottom: '4px' }}>
+                                🏨 Select Guest Room:
+                              </label>
+                              {loadingOccupiedRooms ? (
+                                <div style={{ fontSize: '12px', color: '#64748b' }}>Loading active checked-in rooms...</div>
+                              ) : occupiedRooms.length === 0 ? (
+                                <div style={{ padding: '8px 12px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', color: '#ef4444', fontSize: '12px' }}>
+                                  No checked-in guests found at this moment.
+                                </div>
+                              ) : (
+                                <select 
+                                  value={selectedReservationId} 
+                                  onChange={(e) => setSelectedReservationId(e.target.value)} 
+                                  style={{ ...styles.payInput, border: '2px solid #0f766e', background: '#f0fdfa' }}
+                                >
+                                  <option value="">-- Choose Occupied Room & Guest --</option>
+                                  {occupiedRooms.map(r => (
+                                    <option key={r.reservation_id} value={r.reservation_id}>
+                                      Room {r.room_number} — {r.guest_name} ({r.room_type || 'Room'})
+                                    </option>
+                                  ))}
+                                </select>
+                              )}
+                            </div>
+                          )}
+
+                          {paymentMethod !== 'Cash' && paymentMethod !== 'Room Charge' && (
                             <input 
                               type="text" 
                               placeholder="Reference / Transaction ID" 
@@ -504,7 +567,7 @@ export default function OrdersManager({ userData }) {
                             />
                           )}
                           <button onClick={handleProcessPayment} style={styles.payConfirmBtn}>
-                            Confirm Payment & Check out
+                            {paymentMethod === 'Room Charge' ? 'Post Charge to Guest Room' : 'Confirm Payment & Check out'}
                           </button>
                         </div>
                       )}
@@ -598,6 +661,16 @@ export default function OrdersManager({ userData }) {
                     <span>TOTAL ({currency})</span>
                     <span>*{(Number(fiscalData?.summary?.grand_total || 0) + Number(fiscalData?.summary?.tip_amount || 0)).toFixed(2)}</span>
                   </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', fontWeight: 'bold', marginTop: '4px' }}>
+                    <span>PAY METHOD:</span>
+                    <span>{fiscalData?.payment_method?.toUpperCase() || 'CASH'}</span>
+                  </div>
+                  {fiscalData?.payment_reference && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', marginTop: '2px' }}>
+                      <span>REF / ROOM:</span>
+                      <span>{fiscalData?.payment_reference}</span>
+                    </div>
+                  )}
                 </div>
 
                 <div className="dashed-divider" style={{ borderTop: '1px dashed #000', margin: '5px 0' }} />

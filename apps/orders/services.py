@@ -169,7 +169,7 @@ def generate_tx_ref(order):
 
 
 @transaction.atomic
-def finalize_paid_order(order, payment_method, payment_reference=None, tip_amount=None, cashier=None, payment_attempt=None):
+def finalize_paid_order(order, payment_method, payment_reference=None, tip_amount=None, cashier=None, payment_attempt=None, reservation=None):
     order = Order.objects.select_for_update().select_related("table").prefetch_related("items__menu_item__ingredients_bom__ingredient").get(pk=order.pk)
     if order.payment_status == "paid":
         return order, False
@@ -177,6 +177,27 @@ def finalize_paid_order(order, payment_method, payment_reference=None, tip_amoun
     sync_order_financials(order)
     if tip_amount is not None:
         order.tip_amount = to_decimal(tip_amount)
+
+    # Handle Room Charge integration with Guest Folio
+    is_room_charge = str(payment_method).lower() in ["room charge", "room_charge", "room"]
+    if is_room_charge:
+        payment_method = "Room Charge"
+        if reservation is None and payment_reference and str(payment_reference).isdigit():
+            from hotel.models import Reservation
+            reservation = Reservation.objects.filter(id=int(payment_reference), status="checked_in").first()
+
+        if reservation:
+            from hotel.models import FolioCharge
+            tbl = order.table.table_code if order.table else "Room Service"
+            charge_total = to_decimal(order.total_amount) + to_decimal(order.tip_amount or 0)
+            FolioCharge.objects.create(
+                reservation=reservation,
+                description=f"F&B Order #{order.id} ({tbl})",
+                amount=charge_total,
+                added_by=cashier.username if cashier else "POS",
+            )
+            room_num = getattr(getattr(reservation, "room", None), "room_number", "")
+            payment_reference = f"Room {room_num} - {reservation.guest_name}".strip(" -")
 
     order.payment_status = "paid"
     order.payment_method = payment_method
@@ -191,7 +212,12 @@ def finalize_paid_order(order, payment_method, payment_reference=None, tip_amoun
     # --- Post General Ledger Journal Entry ---
     payment_entry = None
     try:
-        pay_code = "1000" if payment_method == "Cash" else "1010"
+        if is_room_charge:
+            pay_code = "1200"  # Accounts Receivable / Guest Folio
+        elif payment_method == "Cash":
+            pay_code = "1000"
+        else:
+            pay_code = "1010"
         total = to_decimal(order.total_amount)
         subtotal = to_decimal(order.sub_total)
         vat = to_decimal(order.vat_amount)

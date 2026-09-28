@@ -6,6 +6,7 @@ import {
   ChefHat,
   CreditCard,
   Grid2x2,
+  Hotel,
   LoaderCircle,
   Menu,
   Minus,
@@ -120,11 +121,51 @@ function WaiterDashboard({ userData, handleLogout }) {
     }
   };
 
+  const [occupiedRooms, setOccupiedRooms] = useState([]);
+  const [selectedRoomResId, setSelectedRoomResId] = useState('');
+  const [loadingRooms, setLoadingRooms] = useState(false);
+
   const closeCheckout = () => {
     setCheckoutOrder(null);
     setCheckoutSummary(null);
     setDigitalSession(null);
     setPaymentChoice('Cash');
+    setSelectedRoomResId('');
+  };
+
+  const fetchOccupiedRooms = async () => {
+    try {
+      setLoadingRooms(true);
+      const res = await axios.get(`${API_BASE}occupied-rooms/`, { headers: headers() });
+      setOccupiedRooms(Array.isArray(res.data) ? res.data : []);
+    } catch (err) {
+      console.error('Failed to load occupied rooms in waiter dashboard', err);
+    } finally {
+      setLoadingRooms(false);
+    }
+  };
+
+  const confirmRoomChargePayment = async () => {
+    if (!checkoutOrder) return;
+    if (!selectedRoomResId) {
+      alert('Please select a checked-in guest room.');
+      return;
+    }
+    setIsBusy(true);
+    try {
+      const res = await axios.post(
+        `${API_BASE}orders/${checkoutOrder.id}/charge-to-room/`,
+        { reservation_id: selectedRoomResId },
+        { headers: headers() }
+      );
+      alert(res.data?.message || 'Order charged to room successfully.');
+      closeCheckout();
+      await loadAllData();
+    } catch (err) {
+      alert(err.response?.data?.error || 'Room charge failed.');
+    } finally {
+      setIsBusy(false);
+    }
   };
 
   const confirmCashPayment = async () => {
@@ -775,6 +816,16 @@ function WaiterDashboard({ userData, handleLogout }) {
                   <CreditCard size={15} />
                   Digital Payment
                 </button>
+                <button 
+                  style={paymentChoice === 'Room' ? styles.paymentChoiceActive : styles.paymentChoice} 
+                  onClick={() => {
+                    setPaymentChoice('Room');
+                    if (occupiedRooms.length === 0) fetchOccupiedRooms();
+                  }}
+                >
+                  <Hotel size={15} />
+                  Charge to Room
+                </button>
               </div>
 
               {paymentChoice === 'Cash' ? (
@@ -782,7 +833,7 @@ function WaiterDashboard({ userData, handleLogout }) {
                   {isBusy ? <LoaderCircle size={16} /> : <Wallet size={16} />}
                   {isBusy ? 'Recording...' : 'Confirm Cash Payment'}
                 </button>
-              ) : (
+              ) : paymentChoice === 'Digital' ? (
                 <div style={styles.stack}>
                   {!digitalSession ? (
                     <button style={styles.primaryButton} onClick={generateDigitalSession} disabled={isBusy}>
@@ -802,6 +853,40 @@ function WaiterDashboard({ userData, handleLogout }) {
                       </a>
                     </div>
                   )}
+                </div>
+              ) : (
+                <div style={styles.stack}>
+                  <label style={{ fontSize: '13px', fontWeight: '700', color: '#0f766e' }}>
+                    🏨 Select Guest Room to Bill:
+                  </label>
+                  {loadingRooms ? (
+                    <div style={{ fontSize: '13px', color: '#64748b' }}>Loading active checked-in rooms...</div>
+                  ) : occupiedRooms.length === 0 ? (
+                    <div style={{ padding: '8px 12px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', color: '#ef4444', fontSize: '12px' }}>
+                      No checked-in guests found at this moment.
+                    </div>
+                  ) : (
+                    <select 
+                      value={selectedRoomResId} 
+                      onChange={(e) => setSelectedRoomResId(e.target.value)} 
+                      style={styles.select}
+                    >
+                      <option value="">-- Choose Occupied Room & Guest --</option>
+                      {occupiedRooms.map(r => (
+                        <option key={r.reservation_id} value={r.reservation_id}>
+                          Room {r.room_number} — {r.guest_name} ({r.room_type || 'Room'})
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  <button 
+                    style={styles.primaryButton} 
+                    onClick={confirmRoomChargePayment} 
+                    disabled={isBusy || !selectedRoomResId}
+                  >
+                    {isBusy ? <LoaderCircle size={16} /> : <Hotel size={16} />}
+                    {isBusy ? 'Posting to Room Folio...' : 'Post Charge to Room Folio'}
+                  </button>
                 </div>
               )}
             </div>

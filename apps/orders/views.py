@@ -483,6 +483,80 @@ class CreateDigitalPaymentSessionView(APIView):
         )
 
 
+class OccupiedRoomsListView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        from hotel.models import Reservation
+        active_res = (
+            Reservation.objects.filter(status="checked_in")
+            .select_related("room")
+            .order_by("room__room_number")
+        )
+        data = [
+            {
+                "reservation_id": r.id,
+                "room_id": r.room.id if r.room else None,
+                "room_number": r.room.room_number if r.room else "N/A",
+                "room_name": r.room.name if r.room else "",
+                "room_type": r.room.room_type if r.room else "",
+                "guest_name": r.guest_name,
+                "guest_phone": r.guest_phone,
+                "check_in_date": r.check_in_date.isoformat() if r.check_in_date else None,
+                "check_out_date": r.check_out_date.isoformat() if r.check_out_date else None,
+            }
+            for r in active_res
+        ]
+        return Response(data)
+
+
+class RoomChargeProcessView(APIView):
+    permission_classes = [IsWaiterOrAdmin]
+
+    def post(self, request, order_id):
+        reservation_id = request.data.get("reservation_id")
+        room_number = request.data.get("room_number")
+        from hotel.models import Reservation
+        reservation = None
+        if reservation_id:
+            reservation = Reservation.objects.filter(id=reservation_id, status="checked_in").select_related("room").first()
+        elif room_number:
+            reservation = Reservation.objects.filter(room__room_number=room_number, status="checked_in").select_related("room").first()
+
+        if not reservation:
+            return Response({"error": "Active checked-in reservation not found for this room."}, status=404)
+
+        try:
+            with transaction.atomic():
+                order = (
+                    Order.objects.select_for_update()
+                    .prefetch_related("items__menu_item")
+                    .select_related("table")
+                    .get(id=order_id)
+                )
+                if order.payment_status == "paid":
+                    return Response({"error": "Order is already paid."}, status=400)
+
+                finalize_paid_order(
+                    order,
+                    payment_method="Room Charge",
+                    payment_reference=f"Room {reservation.room.room_number if reservation.room else ''} - {reservation.guest_name}",
+                    tip_amount=request.data.get("tip_amount", order.tip_amount),
+                    cashier=request.user,
+                    reservation=reservation,
+                )
+        except Order.DoesNotExist:
+            return Response({"error": "Order not found"}, status=404)
+
+        summary = build_payment_summary(order)
+        return Response({
+            "message": f"Order #{order.id} charged to Room {reservation.room.room_number if reservation.room else ''} successfully!",
+            "receipt_data": summary,
+            "room_number": reservation.room.room_number if reservation.room else "",
+            "guest_name": reservation.guest_name,
+        })
+
+
 class CashierOrderProcessView(APIView):
     permission_classes = [IsCashierOrAdmin]
 
@@ -495,14 +569,31 @@ class CashierOrderProcessView(APIView):
                     .select_related("table")
                     .get(id=order_id)
                 )
+                if order.payment_status == "paid":
+                    return Response({"error": "Order is already marked as paid."}, status=400)
+
+                payment_method = request.data.get("payment_method", "Cash")
+                reservation_id = request.data.get("reservation_id")
+                reservation_obj = None
+                if reservation_id or str(payment_method).lower() in ["room charge", "room_charge", "room"]:
+                    from hotel.models import Reservation
+                    if reservation_id:
+                        reservation_obj = Reservation.objects.filter(id=reservation_id, status="checked_in").select_related("room").first()
+                    elif request.data.get("room_number"):
+                        reservation_obj = Reservation.objects.filter(room__room_number=request.data.get("room_number"), status="checked_in").select_related("room").first()
+
+                    if not reservation_obj:
+                        return Response({"error": "No active checked-in guest found for the selected room."}, status=400)
+
                 finalize_paid_order(
                     order,
-                    payment_method=request.data.get("payment_method", "Cash"),
+                    payment_method=payment_method,
                     payment_reference=request.data.get(
                         "payment_reference", f"POS-{order.id}-{timezone.now().strftime('%H%M%S')}"
                     ),
                     tip_amount=request.data.get("tip_amount", order.tip_amount),
                     cashier=request.user,
+                    reservation=reservation_obj,
                 )
         except Order.DoesNotExist:
             return Response({"error": "Order not found"}, status=404)
