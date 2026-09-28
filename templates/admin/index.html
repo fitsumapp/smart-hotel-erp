@@ -1,0 +1,53 @@
+{% extends 'admin/base.html' %}
+{% load i18n unfold %}
+
+{% block title %}{% if subtitle %}{{ subtitle }} | {% endif %}{{ title }} | {{ site_title|default:_('Django site admin') }}{% endblock %}
+
+{% block branding %}
+    {% include "unfold/helpers/site_branding.html" %}
+{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- ── Welcome Hero Banner ───────────────────────────────────────────── -->
+    <div class="bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-700 rounded-2xl p-6 text-white shadow-lg">
+        <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div>
+                <h1 class="text-2xl font-bold tracking-tight">Smart Hotel ERP — Operations Control</h1>
+                <p class="text-emerald-100 mt-1 text-sm">Super Admin & Platform Operations Management Dashboard</p>
+            </div>
+            <div class="flex flex-wrap items-center gap-2">
+                <a href="{% url 'admin:hotel_room_changelist' %}" class="inline-flex items-center gap-1.5 px-3.5 py-2 bg-white/15 hover:bg-white/25 backdrop-blur text-white text-xs font-semibold rounded-lg transition-colors">
+                    <span class="material-symbols-outlined text-sm">hotel</span>
+                    Rooms
+                </a>
+                <a href="{% url 'admin:hotel_reservation_changelist' %}" class="inline-flex items-center gap-1.5 px-3.5 py-2 bg-white/15 hover:bg-white/25 backdrop-blur text-white text-xs font-semibold rounded-lg transition-colors">
+                    <span class="material-symbols-outlined text-sm">book_online</span>
+                    Bookings
+                </a>
+                <a href="{% url 'admin:hotel_order_changelist' %}" class="inline-flex items-center gap-1.5 px-3.5 py-2 bg-white/15 hover:bg-white/25 backdrop-blur text-white text-xs font-semibold rounded-lg transition-colors">
+                    <span class="material-symbols-outlined text-sm">shopping_cart</span>
+                    Orders
+                </a>
+                <a href="{% url 'admin:hotel_systemsettings_changelist' %}" class="inline-flex items-center gap-1.5 px-3.5 py-2 bg-white text-emerald-900 hover:bg-emerald-50 text-xs font-bold rounded-lg shadow-sm transition-colors">
+                    <span class="material-symbols-outlined text-sm">tune</span>
+                    Module Toggles
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Main Grid: App Modules & Recent Actions ───────────────────────── -->
+    <div class="flex flex-col lg:flex-row gap-6">
+        <!-- Left: Applications List -->
+        <div class="grow min-w-0">
+            {% include "unfold/helpers/app_list_default.html" %}
+        </div>
+
+        <!-- Right: Recent Actions Sidebar -->
+        <div class="w-full lg:w-80 shrink-0">
+            {% include "unfold/helpers/history.html" %}
+        </div>
+    </div>
+</div>
+{% endblock %}

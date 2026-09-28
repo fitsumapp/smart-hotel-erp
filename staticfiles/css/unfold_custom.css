@@ -1,0 +1,85 @@
+/* ── Unfold Admin Custom Styling & Responsive Fixes ────────────────────────── */
+
+/* 1. Ensure the sidebar has a solid, opaque background on all screens */
+#nav-sidebar {
+    background-color: #f8fafc !important;
+    border-right: 1px solid #e2e8f0 !important;
+    box-shadow: 2px 0 12px rgba(0, 0, 0, 0.04) !important;
+    z-index: 50 !important;
+}
+
+.dark #nav-sidebar {
+    background-color: #0f172a !important;
+    border-right: 1px solid #1e293b !important;
+    box-shadow: 2px 0 12px rgba(0, 0, 0, 0.3) !important;
+}
+
+/* 2. On desktop (>=1024px), make the sidebar container in-flow so it never overlaps the main area */
+@media (min-width: 1024px) {
+    .navigation_wrapper,
+    div[x-bind*="sidebarDesktopOpen"] {
+        position: relative !important;
+        display: block !important;
+        width: 288px !important;
+        min-width: 288px !important;
+        flex-shrink: 0 !important;
+    }
+
+    #nav-sidebar {
+        position: sticky !important;
+        top: 0 !important;
+        height: 100vh !important;
+        max-height: 100vh !important;
+    }
+}
+
+/* 3. On tablets and mobile (<1024px), make the drawer solid and clearly layered over the content */
+@media (max-width: 1023px) {
+    #nav-sidebar {
+        box-shadow: 0 0 50px rgba(0, 0, 0, 0.4) !important;
+    }
+}
+
+/* 4. Main content layout & spacing */
+#main {
+    min-width: 0 !important;
+    flex-grow: 1 !important;
+    background-color: #ffffff;
+}
+
+.dark #main {
+    background-color: #0b1120;
+}
+
+/* 5. Header bar clarity */
+#header-inner {
+    border-bottom: 1px solid #f1f5f9;
+}
+
+.dark #header-inner {
+    border-bottom: 1px solid #1e293b;
+}
+
+/* 6. Dashboard table styling */
+.app-hotel table,
+.app-users table,
+.app-auth table {
+    border-radius: 0.75rem !important;
+    overflow: hidden !important;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05) !important;
+    margin-bottom: 1.5rem !important;
+}
+
+.app-hotel caption a,
+.app-users caption a,
+.app-auth caption a {
+    font-weight: 700 !important;
+    color: #0f172a !important;
+    font-size: 1.05rem !important;
+}
+
+.dark .app-hotel caption a,
+.dark .app-users caption a,
+.dark .app-auth caption a {
+    color: #f8fafc !important;
+}

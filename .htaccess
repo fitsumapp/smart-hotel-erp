@@ -11,7 +11,7 @@
   RewriteRule ^ - [L]
 
   # 3. Serve Django static assets directly from staticfiles directory
-  RewriteRule ^static/(unfold|admin|rest_framework)/(.*)$ staticfiles/$1/$2 [L]
+  RewriteRule ^static/(unfold|admin|rest_framework|css)/(.*)$ staticfiles/$1/$2 [L]
   RewriteRule ^staticfiles/ - [L]
 
   # 4. Serve static files directly if they exist
