@@ -17,19 +17,24 @@
             <span class="dash-date-range">{{ date_range|default:"Sep 01, 2026 - Sep 28, 2026" }}</span>
         </div>
         <div class="dash-actions">
+            {% if modules.rooms %}
             <a href="{% url 'admin:hotel_reservation_add' %}" class="dash-btn-primary">
                 <span class="material-symbols-outlined">add</span>
                 Add Reservation
             </a>
+            {% endif %}
+            {% if modules.pos %}
             <a href="{% url 'admin:hotel_order_add' %}" class="dash-btn-secondary">
                 <span class="material-symbols-outlined">add_shopping_cart</span>
                 New POS Order
             </a>
+            {% endif %}
         </div>
     </div>
 
     <!-- ── 2. Top 5 KPI Cards Row ────────────────────────────────────────── -->
     <div class="kpi-grid">
+        {% if modules.rooms %}
         <!-- Card 1: Total Rooms -->
         <a href="{% url 'admin:hotel_room_changelist' %}" class="kpi-card kpi-card-blue">
             <div class="kpi-header">
@@ -67,7 +72,9 @@
             <div class="kpi-label">ACTIVE RESERVATIONS</div>
             <div class="kpi-sub">{{ stats.pending_reservations|default:"0" }} on hold / pending</div>
         </a>
+        {% endif %}
 
+        {% if modules.pos %}
         <!-- Card 4: POS Orders -->
         <a href="{% url 'admin:hotel_order_changelist' %}" class="kpi-card kpi-card-purple">
             <div class="kpi-header">
@@ -79,7 +86,9 @@
             <div class="kpi-label">OPEN POS ORDERS</div>
             <div class="kpi-sub">{{ stats.active_orders|default:"0" }} active in kitchen/bar</div>
         </a>
+        {% endif %}
 
+        {% if modules.inventory %}
         <!-- Card 5: Inventory & Maintenance Alerts -->
         <a href="{% url 'admin:hotel_inventoryitem_changelist' %}" class="kpi-card kpi-card-green">
             <div class="kpi-header">
@@ -91,6 +100,7 @@
             <div class="kpi-label">INVENTORY ALERTS</div>
             <div class="kpi-sub">{{ stats.maintenance_rooms|default:"0" }} maintenance logs</div>
         </a>
+        {% endif %}
     </div>
 
     <!-- ── 3. Middle Section: Two Columns (Charts & Availability) ────────── -->
@@ -140,6 +150,7 @@
             </div>
         </div>
 
+        {% if modules.rooms %}
         <!-- Right: Staff & Room Availability Donut Chart Card -->
         <div class="chart-card">
             <div class="chart-card-header">
@@ -182,6 +193,8 @@
                 </p>
             </div>
         </div>
+        {% endif %}
+    </div>
     </div>
 
     <!-- ── 4. Main Workspace: Application Modules & Recent Activity ─────── -->

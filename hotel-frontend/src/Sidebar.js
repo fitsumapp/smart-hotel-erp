@@ -113,17 +113,22 @@ const Sidebar = ({ activeTab, setActiveTab, handleLogout, isOpen, setIsOpen }) =
   const userRole  = savedUser ? JSON.parse(savedUser).role?.toLowerCase().trim() : null;
 
   useEffect(() => {
-    const token = localStorage.getItem('access_token');
-    if (token) {
-      axios.get(`${API_BASE_URL}/users/settings/`, {
-        headers: { Authorization: `Bearer ${token}` }
-      })
-        .then(res => {
-          const data = Array.isArray(res.data) ? res.data[0] : res.data;
-          setHotelSettings(data);
+    const fetchSettings = () => {
+      const token = localStorage.getItem('access_token');
+      if (token) {
+        axios.get(`${API_BASE_URL}/users/settings/`, {
+          headers: { Authorization: `Bearer ${token}` }
         })
-        .catch(err => console.error('Failed to load hotel settings:', err));
-    }
+          .then(res => {
+            const data = Array.isArray(res.data) ? res.data[0] : res.data;
+            setHotelSettings(data);
+          })
+          .catch(err => console.error('Failed to load hotel settings:', err));
+      }
+    };
+    fetchSettings();
+    const interval = setInterval(fetchSettings, 5000);
+    return () => clearInterval(interval);
   }, []);
 
   // Auto-open submenu if a child is currently active

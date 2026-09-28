@@ -384,17 +384,22 @@ const DashboardLayout = ({ activeTab, setActiveTab, userData, handleLogout }) =>
   const [hotelSettings, setHotelSettings] = useState(null);
 
   useEffect(() => {
-    const token = localStorage.getItem('access_token');
-    if (token) {
-      axios.get(`${API_BASE_URL}/users/settings/`, {
-        headers: { Authorization: `Bearer ${token}` }
-      })
-        .then(res => {
-          const data = Array.isArray(res.data) ? res.data[0] : res.data;
-          setHotelSettings(data);
+    const fetchSettings = () => {
+      const token = localStorage.getItem('access_token');
+      if (token) {
+        axios.get(`${API_BASE_URL}/users/settings/`, {
+          headers: { Authorization: `Bearer ${token}` }
         })
-        .catch(err => console.error('Failed to load hotel settings in layout:', err));
-    }
+          .then(res => {
+            const data = Array.isArray(res.data) ? res.data[0] : res.data;
+            setHotelSettings(data);
+          })
+          .catch(err => console.error('Failed to load hotel settings in layout:', err));
+      }
+    };
+    fetchSettings();
+    const interval = setInterval(fetchSettings, 5000);
+    return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {

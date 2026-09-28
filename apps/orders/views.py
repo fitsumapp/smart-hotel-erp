@@ -387,7 +387,7 @@ class NotificationDetailView(APIView):
 
 
 class SystemSettingsView(APIView):
-    permission_classes = [IsHotelAdmin]
+    permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
         return Response(SystemSettingsSerializer(get_system_settings()).data)
