@@ -77,12 +77,20 @@ const CashierDashboard = ({ userData, handleLogout }) => {
     if (autoPrintOrderId) {
       const orderToPrint = completedBills.find(b => b.id === autoPrintOrderId) || pendingBills.find(b => b.id === autoPrintOrderId);
       if (orderToPrint) {
-        const subTotal = orderToPrint.items?.reduce((sum, item) => sum + (item.quantity * item.price_at_order), 0) || 0;
-        const discount = parseFloat(discountValue || 0);
-        const afterDiscount = subTotal - discount;
-        const serviceCharge = afterDiscount * (serviceRate / 100);
-        const vat = afterDiscount * (vatRate / 100);
-        const grandTotal = afterDiscount + serviceCharge + vat;
+        let subTotal, serviceCharge, vat, grandTotal;
+        if (orderToPrint.is_session) {
+          subTotal = parseFloat(orderToPrint.sub_total || 0);
+          serviceCharge = parseFloat(orderToPrint.service_charge_amount || 0);
+          vat = parseFloat(orderToPrint.vat_amount || 0);
+          grandTotal = parseFloat(orderToPrint.total_amount || 0);
+        } else {
+          subTotal = orderToPrint.items?.reduce((sum, item) => sum + (item.quantity * item.price_at_order), 0) || 0;
+          const discount = parseFloat(discountValue || 0);
+          const afterDiscount = subTotal - discount;
+          serviceCharge = afterDiscount * (serviceRate / 100);
+          vat = afterDiscount * (vatRate / 100);
+          grandTotal = afterDiscount + serviceCharge + vat;
+        }
 
         setFiscalData({
           ...orderToPrint,
@@ -248,6 +256,15 @@ const CashierDashboard = ({ userData, handleLogout }) => {
 
   const calculateFinalTotal = (order) => {
     if (!order) return { subTotal: 0, serviceCharge: 0, vat: 0, grandTotal: 0 };
+    if (order.is_session && order.total_amount !== undefined) {
+      return {
+        subTotal: parseFloat(order.sub_total || 0),
+        discount: 0,
+        serviceCharge: parseFloat(order.service_charge_amount || 0),
+        vat: parseFloat(order.vat_amount || 0),
+        grandTotal: parseFloat(order.total_amount || 0),
+      };
+    }
     const subTotal = order.items?.reduce((sum, item) => sum + (item.quantity * item.price_at_order), 0) || 0;
     const discount = parseFloat(discountValue || 0);
     const afterDiscount = subTotal - discount;
@@ -561,11 +578,16 @@ const CashierDashboard = ({ userData, handleLogout }) => {
                             <div key={bill.id} onClick={() => setSelectedOrder(bill)}
                               style={{ ...styles.orderCard, borderLeft: selectedOrder?.id === bill.id ? '4px solid #10b981' : 'none', background: selectedOrder?.id === bill.id ? '#f0fdf4' : '#fff', cursor: 'pointer' }}>
                               <div style={styles.orderCardTop}>
-                                <strong style={styles.orderId}>ORD-{bill.id}</strong>
+                                <strong style={styles.orderId}>
+                                  {bill.is_session ? `SESS-${bill.session_id}` : `ORD-${bill.id}`}
+                                </strong>
                                 <span style={styles.pricePill}>{settings?.currency_symbol || 'ETB'} {bill.total_amount}</span>
                               </div>
                               <div style={styles.orderStatsLine}>
                                 <span>Table {bill.table_code}</span> • <span>{bill.waiter_name}</span>
+                                {bill.is_session && bill.rounds_count > 1 && (
+                                  <span style={{ color: '#0284c7', fontWeight: 700 }}> • {bill.rounds_count} rounds</span>
+                                )}
                               </div>
                             </div>
                           ))}
@@ -617,7 +639,9 @@ const CashierDashboard = ({ userData, handleLogout }) => {
                       <motion.div initial={{ x: 20 }} animate={{ x: 0 }}>
                         <div style={styles.cartHeader}>
                           <div>
-                            <div style={{ fontSize: '13px', color: '#64748b', fontWeight: '600' }}>Table Checkout</div>
+                            <div style={{ fontSize: '13px', color: '#64748b', fontWeight: '600' }}>
+                              {selectedOrder.is_session ? `Dining Session #${selectedOrder.session_id} (${selectedOrder.rounds_count || 1} rounds)` : 'Table Checkout'}
+                            </div>
                             <div style={{ fontSize: '20px', fontWeight: '800', color: '#0f172a' }}>{selectedOrder.table_code}</div>
                           </div>
                           <button onClick={() => setSelectedOrder(null)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X size={20} color="#94a3b8" /></button>

@@ -272,6 +272,38 @@ class RestaurantTable(models.Model):
         return f"{self.label_name} ({self.table_code})"
 
 
+# ── 4b. Dining Session ────────────────────────────────────────────────────────
+
+class DiningSession(models.Model):
+    SESSION_STATUS = [
+        ("active", "Active"),
+        ("closed", "Closed"),
+    ]
+    table = models.ForeignKey(RestaurantTable, on_delete=models.CASCADE, related_name="dining_sessions")
+    status = models.CharField(max_length=20, choices=SESSION_STATUS, default="active")
+    opened_by_id_ref = models.IntegerField(null=True, blank=True, help_text="ID of the waiter who opened the session")
+    opened_by_username = models.CharField(max_length=150, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    closed_at = models.DateTimeField(null=True, blank=True)
+    closed_by_id_ref = models.IntegerField(null=True, blank=True, help_text="ID of the cashier who closed the session")
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["table", "status"], name="session_tbl_status_idx"),
+            models.Index(fields=["status", "created_at"], name="session_stat_created_idx"),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["table"],
+                condition=models.Q(status="active"),
+                name="unique_active_session_per_table",
+            )
+        ]
+
+    def __str__(self):
+        return f"Session #{self.id} — Table {self.table.table_code} ({self.status})"
+
+
 # ── 5. Order ──────────────────────────────────────────────────────────────────
 
 class Order(models.Model):
@@ -288,6 +320,14 @@ class Order(models.Model):
     PAYMENT_METHOD_CHOICES = [("Cash", "Cash"), ("Chapa", "Chapa"), ("Telebirr", "Telebirr"), ("Card", "Card")]
 
     table = models.ForeignKey(RestaurantTable, on_delete=models.CASCADE, related_name="orders")
+    session = models.ForeignKey(
+        DiningSession,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="orders",
+        help_text="Dining session this order round belongs to.",
+    )
 
     # Cross-schema reference: User lives in public schema, Order lives in tenant schema
     # Store user IDs as integers to avoid cross-schema FK constraint issues
@@ -332,6 +372,7 @@ class Order(models.Model):
             models.Index(fields=["waiter_id_ref"], name="ord_waiter_idx"),
             models.Index(fields=["payment_status", "updated_at"], name="ord_pay_updated_idx"),
             models.Index(fields=["waiter_id_ref", "payment_status", "updated_at"], name="ord_wait_pay_upd_idx"),
+            models.Index(fields=["session"], name="ord_session_idx"),
         ]
 
     def __str__(self):
@@ -453,10 +494,31 @@ class PaymentWebhookEvent(models.Model):
 
 
 class OrderItem(models.Model):
+    ITEM_STATUS = [
+        ("pending", "Pending"),
+        ("preparing", "Preparing"),
+        ("ready", "Ready"),
+    ]
     order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name="items")
     menu_item = models.ForeignKey(MenuItem, on_delete=models.CASCADE)
     quantity = models.IntegerField(default=1)
     price_at_order = models.DecimalField(max_digits=10, decimal_places=2)
+    status = models.CharField(max_length=20, choices=ITEM_STATUS, default="pending")
+    notes = models.CharField(max_length=255, blank=True, default="")
+
+    def get_station(self):
+        if self.menu_item:
+            if self.menu_item.category:
+                st = (self.menu_item.category.station or "").strip()
+                if st:
+                    return st
+                cat_name = (self.menu_item.category.name or "").lower()
+                if any(k in cat_name for k in ["drink", "beverage", "juice", "beer", "wine", "bar", "cocktail", "soda", "coffee", "tea", "መጠጥ", "ቢራ", "ጭማቂ", "አረቄ"]):
+                    return "Bar"
+            item_name = (self.menu_item.name or "").lower()
+            if any(k in item_name for k in ["drink", "beverage", "juice", "beer", "wine", "bar", "cocktail", "soda", "coffee", "tea", "መጠጥ", "ቢራ", "ጭማቂ", "አረቄ"]):
+                return "Bar"
+        return "Kitchen"
 
     def __str__(self):
         return f"{self.quantity} × {self.menu_item.name}"

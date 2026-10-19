@@ -1,6 +1,6 @@
 """Reusable role-based permissions for the users API."""
 
-from rest_framework.permissions import BasePermission
+from rest_framework.permissions import BasePermission, SAFE_METHODS
 
 
 class IsHotelAdmin(BasePermission):
@@ -105,3 +105,45 @@ class IsAdminOrReadOnly(BasePermission):
             and user.is_active
             and (user.is_superuser or getattr(user, "role", "") == "admin")
         )
+
+
+class IsHousekeepingOperator(BasePermission):
+    """Allow active housekeeping staff, receptionists, or hotel administrators."""
+
+    message = "Housekeeping, reception, or hotel administrator access is required."
+
+    def has_permission(self, request, view):
+        user = request.user
+        return bool(
+            user
+            and user.is_authenticated
+            and user.is_active
+            and (
+                user.is_superuser
+                or user.role in {"admin", "reception", "housekeeping"}
+            )
+        )
+
+
+class IsHousekeepingOrAdmin(IsHousekeepingOperator):
+    pass
+
+
+class IsRoomOperator(BasePermission):
+    """
+    Allow reception and admin full management access.
+    Allow housekeeping read-only access (GET/HEAD/OPTIONS) to room lists and details.
+    """
+
+    message = "Reception or hotel administrator access is required."
+
+    def has_permission(self, request, view):
+        user = request.user
+        if not (user and user.is_authenticated and user.is_active):
+            return False
+        if user.is_superuser or user.role in {"admin", "reception"}:
+            return True
+        if request.method in SAFE_METHODS and user.role == "housekeeping":
+            return True
+        return False
+

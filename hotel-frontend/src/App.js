@@ -28,6 +28,7 @@ import CustomerPaymentPage from './pages/CustomerPaymentPage';
 import PublicBookingConfirmation from './pages/PublicBookingConfirmation';
 import OrdersManager from './pages/OrdersManager';
 import HousekeepingManager from './pages/HousekeepingManager';
+import HousekeepingDashboard from './pages/HousekeepingDashboard';
 
 import { Bell, Search, LogOut, Loader2, Menu } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -569,6 +570,8 @@ function App() {
         return <InventoryDashboard userData={user} handleLogout={handleLogout} />;
       case 'customer':
         return <CustomerDashboard userData={user} handleLogout={handleLogout} />;
+      case 'housekeeping':
+        return <HousekeepingDashboard userData={user} handleLogout={handleLogout} />;
       default:
         return <div style={{ padding: '50px', textAlign: 'center' }}><h1>Unauthorized</h1><button onClick={handleLogout}>Back to Login</button></div>;
     }

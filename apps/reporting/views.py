@@ -8,7 +8,7 @@ class PoliceReportView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        if request.user.role not in ["admin", "reception"]:
+        if not (request.user.is_superuser or request.user.role in ["admin", "reception", "finance"]):
             return Response({"error": "Access denied."}, status=403)
         date_param = request.query_params.get("date", timezone.now().date().isoformat())
         try:
@@ -42,7 +42,7 @@ class XReportView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        if request.user.role not in ["admin", "reception"]:
+        if not (request.user.is_superuser or request.user.role in ["admin", "reception", "finance"]):
             return Response({"error": "Access denied."}, status=403)
         date_param = request.query_params.get("date", timezone.now().date().isoformat())
         try:
@@ -99,7 +99,7 @@ class ZReportView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
-        if request.user.role not in ["admin", "reception"]:
+        if not (request.user.is_superuser or request.user.role in ["admin", "reception", "finance"]):
             return Response({"error": "Access denied."}, status=403)
         date_param = request.data.get("date", timezone.now().date().isoformat())
         try:

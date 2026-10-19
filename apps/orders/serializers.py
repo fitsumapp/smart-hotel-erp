@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Category, MenuItem, Notification, Order, OrderItem, RestaurantTable, SystemSettings
+from .models import Category, DiningSession, MenuItem, Notification, Order, OrderItem, RestaurantTable, SystemSettings
 
 class CategorySerializer(serializers.ModelSerializer):
     class Meta:
@@ -42,23 +42,17 @@ class OrderItemSerializer(serializers.ModelSerializer):
     category_station = serializers.SerializerMethodField()
 
     def get_station(self, obj):
-        if obj.menu_item and obj.menu_item.category:
-            st = (obj.menu_item.category.station or "").strip()
-            if st:
-                return st
-            cat_name = (obj.menu_item.category.name or "").lower()
-            if any(k in cat_name for k in ["drink", "beverage", "juice", "beer", "wine", "bar", "cocktail", "soda", "coffee", "tea", "መጠጥ", "ቢራ", "ጭማቂ"]):
-                return "Bar"
-        return "Kitchen"
+        return obj.get_station()
 
     def get_category_station(self, obj):
-        return self.get_station(obj)
+        return obj.get_station()
 
     class Meta:
         model = OrderItem
         fields = [
             "id", "menu_item", "menu_item_name", "category_name",
-            "station", "category_station", "quantity", "price_at_order"
+            "station", "category_station", "quantity", "price_at_order",
+            "status", "notes",
         ]
 
 
@@ -89,7 +83,34 @@ class OrderSerializer(serializers.ModelSerializer):
     items = serializers.SerializerMethodField()
     waiter_name = serializers.SerializerMethodField()
     table_code = serializers.ReadOnlyField(source="table.table_code")
+    session_id = serializers.ReadOnlyField(source="session.id")
     hotel_info = serializers.SerializerMethodField()
+    status = serializers.SerializerMethodField()
+    station_status = serializers.SerializerMethodField()
+
+    def get_station_status(self, obj):
+        station = self.context.get("station") if hasattr(self, "context") and self.context else None
+        if not station:
+            return obj.status
+        station_lower = station.lower()
+        items = list(obj.items.all())
+        st_items = [
+            it for it in items
+            if (it.get_station().lower() == station_lower or (station_lower == "kitchen" and it.get_station().lower() != "bar"))
+        ]
+        if not st_items:
+            return obj.status
+        if all(it.status == "ready" for it in st_items):
+            return "ready"
+        if any(it.status == "preparing" for it in st_items):
+            return "preparing"
+        return "pending"
+
+    def get_status(self, obj):
+        station = self.context.get("station") if hasattr(self, "context") and self.context else None
+        if station:
+            return self.get_station_status(obj)
+        return obj.status
 
     def get_items(self, obj):
         station = self.context.get("station") if hasattr(self, "context") and self.context else None
@@ -120,9 +141,9 @@ class OrderSerializer(serializers.ModelSerializer):
     class Meta:
         model = Order
         fields = [
-            "id", "table", "table_code", "waiter_id_ref", "waiter_name",
+            "id", "session", "session_id", "table", "table_code", "waiter_id_ref", "waiter_name",
             "items", "sub_total", "service_charge_amount", "vat_amount",
-            "total_amount", "status", "payment_status", "payment_method",
+            "total_amount", "status", "station_status", "payment_status", "payment_method",
             "payment_reference", "tip_amount", "payment_page_token",
             "chapa_tx_ref", "chapa_checkout_url", "created_at", "hotel_info",
         ]
@@ -150,5 +171,23 @@ class NotificationSerializer(serializers.ModelSerializer):
     class Meta:
         model = Notification
         fields = ["id", "user_id_ref", "message", "is_read", "created_at"]
+
+
+class DiningSessionSerializer(serializers.ModelSerializer):
+    table_code = serializers.ReadOnlyField(source="table.table_code")
+    orders = OrderSerializer(many=True, read_only=True)
+    financial_summary = serializers.SerializerMethodField()
+
+    def get_financial_summary(self, obj):
+        from .services import build_session_payment_summary
+        return build_session_payment_summary(obj)
+
+    class Meta:
+        model = DiningSession
+        fields = [
+            "id", "table", "table_code", "status", "opened_by_id_ref",
+            "opened_by_username", "created_at", "closed_at",
+            "closed_by_id_ref", "orders", "financial_summary",
+        ]
 
 

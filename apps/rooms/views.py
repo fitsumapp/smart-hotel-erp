@@ -5,7 +5,7 @@ from users.views import *  # noqa: F401,F403
 class RoomViewSet(viewsets.ModelViewSet):
     queryset = Room.objects.all()
     serializer_class = RoomSerializer
-    permission_classes = [IsReservationOperator]
+    permission_classes = [IsRoomOperator]
 
 
 class MaintenanceLogView(APIView):
@@ -93,7 +93,7 @@ DEFAULT_HOUSEKEEPING_CHECKLIST = [
 
 
 class HousekeepingTaskListView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsHousekeepingOperator]
 
     def get(self, request):
         qs = HousekeepingTask.objects.select_related("room").all()
@@ -138,7 +138,7 @@ class HousekeepingTaskListView(APIView):
 
 
 class HousekeepingTaskDetailView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsHousekeepingOperator]
 
     def get(self, request, pk):
         try:
@@ -172,7 +172,7 @@ class HousekeepingTaskDetailView(APIView):
 
 
 class HousekeepingTaskInspectView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsHousekeepingOperator]
 
     def post(self, request, pk):
         try:
@@ -208,7 +208,7 @@ class HousekeepingTaskInspectView(APIView):
 
 
 class MinibarItemsView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsHousekeepingOperator]
 
     def get(self, request):
         room_id = request.query_params.get("room_id")
@@ -230,7 +230,7 @@ class MinibarItemsView(APIView):
 
 class MinibarCandidateInventoryView(APIView):
     """Returns inventory items suitable for minibar (drinks, snacks, etc.)."""
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsHousekeepingOperator]
 
     def get(self, request):
         items = InventoryItem.objects.filter(
@@ -252,7 +252,7 @@ class MinibarCandidateInventoryView(APIView):
 
 
 class MinibarConsumeView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsHousekeepingOperator]
 
     def post(self, request):
         room_id = request.data.get("room_id")
@@ -332,7 +332,7 @@ class MinibarConsumeView(APIView):
 
 
 class LostAndFoundListView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsHousekeepingOperator]
 
     def get(self, request):
         qs = LostAndFoundItem.objects.select_related("room").all()
@@ -353,7 +353,7 @@ class LostAndFoundListView(APIView):
 
 
 class LostAndFoundClaimView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsHousekeepingOperator]
 
     def post(self, request, pk):
         try:
@@ -369,5 +369,21 @@ class LostAndFoundClaimView(APIView):
             item.notes = (item.notes + "\n" if item.notes else "") + f"Claim notes: {request.data.get('notes')}"
         item.save()
         return Response(LostAndFoundItemSerializer(item).data)
+
+
+class PublicSiteInfoView(APIView):
+    """
+    Public site info endpoint.
+    Returns minimal public metadata needed by the frontend (such as the public site base URL)
+    derived dynamically from settings.FRONTEND_BASE_URL.
+    Does not expose secrets or internal configuration.
+    """
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request):
+        base_url = getattr(settings, "FRONTEND_BASE_URL", "https://hotelerp.acrmatech.com")
+        return Response({
+            "public_site_url": base_url.rstrip("/") if base_url else ""
+        })
 
 

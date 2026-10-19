@@ -58,7 +58,7 @@ const KitchenDashboard = ({ userData, handleLogout }) => {
       }
       await axios.post(
         `${API_BASE}orders/${orderId}/update-status/`,
-        { status: newStatus },
+        { status: newStatus, station: 'Kitchen' },
         { headers: { Authorization: `Bearer ${token}` } }
       );
       await fetchKitchenOrders();
@@ -147,9 +147,39 @@ const KitchenDashboard = ({ userData, handleLogout }) => {
 
                 <div style={itemList}>
                   {order.items.map((item, idx) => (
-                    <div key={idx} style={foodItem}>
-                      <span style={itemQty}>{item.quantity}x</span>
-                      <span style={itemName}>{item.menu_item_name}</span>
+                    <div key={idx} style={{ ...foodItem, flexDirection: 'column', alignItems: 'flex-start' }}>
+                      <div style={{ display: 'flex', gap: '15px', alignItems: 'center', width: '100%' }}>
+                        <span style={itemQty}>{item.quantity}x</span>
+                        <span style={{ ...itemName, flex: 1 }}>{item.menu_item_name}</span>
+                        {item.status && (
+                          <span style={{
+                            fontSize: '11px',
+                            fontWeight: '700',
+                            padding: '2px 8px',
+                            borderRadius: '10px',
+                            backgroundColor: item.status === 'ready' ? '#dcfce7' : item.status === 'preparing' ? '#fef3c7' : '#fee2e2',
+                            color: item.status === 'ready' ? '#166534' : item.status === 'preparing' ? '#b45309' : '#991b1b',
+                            textTransform: 'uppercase'
+                          }}>
+                            {item.status}
+                          </span>
+                        )}
+                      </div>
+                      {item.notes ? (
+                        <div style={{
+                          fontSize: '13px',
+                          color: '#b45309',
+                          backgroundColor: '#fef3c7',
+                          padding: '4px 10px',
+                          borderRadius: '6px',
+                          marginTop: '6px',
+                          marginLeft: '45px',
+                          fontWeight: '600',
+                          borderLeft: '3px solid #f59e0b'
+                        }}>
+                          📝 Note: {item.notes}
+                        </div>
+                      ) : null}
                     </div>
                   ))}
                 </div>

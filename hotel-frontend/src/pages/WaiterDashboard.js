@@ -243,7 +243,11 @@ function WaiterDashboard({ userData, handleLogout }) {
         `${API_BASE}orders/create/`,
         {
           table_id: selectedTableId,
-          items: cart.map((item) => ({ id: item.id, quantity: item.quantity })),
+          items: cart.map((item) => ({
+            id: item.id,
+            quantity: item.quantity,
+            notes: (item.notes || '').trim().slice(0, 255),
+          })),
         },
         { headers: headers() }
       );
@@ -279,6 +283,12 @@ function WaiterDashboard({ userData, handleLogout }) {
     );
   };
 
+  const updateItemNotes = (id, notes) => {
+    setCart((prevCart) =>
+      prevCart.map((item) => (item.id === id ? { ...item, notes: notes.slice(0, 255) } : item))
+    );
+  };
+
   const cartTotal = useMemo(
     () => cart.reduce((sum, item) => sum + Number(item.price || 0) * item.quantity, 0),
     [cart]
@@ -308,7 +318,11 @@ function WaiterDashboard({ userData, handleLogout }) {
   const availableTables = useMemo(() => tables.filter((table) => table.status !== 'occupied'), [tables]);
   const topMenuItems = useMemo(() => filteredMenu.slice(0, 8), [filteredMenu]);
   const pendingNotifications = notifications.slice(0, 5);
-  const selectedTableLabel = tables.find((table) => String(table.id) === String(selectedTableId))?.table_code;
+  const selectedTable = useMemo(
+    () => tables.find((table) => String(table.id) === String(selectedTableId)),
+    [tables, selectedTableId]
+  );
+  const selectedTableLabel = selectedTable?.table_code;
 
   const navItems = [
     { id: 'home', label: 'Overview', icon: Grid2x2 },
@@ -530,6 +544,11 @@ function WaiterDashboard({ userData, handleLogout }) {
                       <div style={styles.orderCardTop}>
                         <div>
                           <strong style={styles.orderId}>ORD-{order.id}</strong>
+                          {order.session_id && (
+                            <span style={{ fontSize: '11px', color: '#0284c7', fontWeight: 700, marginLeft: '6px' }}>
+                              Session #{order.session_id}
+                            </span>
+                          )}
                           <div style={styles.smallMuted}>Table {order.table_code}</div>
                         </div>
                         <div style={styles.badgeRow}>
@@ -655,27 +674,56 @@ function WaiterDashboard({ userData, handleLogout }) {
                 <div style={styles.panelHeader}>
                   <div>
                     <div style={styles.panelTitle}>Order Cart</div>
-                    <div style={styles.panelSub}>Selected table: {selectedTableLabel || 'Not selected'}</div>
+                    <div style={styles.panelSub}>
+                      Selected table: {selectedTableLabel || 'Not selected'}
+                      {selectedTable?.status === 'occupied' && (
+                        <span style={{ color: '#0284c7', fontWeight: 700, marginLeft: '6px' }}>
+                          (Active Session — Adding Round)
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
 
                 <div style={styles.cartItems}>
                   {cart.length ? cart.map((item) => (
-                    <div key={item.id} style={styles.cartItem}>
-                      <div>
-                        <strong>{item.name}</strong>
-                        {item.is_available === false && (
-                          <span style={{ color: '#ef4444', fontSize: '11px', fontWeight: 700, marginLeft: '6px' }}>
-                            (Unavailable)
-                          </span>
-                        )}
-                        <div style={styles.smallMuted}>ETB {Number(item.price || 0).toFixed(2)} each</div>
+                    <div key={item.id} style={{ ...styles.cartItem, flexDirection: 'column', alignItems: 'stretch' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', width: '100%' }}>
+                        <div>
+                          <strong>{item.name}</strong>
+                          {item.is_available === false && (
+                            <span style={{ color: '#ef4444', fontSize: '11px', fontWeight: 700, marginLeft: '6px' }}>
+                              (Unavailable)
+                            </span>
+                          )}
+                          <div style={styles.smallMuted}>ETB {Number(item.price || 0).toFixed(2)} each</div>
+                        </div>
+                        <div style={styles.cartControls}>
+                          <button style={styles.iconButton} onClick={() => updateQty(item.id, -1)}><Minus size={14} /></button>
+                          <span style={styles.qtyValue}>{item.quantity}</span>
+                          <button style={styles.iconButton} onClick={() => updateQty(item.id, 1)} disabled={item.is_available === false}><Plus size={14} /></button>
+                          <button style={styles.iconButton} onClick={() => updateQty(item.id, -item.quantity)}><Trash2 size={14} /></button>
+                        </div>
                       </div>
-                      <div style={styles.cartControls}>
-                        <button style={styles.iconButton} onClick={() => updateQty(item.id, -1)}><Minus size={14} /></button>
-                        <span style={styles.qtyValue}>{item.quantity}</span>
-                        <button style={styles.iconButton} onClick={() => updateQty(item.id, 1)} disabled={item.is_available === false}><Plus size={14} /></button>
-                        <button style={styles.iconButton} onClick={() => updateQty(item.id, -item.quantity)}><Trash2 size={14} /></button>
+                      <div style={{ marginTop: '8px', width: '100%' }}>
+                        <input
+                          type="text"
+                          placeholder="Prep notes (e.g. no onions, medium rare)..."
+                          maxLength={255}
+                          value={item.notes || ''}
+                          onChange={(e) => updateItemNotes(item.id, e.target.value)}
+                          style={{
+                            width: '100%',
+                            boxSizing: 'border-box',
+                            padding: '6px 10px',
+                            borderRadius: '6px',
+                            border: '1px solid #cbd5e1',
+                            fontSize: '12px',
+                            backgroundColor: '#f8fafc',
+                            color: '#1e293b',
+                            outline: 'none',
+                          }}
+                        />
                       </div>
                     </div>
                   )) : <div style={styles.emptyCard}>Your cart is empty.</div>}
@@ -683,16 +731,18 @@ function WaiterDashboard({ userData, handleLogout }) {
 
                 <select value={selectedTableId} onChange={(e) => setSelectedTableId(e.target.value)} style={styles.select}>
                   <option value="">Choose table...</option>
-                  {availableTables.map((table) => (
-                    <option key={table.id} value={table.id}>
-                      {table.table_code}
-                    </option>
-                  ))}
+                  <optgroup label="Available tables">
+                    {availableTables.map((table) => (
+                      <option key={table.id} value={table.id}>
+                        {table.table_code}
+                      </option>
+                    ))}
+                  </optgroup>
                   {occupiedTables.length ? (
-                    <optgroup label="Occupied tables">
+                    <optgroup label="Occupied tables (Add Round)">
                       {occupiedTables.map((table) => (
-                        <option key={`busy-${table.id}`} value={table.id} disabled>
-                          {table.table_code} (occupied)
+                        <option key={`busy-${table.id}`} value={table.id}>
+                          {table.table_code} (Occupied — Add Round)
                         </option>
                       ))}
                     </optgroup>
@@ -778,7 +828,14 @@ function WaiterDashboard({ userData, handleLogout }) {
           <div style={styles.stack}>
             {(detailsOrder.items || []).map((item) => (
               <div key={`${detailsOrder.id}-${item.id}`} style={styles.detailRow}>
-                <span>{item.menu_item_name} x{item.quantity}</span>
+                <div>
+                  <span>{item.menu_item_name} x{item.quantity}</span>
+                  {item.notes ? (
+                    <div style={{ fontSize: '12px', color: '#64748b', fontStyle: 'italic', marginTop: '2px' }}>
+                      📝 Note: {item.notes}
+                    </div>
+                  ) : null}
+                </div>
                 <strong>ETB {(item.quantity * item.price_at_order).toFixed(2)}</strong>
               </div>
             ))}

@@ -56,7 +56,7 @@ export default function ReportsCenter({ initialTab }) {
       } else if (activeTab === 'bookings') {
         res = await axios.get(`${API_BASE_URL}/users/reservations/?date_from=${reportDate}`);
       } else if (activeTab === 'inventory') {
-        res = await axios.get(`${API_BASE_URL}/users/inventory/items/`);
+        res = await axios.get(`${API_BASE_URL}/users/inventory-items/`);
       }
       setData(res?.data);
     } catch (err) {

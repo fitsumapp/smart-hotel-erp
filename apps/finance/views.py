@@ -264,6 +264,11 @@ class TaxReportView(APIView):
             end_date = datetime.fromisoformat(end_date_str).date() if end_date_str else today
         except ValueError:
             end_date = today
+
+        if start_date > end_date:
+            return Response({"error": "start_date cannot be after end_date."}, status=400)
+
+        start_dt, end_dt = datetime_bounds(start_date, end_date)
             
         # VAT and Service Charge are collected on:
         # 1. Restaurant Orders

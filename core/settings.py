@@ -109,6 +109,7 @@ CACHES = {
 
 # ── URL Configuration ──────────────────────────────────────────────────────────
 ROOT_URLCONF = "core.urls"
+SILENCED_SYSTEM_CHECKS = ["urls.W005"]
 
 # ── Database — Neon.tech PostgreSQL (SSL required) ────────────────────────────
 # Neon.tech connection string support (takes priority if set)

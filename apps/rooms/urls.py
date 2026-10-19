@@ -5,7 +5,7 @@ from .views import (
     MaintenanceLogDetailView, MaintenanceLogView, RoomHistoryView, RoomViewSet,
     HousekeepingTaskListView, HousekeepingTaskDetailView, HousekeepingTaskInspectView,
     MinibarItemsView, MinibarCandidateInventoryView, MinibarConsumeView,
-    LostAndFoundListView, LostAndFoundClaimView,
+    LostAndFoundListView, LostAndFoundClaimView, PublicSiteInfoView,
 )
 
 router = DefaultRouter()
@@ -15,6 +15,7 @@ urlpatterns = [
     path("rooms/<int:room_id>/maintenance/", MaintenanceLogView.as_view(), name="room-maintenance"),
     path("maintenance/<int:log_id>/", MaintenanceLogDetailView.as_view(), name="maintenance-detail"),
     path("rooms/<int:room_id>/history/", RoomHistoryView.as_view(), name="room-history"),
+    path("public-site/", PublicSiteInfoView.as_view(), name="public-site-info"),
     # Housekeeping & Minibar Management (Phase 2)
     path("housekeeping/tasks/", HousekeepingTaskListView.as_view(), name="hk-tasks-list"),
     path("housekeeping/tasks/<int:pk>/", HousekeepingTaskDetailView.as_view(), name="hk-tasks-detail"),
