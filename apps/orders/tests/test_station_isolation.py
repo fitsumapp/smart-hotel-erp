@@ -297,3 +297,74 @@ class StationIsolationAndNotesTestCase(APITestCase):
         res = self.client.get(reverse("kitchen-orders") + "?station=Kitchen")
         k_order = next(o for o in res.data if o["id"] == order.id)
         self.assertEqual(k_order["items"][0]["notes"], "A" * 255)
+
+    def test_kds_cors_preflight_allows_dashboard_headers(self):
+        """
+        REGRESSION: KDS orders failed to reach Kitchen users because the browser's
+        CORS preflight was rejected when the frontend sent Cache-Control and Pragma.
+        Verify that OPTIONS preflight from http://localhost:3000 permits these headers.
+        """
+        response = self.client.options(
+            reverse("kitchen-orders") + "?station=Kitchen",
+            HTTP_ORIGIN="http://localhost:3000",
+            HTTP_ACCESS_CONTROL_REQUEST_METHOD="GET",
+            HTTP_ACCESS_CONTROL_REQUEST_HEADERS="authorization, cache-control, pragma",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.headers.get("access-control-allow-origin"), "http://localhost:3000")
+        self.assertEqual(response.headers.get("access-control-allow-credentials"), "true")
+        allowed_headers = response.headers.get("access-control-allow-headers", "").lower()
+        self.assertIn("cache-control", allowed_headers)
+        self.assertIn("pragma", allowed_headers)
+        self.assertIn("authorization", allowed_headers)
+
+    def test_kds_delivery_response_schema(self):
+        """
+        Verify that a newly created kitchen order reaches the Kitchen user
+        with the exact fields and schema expected by KitchenDashboard.js.
+        """
+        order, created = create_order_idempotently(
+            table_id=self.table.id,
+            items=[{"id": self.burger.id, "quantity": 2, "notes": "Well done"}],
+            waiter=self.waiter,
+        )
+        self.assertTrue(created)
+
+        self.client.force_authenticate(self.kitchen_user)
+        res = self.client.get(reverse("kitchen-orders") + "?station=Kitchen")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+
+        k_order = next((o for o in res.data if o["id"] == order.id), None)
+        self.assertIsNotNone(k_order, "Newly created order must appear in Kitchen queue.")
+        self.assertEqual(k_order["table_code"], "T-101")
+        self.assertEqual(k_order["status"], "pending")
+        self.assertEqual(k_order["station_status"], "pending")
+
+        items = k_order.get("items", [])
+        self.assertEqual(len(items), 1)
+        it = items[0]
+        self.assertEqual(it["menu_item_name"], "Classic Cheeseburger")
+        self.assertEqual(it["quantity"], 2)
+        self.assertEqual(it["status"], "pending")
+        self.assertEqual(it["notes"], "Well done")
+        self.assertEqual(it["station"], "Kitchen")
+        self.assertEqual(it["category_station"], "Kitchen")
+
+    def test_pure_bar_order_excluded_from_kitchen_queue(self):
+        """Pure bar order must never appear in the Kitchen queue."""
+        order, created = create_order_idempotently(
+            table_id=self.table.id,
+            items=[{"id": self.cocktail.id, "quantity": 1, "notes": "No ice"}],
+            waiter=self.waiter,
+        )
+        self.assertTrue(created)
+
+        self.client.force_authenticate(self.kitchen_user)
+        res = self.client.get(reverse("kitchen-orders") + "?station=Kitchen")
+        k_ids = [o["id"] for o in res.data]
+        self.assertNotIn(order.id, k_ids)
+
+        self.client.force_authenticate(self.bar_user)
+        bar_res = self.client.get(reverse("kitchen-orders") + "?station=Bar")
+        b_ids = [o["id"] for o in bar_res.data]
+        self.assertIn(order.id, b_ids)
