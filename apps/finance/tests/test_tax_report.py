@@ -207,3 +207,45 @@ class TaxReportViewRegressionTests(TestCase):
         self.client.force_authenticate(user=self.admin_user)
         res_admin = self.client.get("/api/users/finance/tax-report/")
         self.assertEqual(res_admin.status_code, status.HTTP_200_OK)
+
+    def test_tax_report_us_date_format_parsing(self):
+        """MM/DD/YYYY formatted dates are parsed correctly and filter records accurately"""
+        tz = timezone.get_current_timezone()
+        t_order = timezone.make_aware(datetime.datetime(2026, 10, 5, 12, 0, 0), tz)
+        ord_sample = Order.objects.create(
+            table=self.table, status="paid", payment_status="paid", payment_method="Cash"
+        )
+        OrderItem.objects.create(order=ord_sample, menu_item=self.item, quantity=2, price_at_order=Decimal("200.00"))
+        sync_order_financials(ord_sample)
+        Order.objects.filter(id=ord_sample.id).update(updated_at=t_order)
+
+        self.client.force_authenticate(user=self.finance_user)
+        res = self.client.get("/api/users/finance/tax-report/", {
+            "start_date": "10/01/2026",
+            "end_date": "10/08/2026"
+        })
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(res.data["start_date"], "2026-10-01")
+        self.assertEqual(res.data["end_date"], "2026-10-08")
+        self.assertEqual(res.data["restaurant"]["subtotal"], 400.0)
+        self.assertEqual(res.data["restaurant"]["vat"], 60.0)
+
+    def test_tax_report_empty_range_safe_zero_defaults(self):
+        """When no transactions exist, safe zero-value defaults (0.0) are returned with HTTP 200"""
+        self.client.force_authenticate(user=self.finance_user)
+        res = self.client.get("/api/users/finance/tax-report/", {
+            "start_date": "2020-01-01",
+            "end_date": "2020-01-02"
+        })
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(res.data["restaurant"]["subtotal"], 0.0)
+        self.assertEqual(res.data["restaurant"]["vat"], 0.0)
+        self.assertEqual(res.data["restaurant"]["service_charge"], 0.0)
+        self.assertEqual(res.data["restaurant"]["total"], 0.0)
+        self.assertEqual(res.data["rooms"]["subtotal"], 0.0)
+        self.assertEqual(res.data["rooms"]["vat"], 0.0)
+        self.assertEqual(res.data["rooms"]["service_charge"], 0.0)
+        self.assertEqual(res.data["rooms"]["total"], 0.0)
+        self.assertEqual(res.data["aggregated"]["vat_collected"], 0.0)
+        self.assertEqual(res.data["aggregated"]["service_charge_collected"], 0.0)
+        self.assertEqual(res.data["aggregated"]["total_tax_collected"], 0.0)

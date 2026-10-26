@@ -14,9 +14,17 @@ logger = logging.getLogger(__name__)
 
 def _message(data, fallback):
     if isinstance(data, dict):
-        value = data.get("detail") or data.get("error")
+        value = data.get("detail") or data.get("error") or data.get("message")
         if isinstance(value, (str, int, float)):
             return str(value)
+        for key, val in data.items():
+            if key in ("code", "error_details", "error"):
+                continue
+            field_name = "" if key in ("non_field_errors", "detail") else f"{key.replace('_', ' ').capitalize()}: "
+            if isinstance(val, list) and val:
+                return f"{field_name}{val[0]}"
+            if isinstance(val, (str, int, float)):
+                return f"{field_name}{val}"
     if isinstance(data, list) and data:
         return str(data[0])
     return fallback

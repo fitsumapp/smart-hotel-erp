@@ -830,3 +830,135 @@ No phase is considered complete because code was written. It is complete only wh
 - [PostgreSQL range types and exclusion constraints](https://www.postgresql.org/docs/10/rangetypes.html)
 - [OWASP Logging Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Logging_Cheat_Sheet.html)
 
+---
+
+# Part II: Evidence-Based Takeover Continuation Plan (October 2026 Baseline)
+
+## 8. Takeover Executive Summary & Current Condition
+
+Following a thorough read-only audit of the `fitsumapp/smart-hotel-erp` repository (`development` branch, commit `b6ea79f`), the system condition is established as follows:
+- **Baseline Automated Tests:** 207 backend tests pass (100%), 9 frontend tests pass (100%), Django system check passes (0 issues), and migration consistency passes (no drift).
+- **In-Flight Worktree:** 13 modified files and 2 untracked files containing completed, tested work on Expense Management, Supplier RBAC, and Ethiopian payroll calculations are preserved in the working tree.
+- **Critical Gaps:** Daily revenue report triple-counting (`DEFECT-FIN-001`), accidental day closure on Z-report tab click (`DEFECT-OPS-001`), and missing PMS Night Audit daily rollover (`DEFECT-PMS-001`).
+
+This continuation roadmap defines the prioritized, bounded tasks required to stabilize the ERP for a single-hotel pilot deployment.
+
+---
+
+## 9. Prioritized Implementation Sequence
+
+Work must strictly proceed according to risk and business impact priority:
+1. **Stage 1: Repository Baseline Stabilization (P3 Blocker)**
+2. **Stage 2: Critical Financial & Operational Bug Remediation (P1 & P2)**
+3. **Stage 3: PMS Night Audit & Exception Management (P2)**
+4. **Stage 4: Operational Workflow Polish & Optimization (P3 & P4)**
+
+---
+
+### Phase 10 — Repository Baseline & Worktree Stabilization (Stage 1)
+**Priority:** P3 (Operational Blocker)  
+**Approval Required:** YES (Owner authorization required to commit uncommitted work)
+
+#### Objectives:
+Establish an authoritative, clean Git baseline capturing the verified in-flight work before new code edits occur.
+
+#### Tasks:
+1. Review the 13 modified files and 2 untracked files with the project owner.
+2. Stage all 15 files and create commit:
+   `feat: complete expense management, tax report hardening, and API error formatting`
+3. Create annotated Git tag: `baseline-takeover-2026-10-24`.
+4. Verify `git status` reports working tree clean.
+
+#### Acceptance Criteria:
+- Clean working directory on branch `development`.
+- All 207 backend tests and 9 frontend tests pass on the newly created commit.
+
+---
+
+### Phase 11 — Critical Financial & Operational Bug Remediation (Stage 2)
+**Priority:** P1 & P2 (Financial Integrity & Workflow Blocker)  
+**Approval Required:** NO (Standard bug remediation)
+
+#### Task 11.1: Fix Daily Revenue Report Triple-Counting (`DEFECT-FIN-001`)
+- **File:** `apps/reporting/views.py` (`DailyRevenueReportView.get`)
+- **Problem:** `total_revenue = room_revenue + fb_revenue + folio_revenue`. Room-charged meals are counted in `fb_revenue`, in `folio_revenue`, and in checkout `room_revenue`.
+- **Correction:**
+  - Query revenue directly from authoritative double-entry General Ledger accounts:
+    - Room Revenue: Net credits to Account `4000` (Room Revenue).
+    - F&B Revenue: Net credits to Account `4100` (Restaurant / F&B Revenue).
+    - Other Operating Revenue: Net credits to Account `4200` (Miscellaneous Revenue).
+  - Alternatively, filter out `payment_method == "Room Charge"` from `Order` query and deduct folio extras from `RoomHistory.revenue`.
+- **Acceptance Criteria:** A 500 ETB dinner charged to Room 101 and settled at checkout contributes exactly 500 ETB to overall reported revenue.
+- **Verification:** Unit test simulating full stay with room-charged F&B orders; assert reported revenue matches GL ledger balance.
+
+#### Task 11.2: Decouple Z-Report Preview from Day Closure Mutation (`DEFECT-OPS-001`)
+- **Files:** `apps/reporting/views.py` (`ZReportView`), `hotel-frontend/src/pages/ReportsCenter.js`
+- **Problem:** Clicking "Z-Report" tab immediately fires `POST /api/users/reports/z-report/` marking `is_closed = True`.
+- **Correction:**
+  1. Add `GET` method to `ZReportView` returning daily sales snapshot preview without mutating `DayAuditLog`.
+  2. In `ReportsCenter.js`, change tab selection to call `GET`.
+  3. Add an explicit "Close Business Day" button with a confirmation modal in `ReportsCenter.js` that issues the `POST` request.
+- **Acceptance Criteria:** Navigating to Z-Report displays live snapshot preview; day closure requires explicit operator confirmation.
+- **Verification:** Frontend test verifying tab click does not trigger `POST`; manual network trace.
+
+---
+
+### Phase 12 — PMS Night Audit & Reservation Exception States (Stage 3)
+**Priority:** P2 (Core PMS Capability)  
+**Approval Required:** YES (Architectural and schema changes)
+
+#### Task 12.1: Implement Stored Business Date
+- **File:** `hotel/models.py` (`SystemSettings`), `users/migrations/`
+- **Deliverable:** Add `current_business_date = models.DateField(default=timezone.now)` to `SystemSettings`.
+- **Purpose:** All PMS transactions, stay nights, and room postings reference the authoritative hotel business date, decoupling night audit from server clock drift.
+
+#### Task 12.2: Implement Nightly Room Rate & Tax Accrual Service
+- **File:** `apps/reservations/services.py`, `apps/finance/services.py`
+- **Deliverable:** Create `post_nightly_room_charges(business_date)`:
+  - Iterates over all `checked_in` reservations active on `business_date`.
+  - Accrues one night of room rate + VAT (15%) + Service Charge (10%) to guest folio.
+  - Posts balanced General Ledger Journal Entry:
+    - Debit Account `1200` (Accounts Receivable / Guest Ledger) for total night amount.
+    - Credit Account `4000` (Room Revenue) for base price.
+    - Credit Account `2200` (VAT Payable) for VAT portion.
+    - Credit Account `2300` (Service Charge Payable) for SC portion.
+- **Acceptance Criteria:** Daily room revenue and taxes accrue incrementally per night rather than in a lump sum at checkout.
+
+#### Task 12.3: Build Interactive Front-Desk Night Audit Modal
+- **Files:** `apps/reporting/views.py` (`NightAuditRunView`), `hotel-frontend/src/RoomManager.js`
+- **Deliverable:** Interactive Night Audit modal replacing the static 4-counter card:
+  - Pre-flight checklist: Unsettled restaurant bills, pending check-ins, active bar tabs.
+  - Exception resolution prompt.
+  - "Run Night Audit" execution button: calls backend service, generates audit snapshot, and advances `current_business_date` by +1 day.
+
+#### Task 12.4: Implement Reservation `no_show` Status (`DEFECT-PMS-002`)
+- **Files:** `hotel/models.py` (`Reservation`), `apps/reservations/views.py`
+- **Deliverable:** Add `no_show` to `Reservation.STATUS_CHOICES`. Update `Reservation.save()` to allow transition `confirmed -> no_show`.
+- **Acceptance Criteria:** Unarrived reservations past midnight can be marked `no_show`, immediately releasing the room for rebooking while logging the audit event.
+
+---
+
+### Phase 13 — Operational Optimization & Cashier Consolidation (Stage 4)
+**Priority:** P3 & P4 (Workflow Usability & Cleanup)  
+**Approval Required:** YES (For role deprecation)
+
+#### Task 13.1: Consolidated Dining Session Bill in Cashier Dashboard (`DEFECT-POS-001`)
+- **Files:** `hotel-frontend/src/pages/CashierDashboard.js`, `apps/orders/views.py`
+- **Deliverable:** Provide a "Settle Table Session" action in Cashier bills screen that fetches all pending orders for an active `DiningSession` and settles them in a single payment transaction.
+- **Acceptance Criteria:** Cashiers can print a single unified receipt for a multi-round table visit.
+
+#### Task 13.2: Deprecate Phantom `delivery` Role (`DEFECT-ROLE-001`)
+- **Files:** `users/models.py`, `hotel-frontend/src/UserManager.jsx`
+- **Deliverable:** Remove `delivery` from `ROLE_CHOICES` and user creation forms, preventing administrative staff from creating orphaned, non-functional user accounts.
+
+---
+
+## 10. Execution Governance & Quality Gates
+
+Each task in Phases 10–13 must strictly satisfy the following five quality gates before advancing to the next:
+1. **Isolated Test Gate:** Relevant unit and regression tests written or updated; full backend test suite (`python manage.py test`) passes with 0 errors.
+2. **Lint & System Check Gate:** `python manage.py check` reports 0 issues; `makemigrations --check` detects no unmigrated schema changes.
+3. **Frontend Build Gate:** `npm test` passes and `npm run build` compiles with 0 errors.
+4. **Diff Inspection Gate:** `git diff` reviewed to ensure no unintended modifications or secret exposures.
+5. **Documentation & Status Update Gate:** `PROJECT_STATUS.md` and deliverable docs updated with verified evidence.
+

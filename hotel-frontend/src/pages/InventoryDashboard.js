@@ -2,11 +2,12 @@ import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import {
   Package, LogOut, AlertTriangle, CheckCircle, RefreshCw,
-  Plus, Users, DollarSign, ArrowRight,
-  ShoppingCart, Truck, Printer, Trash2
+  Plus, Users, DollarSign, ArrowRight, ArrowLeft,
+  ShoppingCart, Truck, Printer, Trash2, X
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { API_BASE_URL } from '../apiConfig';
+import { apiErrorMessage } from '../apiClient';
 
 const API_BASE = `${API_BASE_URL}/users/`;
 
@@ -48,11 +49,57 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
   const [isSupplierModalOpen, setIsSupplierModalOpen] = useState(false);
   const [isRecipeModalOpen, setIsRecipeModalOpen] = useState(false);
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
+  const [categoryModalError, setCategoryModalError] = useState('');
+  const [editCategoryModalError, setEditCategoryModalError] = useState('');
 
   // Edit modal states
   const [editItem, setEditItem] = useState(null);
   const [editCategory, setEditCategory] = useState(null);
   const [editSupplier, setEditSupplier] = useState(null);
+
+  const isAnyModalOpen = Boolean(
+    isItemModalOpen || isSupplierModalOpen || isRecipeModalOpen || isCategoryModalOpen ||
+    editItem || editCategory || editSupplier
+  );
+
+  const closeAllModals = useCallback(() => {
+    setIsItemModalOpen(false);
+    setIsSupplierModalOpen(false);
+    setIsRecipeModalOpen(false);
+    setIsCategoryModalOpen(false);
+    setEditItem(null);
+    setEditCategory(null);
+    setEditSupplier(null);
+    setCategoryModalError('');
+    setEditCategoryModalError('');
+  }, []);
+
+  const dismissModal = useCallback((closeAction) => {
+    if (typeof closeAction === 'function') {
+      closeAction();
+    } else {
+      closeAllModals();
+    }
+    if (window.history.state?.inventoryModalOpen) {
+      window.history.back();
+    }
+  }, [closeAllModals]);
+
+  // Intercept phone browser back button when any modal is open so it closes the modal instead of navigating away/logging out
+  useEffect(() => {
+    if (!isAnyModalOpen) return;
+
+    window.history.pushState({ inventoryModalOpen: true }, '');
+
+    const handlePopState = () => {
+      closeAllModals();
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, [isAnyModalOpen, closeAllModals]);
 
   // Form states
   const [newItem, setNewItem] = useState({ item_code: '', name: '', category: '', unit: 'pcs', min_reorder_level: '5.00', unit_cost: '0.00', selling_price: '0.00', last_supplier: '' });
@@ -131,11 +178,11 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
         last_supplier: newItem.last_supplier || null
       };
       await axios.post(`${API_BASE}inventory-items/`, payload, { headers: getHeaders() });
-      setIsItemModalOpen(false);
+      dismissModal(() => setIsItemModalOpen(false));
       setNewItem({ item_code: '', name: '', category: '', unit: 'pcs', min_reorder_level: '5.00', unit_cost: '0.00', selling_price: '0.00', last_supplier: '' });
       fetchData();
     } catch (err) {
-      alert("Error creating item: " + JSON.stringify(err.response?.data || err.message));
+      alert(apiErrorMessage(err, "Failed to create item."));
     }
   };
 
@@ -143,23 +190,39 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
     e.preventDefault();
     try {
       await axios.post(`${API_BASE}suppliers/`, newSupplier, { headers: getHeaders() });
-      setIsSupplierModalOpen(false);
+      dismissModal(() => setIsSupplierModalOpen(false));
       setNewSupplier({ name: '', contact_person: '', phone: '', email: '', address: '', tin_number: '', supplied_categories: [], supply_items: '' });
       fetchData();
     } catch (err) {
-      alert("Error creating supplier: " + JSON.stringify(err.response?.data || err.message));
+      alert(apiErrorMessage(err, "Failed to create supplier."));
     }
   };
 
   const handleCreateCategory = async (e) => {
     e.preventDefault();
+    setCategoryModalError('');
+    const trimmedName = (newCategory.name || '').trim();
+    if (!trimmedName) {
+      setCategoryModalError('Please enter a category name.');
+      return;
+    }
+
+    const duplicate = categories.find(
+      c => c.name && c.name.trim().toLowerCase() === trimmedName.toLowerCase()
+    );
+    if (duplicate) {
+      setCategoryModalError(`An inventory category named "${trimmedName}" already exists. Please choose a different name.`);
+      return;
+    }
+
     try {
-      await axios.post(`${API_BASE}inventory-categories/`, newCategory, { headers: getHeaders() });
-      setIsCategoryModalOpen(false);
+      await axios.post(`${API_BASE}inventory-categories/`, { ...newCategory, name: trimmedName }, { headers: getHeaders() });
+      dismissModal(() => setIsCategoryModalOpen(false));
       setNewCategory({ name: '', description: '', category_type: 'f_and_b' });
+      setCategoryModalError('');
       fetchData();
     } catch (err) {
-      alert("Error creating category: " + JSON.stringify(err.response?.data || err.message));
+      setCategoryModalError(apiErrorMessage(err, 'Failed to create category.'));
     }
   };
 
@@ -172,21 +235,37 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
         last_supplier: editItem.last_supplier || null
       };
       await axios.patch(`${API_BASE}inventory-items/${editItem.id}/`, payload, { headers: getHeaders() });
-      setEditItem(null);
+      dismissModal(() => setEditItem(null));
       fetchData();
     } catch (err) {
-      alert("Error updating item: " + JSON.stringify(err.response?.data || err.message));
+      alert(apiErrorMessage(err, "Failed to update item."));
     }
   };
 
   const handleEditCategory = async (e) => {
     e.preventDefault();
+    setEditCategoryModalError('');
+    const trimmedName = (editCategory.name || '').trim();
+    if (!trimmedName) {
+      setEditCategoryModalError('Please enter a category name.');
+      return;
+    }
+
+    const duplicate = categories.find(
+      c => c.id !== editCategory.id && c.name && c.name.trim().toLowerCase() === trimmedName.toLowerCase()
+    );
+    if (duplicate) {
+      setEditCategoryModalError(`An inventory category named "${trimmedName}" already exists. Please choose a different name.`);
+      return;
+    }
+
     try {
-      await axios.put(`${API_BASE}inventory-categories/${editCategory.id}/`, editCategory, { headers: getHeaders() });
-      setEditCategory(null);
+      await axios.put(`${API_BASE}inventory-categories/${editCategory.id}/`, { ...editCategory, name: trimmedName }, { headers: getHeaders() });
+      dismissModal(() => setEditCategory(null));
+      setEditCategoryModalError('');
       fetchData();
     } catch (err) {
-      alert("Error updating category: " + JSON.stringify(err.response?.data || err.message));
+      setEditCategoryModalError(apiErrorMessage(err, 'Failed to update category.'));
     }
   };
 
@@ -194,10 +273,10 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
     e.preventDefault();
     try {
       await axios.put(`${API_BASE}suppliers/${editSupplier.id}/`, editSupplier, { headers: getHeaders() });
-      setEditSupplier(null);
+      dismissModal(() => setEditSupplier(null));
       fetchData();
     } catch (err) {
-      alert("Error updating supplier: " + JSON.stringify(err.response?.data || err.message));
+      alert(apiErrorMessage(err, "Failed to update supplier."));
     }
   };
 
@@ -229,7 +308,7 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
       setNewGRN({ item: '', quantity: '', unit_cost: '', supplier: '', reference_number: '', notes: '' });
       fetchData();
     } catch (err) {
-      alert("Error recording GRN: " + JSON.stringify(err.response?.data || err.message));
+      alert(apiErrorMessage(err, "Failed to record GRN."));
     }
   };
 
@@ -253,7 +332,7 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
       setDispatchTargetType('department');
       fetchData();
     } catch (err) {
-      alert("Error dispatching stock: " + JSON.stringify(err.response?.data || err.message));
+      alert(apiErrorMessage(err, "Failed to dispatch stock."));
     }
   };
 
@@ -287,13 +366,13 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
       };
       
       await axios.post(`${API_BASE}recipes/bulk-save/`, payload, { headers: getHeaders() });
-      setIsRecipeModalOpen(false);
+      dismissModal(() => setIsRecipeModalOpen(false));
       setSelectedRecipeMenu('');
       setRecipeRows([{ ingredient: '', quantity_required: '' }]);
       alert("Recipe Saved successfully!");
       fetchData();
     } catch (err) {
-      alert("Error saving recipe: " + JSON.stringify(err.response?.data || err.message));
+      alert(apiErrorMessage(err, "Failed to save recipe."));
     }
   };
 
@@ -918,7 +997,7 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
                 <h2 style={{ margin: 0, color: '#0f172a', fontSize: '20px', fontWeight: '800' }}>Category List</h2>
                 <p style={{ margin: 0, color: '#64748b', fontSize: '13px' }}>Manage groups and classifications for your ingredients and materials.</p>
               </div>
-              <button onClick={() => setIsCategoryModalOpen(true)} style={btnPrimaryStyle}>
+              <button onClick={() => { setCategoryModalError(''); setIsCategoryModalOpen(true); }} style={btnPrimaryStyle}>
                 <Plus size={16} style={{ marginRight: '6px' }} /> Add Category
               </button>
             </div>
@@ -947,14 +1026,14 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
                           <td style={tdStyle}>{cat.description || '—'}</td>
                           <td style={tdStyle}>
                             <div style={{ display: 'flex', gap: '6px' }}>
-                              <button onClick={() => setEditCategory({ ...cat })} style={editBtnStyle}>Edit</button>
+                              <button onClick={() => { setEditCategoryModalError(''); setEditCategory({ ...cat }); }} style={editBtnStyle}>Edit</button>
                               <button onClick={async () => {
                                 if (window.confirm(`Are you sure you want to delete the category "${cat.name}"?`)) {
                                   try {
                                     await axios.delete(`${API_BASE}inventory-categories/${cat.id}/`, { headers: getHeaders() });
                                     fetchData();
                                   } catch (err) {
-                                    alert("Error deleting category. It might be in use by stock items.");
+                                    alert(apiErrorMessage(err, "Error deleting category. It might be in use by stock items."));
                                   }
                                 }
                               }} style={deleteBtnStyle}>Delete</button>
@@ -1761,9 +1840,9 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
       {/* Item Modal */}
       <AnimatePresence>
         {isItemModalOpen && (
-          <div style={modalOverlayStyle}>
-            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} style={modalContentStyle}>
-              <h3 style={{ margin: '0 0 20px', color: '#0f172a', fontWeight: '800' }}>Add New Ingredient / Stock Item</h3>
+          <div style={modalOverlayStyle} onClick={() => dismissModal(() => setIsItemModalOpen(false))}>
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} style={{ ...modalContentStyle, width: '560px' }} onClick={e => e.stopPropagation()}>
+              <ModalHeader title="Add New Ingredient / Stock Item" onClose={() => dismissModal(() => setIsItemModalOpen(false))} />
               <form onSubmit={handleCreateItem} style={formStyle}>
                 <div style={formGroupStyle}>
                   <label style={labelStyle}>Item Code (Unique)</label>
@@ -1819,8 +1898,8 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
                     ))}
                   </select>
                 </div>
-                <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
-                  <button type="button" onClick={() => setIsItemModalOpen(false)} style={btnSecondaryStyle}>Cancel</button>
+                <div style={{ display: 'flex', gap: '10px', marginTop: '10px', justifyContent: 'flex-end' }}>
+                  <button type="button" onClick={() => dismissModal(() => setIsItemModalOpen(false))} style={modalCancelBtnStyle}><ArrowLeft size={14} /> Cancel</button>
                   <button type="submit" style={btnPrimaryStyle}>Save Item</button>
                 </div>
               </form>
@@ -1832,9 +1911,9 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
       {/* Supplier Modal */}
       <AnimatePresence>
         {isSupplierModalOpen && (
-          <div style={modalOverlayStyle}>
-            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} style={modalContentStyle}>
-              <h3 style={{ margin: '0 0 20px', color: '#0f172a', fontWeight: '800' }}>Add New Supplier</h3>
+          <div style={modalOverlayStyle} onClick={() => dismissModal(() => setIsSupplierModalOpen(false))}>
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} style={{ ...modalContentStyle, width: '580px' }} onClick={e => e.stopPropagation()}>
+              <ModalHeader title="Add New Supplier" onClose={() => dismissModal(() => setIsSupplierModalOpen(false))} />
               <form onSubmit={handleCreateSupplier} style={formStyle}>
                 <div style={formGroupStyle}>
                   <label style={labelStyle}>Supplier / Company Name</label>
@@ -1916,8 +1995,8 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
                   <label style={labelStyle}>Company Address</label>
                   <textarea style={inputStyle} rows="2" value={newSupplier.address} placeholder="Office location..." onChange={e => setNewSupplier({ ...newSupplier, address: e.target.value })} />
                 </div>
-                <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
-                  <button type="button" onClick={() => setIsSupplierModalOpen(false)} style={btnSecondaryStyle}>Cancel</button>
+                <div style={{ display: 'flex', gap: '10px', marginTop: '10px', justifyContent: 'flex-end' }}>
+                  <button type="button" onClick={() => dismissModal(() => setIsSupplierModalOpen(false))} style={modalCancelBtnStyle}><ArrowLeft size={14} /> Cancel</button>
                   <button type="submit" style={btnPrimaryStyle}>Save Supplier</button>
                 </div>
               </form>
@@ -1929,9 +2008,9 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
       {/* Recipe BOM Modal */}
       <AnimatePresence>
         {isRecipeModalOpen && (
-          <div style={modalOverlayStyle}>
-            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} style={{ ...modalContentStyle, width: '650px', maxWidth: '95%' }}>
-              <h3 style={{ margin: '0 0 20px', color: '#0f172a', fontWeight: '800' }}>Define Recipe / Bill of Materials</h3>
+          <div style={modalOverlayStyle} onClick={() => dismissModal(() => setIsRecipeModalOpen(false))}>
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} style={{ ...modalContentStyle, width: '650px', maxWidth: '96vw' }} onClick={e => e.stopPropagation()}>
+              <ModalHeader title="Define Recipe / Bill of Materials" onClose={() => dismissModal(() => setIsRecipeModalOpen(false))} />
               <form onSubmit={handleSaveRecipeBOM} style={formStyle}>
                 
                 {/* Menu Item Selection */}
@@ -2050,7 +2129,7 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
 
                 {/* Footer Buttons */}
                 <div style={{ display: 'flex', gap: '10px', marginTop: '20px', justifyContent: 'flex-end' }}>
-                  <button type="button" onClick={() => setIsRecipeModalOpen(false)} style={btnSecondaryStyle}>Cancel</button>
+                  <button type="button" onClick={() => dismissModal(() => setIsRecipeModalOpen(false))} style={modalCancelBtnStyle}><ArrowLeft size={14} /> Cancel</button>
                   <button type="submit" disabled={!selectedRecipeMenu || recipeRows.length === 0} style={{
                     ...btnPrimaryStyle,
                     opacity: (!selectedRecipeMenu || recipeRows.length === 0) ? 0.6 : 1,
@@ -2068,13 +2147,40 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
       {/* Category Modal */}
       <AnimatePresence>
         {isCategoryModalOpen && (
-          <div style={modalOverlayStyle}>
-            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} style={modalContentStyle}>
-              <h3 style={{ margin: '0 0 20px', color: '#0f172a', fontWeight: '800' }}>Add New Inventory Category</h3>
+          <div style={modalOverlayStyle} onClick={() => dismissModal(() => { setCategoryModalError(''); setIsCategoryModalOpen(false); })}>
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} style={modalContentStyle} onClick={e => e.stopPropagation()}>
+              <ModalHeader title="Add New Inventory Category" onClose={() => dismissModal(() => { setCategoryModalError(''); setIsCategoryModalOpen(false); })} />
+              {categoryModalError && (
+                <div style={{
+                  backgroundColor: '#fef2f2',
+                  color: '#991b1b',
+                  border: '1px solid #fecaca',
+                  padding: '10px 14px',
+                  borderRadius: '8px',
+                  fontSize: '0.875rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  marginBottom: '16px'
+                }}>
+                  <AlertTriangle size={18} style={{ flexShrink: 0 }} />
+                  <span>{categoryModalError}</span>
+                </div>
+              )}
               <form onSubmit={handleCreateCategory} style={formStyle}>
                 <div style={formGroupStyle}>
                   <label style={labelStyle}>Category Name</label>
-                  <input required type="text" style={inputStyle} value={newCategory.name} placeholder="e.g. Food, Beverages, Housekeeping" onChange={e => setNewCategory({ ...newCategory, name: e.target.value })} />
+                  <input
+                    required
+                    type="text"
+                    style={inputStyle}
+                    value={newCategory.name}
+                    placeholder="e.g. Food, Beverages, Housekeeping"
+                    onChange={e => {
+                      setCategoryModalError('');
+                      setNewCategory({ ...newCategory, name: e.target.value });
+                    }}
+                  />
                 </div>
                 <div style={formGroupStyle}>
                   <label style={labelStyle}>Category Type</label>
@@ -2087,8 +2193,8 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
                   <label style={labelStyle}>Description (Optional)</label>
                   <textarea style={inputStyle} rows="3" value={newCategory.description} placeholder="Describe what items belong to this category..." onChange={e => setNewCategory({ ...newCategory, description: e.target.value })} />
                 </div>
-                <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
-                  <button type="button" onClick={() => setIsCategoryModalOpen(false)} style={btnSecondaryStyle}>Cancel</button>
+                <div style={{ display: 'flex', gap: '10px', marginTop: '10px', justifyContent: 'flex-end' }}>
+                  <button type="button" onClick={() => dismissModal(() => { setCategoryModalError(''); setIsCategoryModalOpen(false); })} style={modalCancelBtnStyle}><ArrowLeft size={14} /> Cancel</button>
                   <button type="submit" style={btnPrimaryStyle}>Save Category</button>
                 </div>
               </form>
@@ -2100,9 +2206,9 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
       {/* ── EDIT ITEM MODAL ─────────────────────────────────────── */}
       <AnimatePresence>
         {editItem && (
-          <div style={modalOverlayStyle}>
-            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} style={modalContentStyle}>
-              <h3 style={{ margin: '0 0 20px', color: '#0f172a', fontWeight: '800' }}>✏️ Edit Ingredient / Stock Item</h3>
+          <div style={modalOverlayStyle} onClick={() => dismissModal(() => setEditItem(null))}>
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} style={{ ...modalContentStyle, width: '560px' }} onClick={e => e.stopPropagation()}>
+              <ModalHeader title="✏️ Edit Ingredient / Stock Item" onClose={() => dismissModal(() => setEditItem(null))} />
               <form onSubmit={handleEditItem} style={formStyle}>
                 <div style={formGroupStyle}>
                   <label style={labelStyle}>Item Code</label>
@@ -2154,8 +2260,8 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
                     {suppliers.map(sup => <option key={sup.id} value={sup.id}>{sup.name}</option>)}
                   </select>
                 </div>
-                <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
-                  <button type="button" onClick={() => setEditItem(null)} style={btnSecondaryStyle}>Cancel</button>
+                <div style={{ display: 'flex', gap: '10px', marginTop: '10px', justifyContent: 'flex-end' }}>
+                  <button type="button" onClick={() => dismissModal(() => setEditItem(null))} style={modalCancelBtnStyle}><ArrowLeft size={14} /> Cancel</button>
                   <button type="submit" style={btnPrimaryStyle}>Save Changes</button>
                 </div>
               </form>
@@ -2167,20 +2273,46 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
       {/* ── EDIT CATEGORY MODAL ──────────────────────────────────── */}
       <AnimatePresence>
         {editCategory && (
-          <div style={modalOverlayStyle}>
-            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} style={modalContentStyle}>
-              <h3 style={{ margin: '0 0 20px', color: '#0f172a', fontWeight: '800' }}>✏️ Edit Category</h3>
+          <div style={modalOverlayStyle} onClick={() => dismissModal(() => { setEditCategoryModalError(''); setEditCategory(null); })}>
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} style={modalContentStyle} onClick={e => e.stopPropagation()}>
+              <ModalHeader title="✏️ Edit Category" onClose={() => dismissModal(() => { setEditCategoryModalError(''); setEditCategory(null); })} />
+              {editCategoryModalError && (
+                <div style={{
+                  backgroundColor: '#fef2f2',
+                  color: '#991b1b',
+                  border: '1px solid #fecaca',
+                  padding: '10px 14px',
+                  borderRadius: '8px',
+                  fontSize: '0.875rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  marginBottom: '16px'
+                }}>
+                  <AlertTriangle size={18} style={{ flexShrink: 0 }} />
+                  <span>{editCategoryModalError}</span>
+                </div>
+              )}
               <form onSubmit={handleEditCategory} style={formStyle}>
                 <div style={formGroupStyle}>
                   <label style={labelStyle}>Category Name</label>
-                  <input required type="text" style={inputStyle} value={editCategory.name} onChange={e => setEditCategory({ ...editCategory, name: e.target.value })} />
+                  <input
+                    required
+                    type="text"
+                    style={inputStyle}
+                    value={editCategory.name}
+                    onChange={e => {
+                      setEditCategoryModalError('');
+                      setEditCategory({ ...editCategory, name: e.target.value });
+                    }}
+                  />
                 </div>
                 <div style={formGroupStyle}>
                   <label style={labelStyle}>Description (Optional)</label>
                   <textarea style={inputStyle} rows="3" value={editCategory.description || ''} onChange={e => setEditCategory({ ...editCategory, description: e.target.value })} />
                 </div>
-                <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
-                  <button type="button" onClick={() => setEditCategory(null)} style={btnSecondaryStyle}>Cancel</button>
+                <div style={{ display: 'flex', gap: '10px', marginTop: '10px', justifyContent: 'flex-end' }}>
+                  <button type="button" onClick={() => dismissModal(() => { setEditCategoryModalError(''); setEditCategory(null); })} style={modalCancelBtnStyle}><ArrowLeft size={14} /> Cancel</button>
                   <button type="submit" style={btnPrimaryStyle}>Save Changes</button>
                 </div>
               </form>
@@ -2192,9 +2324,9 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
       {/* ── EDIT SUPPLIER MODAL ──────────────────────────────────── */}
       <AnimatePresence>
         {editSupplier && (
-          <div style={modalOverlayStyle}>
-            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} style={{ ...modalContentStyle, width: '560px', maxWidth: '95%', maxHeight: '90vh', overflowY: 'auto' }}>
-              <h3 style={{ margin: '0 0 20px', color: '#0f172a', fontWeight: '800' }}>✏️ Edit Supplier</h3>
+          <div style={modalOverlayStyle} onClick={() => dismissModal(() => setEditSupplier(null))}>
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} style={{ ...modalContentStyle, width: '580px', maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
+              <ModalHeader title="✏️ Edit Supplier" onClose={() => dismissModal(() => setEditSupplier(null))} />
               <form onSubmit={handleEditSupplier} style={formStyle}>
                 <div style={formGroupStyle}>
                   <label style={labelStyle}>Company Name</label>
@@ -2247,8 +2379,8 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
                   <label style={labelStyle}>Company Address</label>
                   <textarea style={inputStyle} rows="2" value={editSupplier.address || ''} onChange={e => setEditSupplier({ ...editSupplier, address: e.target.value })} />
                 </div>
-                <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
-                  <button type="button" onClick={() => setEditSupplier(null)} style={btnSecondaryStyle}>Cancel</button>
+                <div style={{ display: 'flex', gap: '10px', marginTop: '10px', justifyContent: 'flex-end' }}>
+                  <button type="button" onClick={() => dismissModal(() => setEditSupplier(null))} style={modalCancelBtnStyle}><ArrowLeft size={14} /> Cancel</button>
                   <button type="submit" style={btnPrimaryStyle}>Save Changes</button>
                 </div>
               </form>
@@ -2323,8 +2455,41 @@ const progressBarContainer = { height: '6px', backgroundColor: '#e2e8f0', border
 const progressBar = { height: '100%', borderRadius: '3px' };
 
 // Modal styles
-const modalOverlayStyle = { position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(15,23,42,0.6)', backdropFilter: 'blur(4px)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 };
-const modalContentStyle = { backgroundColor: '#ffffff', padding: '30px', borderRadius: '24px', width: '480px', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)', border: '1px solid rgba(148,163,184,0.15)' };
+const modalOverlayStyle = { position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(15,23,42,0.6)', backdropFilter: 'blur(4px)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000, padding: '16px' };
+const modalContentStyle = { backgroundColor: '#ffffff', padding: '26px', borderRadius: '24px', width: '480px', maxWidth: '96vw', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.15)', border: '1px solid rgba(148,163,184,0.15)' };
+const modalHeaderStyle = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', gap: '12px', paddingBottom: '12px', borderBottom: '1px solid #f1f5f9' };
+const modalBackBtnStyle = { display: 'inline-flex', alignItems: 'center', gap: '6px', backgroundColor: '#f1f5f9', color: '#334155', border: '1px solid #cbd5e1', borderRadius: '10px', padding: '6px 12px', fontSize: '12px', fontWeight: '700', cursor: 'pointer', transition: 'all 0.2s', flexShrink: 0 };
+const modalCloseBtnStyle = { backgroundColor: '#f1f5f9', color: '#64748b', border: '1px solid #cbd5e1', borderRadius: '50%', width: '34px', height: '34px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'all 0.2s', flexShrink: 0 };
+const modalCancelBtnStyle = { backgroundColor: '#f1f5f9', color: '#334155', border: '1px solid #cbd5e1', borderRadius: '10px', padding: '10px 18px', fontSize: '13px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', transition: 'all 0.2s' };
+
+const ModalHeader = ({ title, onClose }) => (
+  <div style={modalHeaderStyle}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1, minWidth: 0 }}>
+      <button
+        type="button"
+        onClick={onClose}
+        style={modalBackBtnStyle}
+        title="Back"
+        aria-label="Back"
+      >
+        <ArrowLeft size={16} />
+        <span>Back</span>
+      </button>
+      <h3 style={{ margin: 0, color: '#0f172a', fontWeight: '800', fontSize: '17px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        {title}
+      </h3>
+    </div>
+    <button
+      type="button"
+      onClick={onClose}
+      style={modalCloseBtnStyle}
+      title="Close"
+      aria-label="Close"
+    >
+      <X size={18} />
+    </button>
+  </div>
+);
 
 // Form styles
 const formStyle = { display: 'flex', flexDirection: 'column', gap: '15px' };

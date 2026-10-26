@@ -457,11 +457,32 @@ const DashboardLayout = ({ activeTab, setActiveTab, userData, handleLogout }) =>
             </div>
             <div style={userProfileStyle}>
               <div style={{ width: '36px', height: '36px', borderRadius: '50%', backgroundColor: 'rgba(15,118,110,0.1)', color: '#0f766e', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '800', fontSize: '15px' }}>
-                {userData?.username ? userData.username.charAt(0).toUpperCase() : 'A'}
+                {(userData?.first_name || userData?.username || 'A').charAt(0).toUpperCase()}
               </div>
               <div style={{ marginLeft: '10px', marginRight: '15px', textAlign: 'left' }}>
-                <p style={{ margin: 0, fontWeight: '700', fontSize: '13px', color: '#0f172a' }}>{userData?.username || 'Admin'}</p>
-                <p style={{ margin: 0, fontSize: '10px', color: '#0f766e', fontWeight: '700', letterSpacing: '0.5px' }}>{userData?.role?.toUpperCase()}</p>
+                <p style={{ margin: 0, fontWeight: '700', fontSize: '13px', color: '#0f172a' }}>
+                  {[userData?.first_name, userData?.last_name].filter(Boolean).join(' ') ||
+                    (userData?.username ? userData.username.charAt(0).toUpperCase() + userData.username.slice(1) : 'Admin')}
+                </p>
+                {(() => {
+                  const rawUser = (userData?.username || '').toLowerCase().trim();
+                  const roleStr = (userData?.role || '').toLowerCase().trim();
+                  const fullName = [userData?.first_name, userData?.last_name].filter(Boolean).join(' ').trim();
+                  const isDuplicate = !fullName && rawUser && roleStr && rawUser === roleStr;
+
+                  if (isDuplicate) {
+                    return (
+                      <p style={{ margin: 0, fontSize: '10px', color: '#0f766e', fontWeight: '700', letterSpacing: '0.5px' }}>
+                        {userData?.department ? userData.department.toUpperCase() : 'HOTEL STAFF'}
+                      </p>
+                    );
+                  }
+                  return (
+                    <p style={{ margin: 0, fontSize: '10px', color: '#0f766e', fontWeight: '700', letterSpacing: '0.5px' }}>
+                      {(userData?.role || 'Staff').toUpperCase()}
+                    </p>
+                  );
+                })()}
               </div>
               <button onClick={handleLogout} style={logoutButtonStyle} title="Logout">
                 <LogOut size={16} color="#ef4444" />

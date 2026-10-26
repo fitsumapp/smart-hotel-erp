@@ -34,6 +34,7 @@ from .permissions import (
     IsReservationOperator,
     IsFinanceStaff,
     IsInventoryManager,
+    IsSupplierOperator,
     IsWaiterOrAdmin,
     IsHousekeepingOperator,
     IsHousekeepingOrAdmin,

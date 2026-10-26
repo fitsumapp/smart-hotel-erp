@@ -78,6 +78,24 @@ class IsInventoryManager(BasePermission):
         return bool(user and user.is_authenticated and user.is_active and (user.is_superuser or user.role in {"admin", "inventory"}))
 
 
+class IsSupplierOperator(BasePermission):
+    """Allow active inventory staff, finance staff, or hotel administrators access to suppliers."""
+
+    message = "Inventory, finance, or hotel administrator access is required."
+
+    def has_permission(self, request, view):
+        user = request.user
+        return bool(
+            user
+            and user.is_authenticated
+            and user.is_active
+            and (
+                user.is_superuser
+                or user.role in {"admin", "inventory", "finance"}
+            )
+        )
+
+
 class IsWaiterOrAdmin(BasePermission):
     message = "Waiter or hotel administrator access is required."
     def has_permission(self, request, view):

@@ -10,6 +10,7 @@ def ensure_default_accounts():
         # Assets (1000 - 1999)
         ("1000", "Cash", "asset"),
         ("1010", "Bank Transfer", "asset"),
+        ("1020", "Petty Cash", "asset"),
         ("1200", "Accounts Receivable", "asset"),
         ("1300", "Inventory Asset", "asset"),
         
@@ -31,6 +32,8 @@ def ensure_default_accounts():
         ("5100", "Salary Expense", "expense"),
         ("5200", "Utility Expense", "expense"),
         ("5300", "Rent Expense", "expense"),
+        ("5400", "Maintenance & Repairs Expense", "expense"),
+        ("5500", "Marketing & Advertising Expense", "expense"),
         ("5900", "Miscellaneous Expense", "expense"),
     ]
     for code, name, acct_type in defaults:

@@ -14,7 +14,7 @@ class InventoryCategoryViewSet(viewsets.ModelViewSet):
 class SupplierViewSet(viewsets.ModelViewSet):
     queryset = Supplier.objects.all()
     serializer_class = SupplierSerializer
-    permission_classes = [IsInventoryManager]
+    permission_classes = [IsSupplierOperator]
 
 
 class InventoryItemViewSet(viewsets.ModelViewSet):

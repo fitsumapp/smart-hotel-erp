@@ -21,3 +21,12 @@ class SafeAPIErrorTests(SimpleTestCase):
         self.assertEqual(response.status_code, 500)
         self.assertEqual(response.data["error"]["code"], "internal_error")
         self.assertNotIn("secret-value", str(response.data))
+
+    def test_field_validation_error_extracts_descriptive_message(self):
+        from rest_framework.exceptions import ValidationError
+        exc = ValidationError({"name": ["inventory category with this name already exists."]})
+        response = api_exception_handler(exc, {"view": None})
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.data["error"]["code"], "invalid")
+        self.assertEqual(response.data["error"]["message"], "Name: inventory category with this name already exists.")
+        self.assertEqual(response.data["error"]["details"], {"name": ["inventory category with this name already exists."]})
