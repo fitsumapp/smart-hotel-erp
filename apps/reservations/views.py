@@ -1287,3 +1287,70 @@ class VerifyCheckoutPaymentView(APIView):
         })
 
 
+class ReservationNoShowView(APIView):
+    """Mark a confirmed reservation as no-show when the guest fails to arrive."""
+    permission_classes = [IsReservationOperator]
+
+    def post(self, request, reservation_id):
+        try:
+            reservation = Reservation.objects.select_related("room").get(id=reservation_id)
+        except Reservation.DoesNotExist:
+            return Response({"error": "Reservation not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        if reservation.status == "no_show":
+            return Response(
+                {
+                    "message": "Reservation is already marked as no-show.",
+                    "reservation": build_reservation_summary(reservation),
+                    "already_no_show": True,
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        if reservation.status != "confirmed":
+            return Response(
+                {
+                    "error": f"Cannot transition reservation from {reservation.status} to no_show. Only confirmed reservations can be marked as no-show."
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        now = timezone.now()
+        with transaction.atomic():
+            reservation, transitioned = transition_reservation(
+                reservation_id=reservation.pk,
+                to_status="no_show",
+                no_show_at=now,
+            )
+            if not transitioned:
+                return Response(
+                    {
+                        "message": "Reservation is already marked as no-show.",
+                        "reservation": build_reservation_summary(reservation),
+                        "already_no_show": True,
+                    },
+                    status=status.HTTP_200_OK,
+                )
+            room = reservation.room
+            today = now.date()
+            has_other_active = Reservation.objects.filter(
+                room=room,
+                status__in=["confirmed", "checked_in"],
+                check_in_date__lte=today,
+                check_out_date__gt=today,
+            ).exclude(id=reservation.id).exists()
+            if not has_other_active and room.status == "Reserved":
+                room.status = "Available"
+                room.booking_source = "front_desk"
+                room.save(update_fields=["status", "booking_source"])
+
+        return Response(
+            {
+                "message": "Reservation marked as no-show successfully.",
+                "reservation": build_reservation_summary(reservation),
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+

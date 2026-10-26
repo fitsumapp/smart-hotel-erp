@@ -13,10 +13,11 @@ from .models import InventoryItem, PaymentAttempt, Reservation, Room, StockTrans
 ACTIVE_RESERVATION_STATUSES = ("pending", "confirmed", "checked_in")
 RESERVATION_STATUS_TRANSITIONS = {
     "pending": {"confirmed", "cancelled"},
-    "confirmed": {"checked_in", "cancelled"},
+    "confirmed": {"checked_in", "cancelled", "no_show"},
     "checked_in": {"checked_out"},
     "checked_out": set(),
     "cancelled": set(),
+    "no_show": set(),
 }
 ORDER_STATUS_TRANSITIONS = {
     "pending": {"preparing", "paid", "cancelled"},

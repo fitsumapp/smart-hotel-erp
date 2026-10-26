@@ -168,6 +168,7 @@ class Reservation(models.Model):
         ("checked_in", "Checked In"),
         ("checked_out", "Checked Out"),
         ("cancelled", "Cancelled"),
+        ("no_show", "No-Show"),
     ]
     SOURCE_CHOICES = [
         ("public", "Public Booking Engine"),
@@ -202,6 +203,7 @@ class Reservation(models.Model):
     paid_at = models.DateTimeField(blank=True, null=True)
     checked_in_at = models.DateTimeField(blank=True, null=True)
     checked_out_at = models.DateTimeField(blank=True, null=True)
+    no_show_at = models.DateTimeField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -235,10 +237,11 @@ class Reservation(models.Model):
             previous = type(self).objects.filter(pk=self.pk).values_list("status", flat=True).first()
             allowed = {
                 "pending": {"confirmed", "cancelled"},
-                "confirmed": {"checked_in", "cancelled"},
+                "confirmed": {"checked_in", "cancelled", "no_show"},
                 "checked_in": {"checked_out"},
                 "checked_out": set(),
                 "cancelled": set(),
+                "no_show": set(),
             }
             if previous and self.status != previous and self.status not in allowed.get(previous, set()):
                 raise ValidationError(f"Cannot transition reservation from {previous} to {self.status}.")

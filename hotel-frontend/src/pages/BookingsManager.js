@@ -19,6 +19,7 @@ const STATUS_COLORS = {
   checked_in: { bg: 'rgba(22,163,74,0.15)', color: '#86efac', label: 'Checked In' },
   checked_out: { bg: 'rgba(100,116,139,0.15)', color: '#94a3b8', label: 'Checked Out' },
   cancelled: { bg: 'rgba(239,68,68,0.15)', color: '#fca5a5', label: 'Cancelled' },
+  no_show: { bg: 'rgba(239,68,68,0.15)', color: '#f87171', label: 'No-Show' },
 };
 
 const emptyBooking = {

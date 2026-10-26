@@ -721,6 +721,7 @@ function BookingsReportView({ data }) {
       case 'checked_out': return { bg: '#f0fdf4', text: '#166534' };
       case 'confirmed': return { bg: '#fef3c7', text: '#d97706' };
       case 'cancelled': return { bg: '#fef2f2', text: '#991b1b' };
+      case 'no_show': return { bg: '#fee2e2', text: '#b91c1c' };
       default: return { bg: '#f1f5f9', text: '#475569' };
     }
   };

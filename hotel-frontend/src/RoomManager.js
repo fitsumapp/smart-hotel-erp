@@ -1479,6 +1479,9 @@ const reservationStatusPill = (status) => {
   } else if (status === 'checked_out') {
     bg = 'rgba(100, 116, 139, 0.1)';
     color = '#475569';
+  } else if (status === 'no_show' || status === 'cancelled') {
+    bg = 'rgba(239, 68, 68, 0.1)';
+    color = '#dc2626';
   }
   
   return {

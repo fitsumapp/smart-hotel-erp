@@ -473,7 +473,7 @@ class FinanceDashboardStatsView(APIView):
         # Include:
         # - Unpaid reservations (status not checked_out/cancelled): (total_price - advance_paid) + unpaid folios
         # - Unpaid Orders: Order with payment_status != 'paid'
-        active_reservations = Reservation.objects.exclude(status__in=["checked_out", "cancelled"])
+        active_reservations = Reservation.objects.exclude(status__in=["checked_out", "cancelled", "no_show"])
         
         # Calculate unpaid reservation accommodation fees
         accom_receivables = Decimal("0.00")
