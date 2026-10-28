@@ -9,6 +9,7 @@ urlpatterns = [
     path("reservations/", ReservationListView.as_view(), name="reservation-list"),
     path("reservations/<int:reservation_id>/enhanced-checkout/", EnhancedCheckoutView.as_view(), name="enhanced-checkout"),
     path("reservations/<int:reservation_id>/no-show/", ReservationNoShowView.as_view(), name="reservation-no-show"),
+    path("reservations/<int:reservation_id>/cancel/", ReservationCancelView.as_view(), name="reservation-cancel"),
     path("reservations/<int:reservation_id>/checkout-payment-session/", CreateCheckoutPaymentSessionView.as_view(), name="checkout-payment-session"),
     path("reservations/<int:reservation_id>/verify-checkout-payment/", VerifyCheckoutPaymentView.as_view(), name="verify-checkout-payment"),
     path("reservations/<int:reservation_id>/folio/", FolioChargeView.as_view(), name="folio-charges"),

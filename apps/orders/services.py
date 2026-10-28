@@ -200,7 +200,19 @@ def build_payment_summary(order, settings_obj=None):
         "currency": settings_obj.currency_symbol,
         "payment_status": order.payment_status,
         "payment_method": order.payment_method,
+        "bill_prepared_at": order.bill_prepared_at.isoformat() if getattr(order, "bill_prepared_at", None) else None,
+        "has_pending_handover": order.cash_handovers.filter(status="pending").exists() if hasattr(order, "cash_handovers") else False,
     }
+    if hasattr(order, "cash_handovers"):
+        pending_h = order.cash_handovers.filter(status="pending").first()
+        if pending_h:
+            data["handover"] = {
+                "id": pending_h.id,
+                "amount": float(pending_h.amount),
+                "tip_amount": float(pending_h.tip_amount),
+                "waiter_username": pending_h.waiter_username,
+                "created_at": pending_h.created_at.isoformat(),
+            }
     if order.session_id and order.session:
         data["session_summary"] = build_session_payment_summary(order.session, settings_obj=settings_obj)
     return data

@@ -200,15 +200,7 @@ _WAITER_STATUS_PRIORITY = {
 }
 
 
-ORDER_STATUS_TRANSITIONS = {
-    "pending": {"preparing", "cancelled"},
-    "preparing": {"ready", "cancelled"},
-    "ready": set(),
-    "served": set(),
-    "bill_requested": set(),
-    "paid": set(),
-    "cancelled": set(),
-}
+from hotel.integrity import ORDER_STATUS_TRANSITIONS
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Auth Views

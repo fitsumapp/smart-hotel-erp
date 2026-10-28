@@ -24,12 +24,6 @@ class ReserveRoomNowView(APIView):
         except Room.DoesNotExist:
             return Response({"error": "Room not found."}, status=status.HTTP_404_NOT_FOUND)
 
-        if room.status in ["Occupied", "Maintenance"]:
-            return Response(
-                {"error": f"Room {room.room_number} is currently {room.status.lower()}."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
         source = request.data.get("source") or "reception"
         if source == "public" and not room.is_available_online:
             return Response(
@@ -53,6 +47,13 @@ class ReserveRoomNowView(APIView):
         if check_out_date <= check_in_date:
             return Response({"error": "Check-out must be after check-in."}, status=status.HTTP_400_BAD_REQUEST)
 
+        today = timezone.now().date()
+        if check_in_date <= today and room.status in ["Occupied", "Maintenance"]:
+            return Response(
+                {"error": f"Room {room.room_number} is currently {room.status.lower()}."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         _, total_amount, deposit_amount = calculate_reservation_amounts(room, check_in_date, check_out_date)
 
         reservation = create_reservation_safely(
@@ -75,9 +76,10 @@ class ReserveRoomNowView(APIView):
             reservation, _ = transition_reservation(reservation_id=reservation.pk, to_status="confirmed")
             reservation.payment_status = "pending"
             reservation.save(update_fields=["confirmation_code", "qr_token", "public_token", "status", "payment_status", "updated_at"])
-            room.status = "Reserved"
-            room.booking_source = "front_desk"
-            room.save(update_fields=["status", "booking_source"])
+            if check_in_date <= today:
+                room.status = "Reserved"
+                room.booking_source = "front_desk"
+                room.save(update_fields=["status", "booking_source"])
             summary = send_reservation_confirmation(reservation)
             return Response(
                 {
@@ -139,9 +141,10 @@ class ReserveRoomNowView(APIView):
         attempt.status = "initiated"
         attempt.safe_metadata = {"checkout_url": checkout_url, "payment_type": "deposit"}
         attempt.save(update_fields=["status", "safe_metadata", "updated_at"])
-        room.status = "Reserved"
-        room.booking_source = "online" if source == "public" else "front_desk"
-        room.save(update_fields=["status", "booking_source"])
+        if check_in_date <= today:
+            room.status = "Reserved"
+            room.booking_source = "online" if source == "public" else "front_desk"
+            room.save(update_fields=["status", "booking_source"])
 
         return Response(
             {
@@ -170,62 +173,144 @@ class UpdateRoomFrontDeskStatusView(APIView):
         if reservation_id:
             reservation = Reservation.objects.filter(id=reservation_id, room=room).first()
 
+        today = timezone.now().date()
+        if not reservation and not reservation_id:
+            reservation = Reservation.objects.filter(
+                room=room,
+                status="confirmed",
+                check_in_date__lte=today,
+                check_out_date__gt=today,
+            ).order_by("check_in_date").first()
+
         if action == "checkin":
+            if not reservation:
+                return Response(
+                    {"error": f"No confirmed reservation found for Room {room.room_number}. A valid confirmed reservation is required to check in."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            if room.status == "Maintenance":
+                return Response({"error": f"Room {room.room_number} is under maintenance (Out of Order)."}, status=status.HTTP_400_BAD_REQUEST)
+
+            if room.status == "Occupied":
+                other_checked_in = Reservation.objects.filter(room=room, status="checked_in").exclude(id=reservation.id)
+                if other_checked_in.exists():
+                    return Response(
+                        {"error": f"Room {room.room_number} is currently occupied by another guest."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
+            if reservation.check_in_date > today:
+                return Response(
+                    {"error": f"Reservation #{reservation.id} is scheduled for a future date ({reservation.check_in_date.isoformat()}). Early check-in is not permitted."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if reservation.check_out_date <= today:
+                return Response(
+                    {"error": f"Reservation #{reservation.id} has expired (checkout date was {reservation.check_out_date.isoformat()}). Cannot check in an expired reservation."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            if reservation.status == "checked_in":
+                return Response({"error": "Reservation is already checked in.", "room_status": room.status}, status=status.HTTP_400_BAD_REQUEST)
+            if reservation.status != "confirmed":
+                return Response(
+                    {"error": f"Cannot check in reservation with status '{reservation.status}'. Only confirmed reservations can be checked in."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
             pay_method = request.data.get("payment_method", "Cash")
             pay_ref = request.data.get("payment_reference", "")
-            
             is_prepaid = reservation and reservation.payment_status == "paid"
-            
-            room.status = "Occupied"
-            if reservation:
-                reservation, _ = transition_reservation(reservation_id=reservation.pk, to_status="checked_in")
-                reservation.checked_in_at = timezone.now()
-                
-                nights = max((reservation.check_out_date - reservation.check_in_date).days, 1)
-                room_total = to_decimal(room.base_price) * nights
-                
-                if not is_prepaid:
-                    reservation.payment_status = "paid"
-                    if pay_ref:
-                        reservation.payment_reference = f"{pay_method} - {pay_ref}"
-                    else:
-                        reservation.payment_reference = pay_method
-                    reservation.total_amount = room_total
-                
-                reservation.save()
 
-                if not is_prepaid:
-                    RoomHistory.objects.create(
-                        room=room,
-                        event_type="checkin",
-                        guest_name=reservation.guest_name,
-                        check_in_date=reservation.check_in_date,
-                        check_out_date=reservation.check_out_date,
-                        revenue=room_total,
-                        payment_method=pay_method,
-                        notes=f"Check-in payment via {pay_method}",
-                    )
+            with transaction.atomic():
+                room.status = "Occupied"
+                if reservation:
+                    try:
+                        reservation, _ = transition_reservation(reservation_id=reservation.pk, to_status="checked_in")
+                    except ValidationError as exc:
+                        return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+                    reservation.checked_in_at = timezone.now()
+                    nights = max((reservation.check_out_date - reservation.check_in_date).days, 1)
+                    room_total = to_decimal(room.base_price) * nights
+
+                    if not is_prepaid:
+                        reservation.payment_status = "paid"
+                        if pay_ref:
+                            reservation.payment_reference = f"{pay_method} - {pay_ref}"
+                        else:
+                            reservation.payment_reference = pay_method
+                        reservation.total_amount = room_total
+
+                    reservation.save()
+
+                    if not is_prepaid:
+                        RoomHistory.objects.create(
+                            room=room,
+                            event_type="checkin",
+                            guest_name=reservation.guest_name,
+                            check_in_date=reservation.check_in_date,
+                            check_out_date=reservation.check_out_date,
+                            revenue=room_total,
+                            payment_method=pay_method,
+                            notes=f"Check-in payment via {pay_method}",
+                        )
+                        # Post GL entry to keep GL in sync
+                        try:
+                            pay_code = "1000" if pay_method == "Cash" else "1010"
+                            if room_total > 0:
+                                post_journal_entry(
+                                    description=f"Auto JV: Room Check-in #{reservation.id} payment",
+                                    items=[
+                                        {"account_code": pay_code, "debit": room_total, "credit": Decimal("0.00")},
+                                        {"account_code": "4000", "debit": Decimal("0.00"), "credit": room_total},
+                                    ],
+                                )
+                        except Exception as e:
+                            logger.exception("GL Auto-post error for front desk checkin: %s", e)
+
         elif action == "checkout":
-            room.status = "Cleaning"
-            if reservation:
-                reservation, _ = transition_reservation(reservation_id=reservation.pk, to_status="checked_out")
-                reservation.checked_out_at = timezone.now()
-                reservation.save(update_fields=["status", "checked_out_at", "updated_at"])
-            try:
-                from apps.rooms.services import create_checkout_housekeeping_task
-                create_checkout_housekeeping_task(
+            if not reservation and not reservation_id:
+                reservation = Reservation.objects.filter(
                     room=room,
-                    guest_name=reservation.guest_name if reservation else "",
-                    actor_username=request.user.username or "Front Desk",
+                    status="checked_in",
+                ).order_by("-checked_in_at").first()
+
+            if not reservation:
+                return Response(
+                    {"error": f"No checked-in reservation found for Room {room.room_number} to check out."},
+                    status=status.HTTP_400_BAD_REQUEST,
                 )
-            except Exception as e:
-                print(f"Housekeeping auto-task error: {e}")
+
+            return EnhancedCheckoutView().post(request, reservation_id=reservation.id)
+
+        elif action == "cancel":
+            if not reservation and not reservation_id:
+                reservation = Reservation.objects.filter(
+                    room=room,
+                    status__in=["pending", "confirmed"],
+                ).order_by("check_in_date").first()
+
+            if not reservation:
+                return Response(
+                    {"error": f"No pending or confirmed reservation found for Room {room.room_number} to cancel."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            return ReservationCancelView().post(request, reservation_id=reservation.id)
+
         else:
             return Response({"error": "Invalid action."}, status=status.HTTP_400_BAD_REQUEST)
 
         room.booking_source = request.data.get("booking_source") or room.booking_source
         room.save(update_fields=["status", "booking_source"])
-        return Response({"message": "Room status updated.", "status": room.status})
+        return Response({
+            "message": f"Room status updated to {room.status}.",
+            "room_status": room.status,
+            "status": room.status,
+            "reservation_id": reservation.id if reservation else None,
+        })
 
 
 class PublicRoomCatalogView(APIView):
@@ -237,7 +322,7 @@ class PublicRoomCatalogView(APIView):
             check_out_param = request.query_params.get("check_out_date")
             online_qs = Room.objects.filter(is_available_online=True).order_by("priority", "room_number")
             qs = online_qs if online_qs.exists() else Room.objects.all().order_by("priority", "room_number")
-            
+
             print(f"DEBUG: Found {qs.count()} rooms total.")
             payload = []
             for room in qs:
@@ -257,21 +342,21 @@ class PublicRoomCatalogView(APIView):
                         image_url = request.build_absolute_uri(room.main_image.url)
                     except:
                         image_url = room.main_image.name # fallback
-                        
+
                 image_2_url = None
                 if room.image_2:
                     try:
                         image_2_url = request.build_absolute_uri(room.image_2.url)
                     except:
                         image_2_url = room.image_2.name # fallback
-                        
+
                 image_3_url = None
                 if room.image_3:
                     try:
                         image_3_url = request.build_absolute_uri(room.image_3.url)
                     except:
                         image_3_url = room.image_3.name # fallback
-                
+
                 payload.append({
                     "id": room.id,
                     "name": room.name,
@@ -519,12 +604,47 @@ class PublicQRCheckInView(APIView):
         if not reservation:
             return Response({"error": "Reservation not found with this code or QR."}, status=404)
 
-        reservation, _ = transition_reservation(reservation_id=reservation.pk, to_status="checked_in")
-        reservation.checked_in_at = timezone.now()
-        reservation.save(update_fields=["status", "checked_in_at", "updated_at"])
-        reservation.room.status = "Occupied"
-        reservation.room.booking_source = "front_desk"
-        reservation.room.save(update_fields=["status", "booking_source"])
+        if reservation.status == "checked_in":
+            return Response({"message": "Guest is already checked in.", "reservation": build_reservation_summary(reservation)}, status=200)
+
+        if reservation.status != "confirmed":
+            return Response(
+                {"error": f"Cannot check in reservation with status '{reservation.status}'. Only confirmed reservations can be checked in."},
+                status=400,
+            )
+
+        room = reservation.room
+        if room.status == "Maintenance":
+            return Response({"error": f"Room {room.room_number} is under maintenance (Out of Order)."}, status=400)
+
+        if room.status == "Occupied":
+            other_active = Reservation.objects.filter(room=room, status="checked_in").exclude(id=reservation.id).exists()
+            if other_active:
+                return Response({"error": f"Room {room.room_number} is currently occupied by another guest."}, status=400)
+
+        today = timezone.now().date()
+        if reservation.check_in_date > today:
+            return Response(
+                {"error": f"Reservation #{reservation.id} is scheduled for a future date ({reservation.check_in_date.isoformat()}). Early check-in is not permitted."},
+                status=400,
+            )
+        if reservation.check_out_date <= today:
+            return Response(
+                {"error": f"Reservation #{reservation.id} has expired (checkout date was {reservation.check_out_date.isoformat()}). Cannot check in an expired reservation."},
+                status=400,
+            )
+
+        with transaction.atomic():
+            try:
+                reservation, _ = transition_reservation(reservation_id=reservation.pk, to_status="checked_in")
+            except ValidationError as exc:
+                return Response({"error": str(exc)}, status=400)
+
+            reservation.checked_in_at = timezone.now()
+            reservation.save(update_fields=["status", "checked_in_at", "updated_at"])
+            room.status = "Occupied"
+            room.booking_source = "front_desk"
+            room.save(update_fields=["status", "booking_source"])
         return Response({"message": "Guest checked in successfully.", "reservation": build_reservation_summary(reservation)})
 
 
@@ -617,12 +737,12 @@ class FolioChargeView(APIView):
         if serializer.is_valid():
             with transaction.atomic():
                 folio_charge = serializer.save()
-                
+
                 # If an inventory item is linked, check stock and deduct it
                 if folio_charge.inventory_item:
                     inv_item = folio_charge.inventory_item
                     qty = to_decimal(folio_charge.quantity)
-                    
+
                     record_stock_change(
                         item_id=inv_item.pk, transaction_type="issuance", quantity=qty,
                         unit_cost=inv_item.unit_cost, reference_number=f"Folio #{reservation.id}",
@@ -677,7 +797,7 @@ class FolioChargeDeleteView(APIView):
                         reason=f"Folio charge #{charge.id} deleted by {request.user.username}",
                         logged_by_username=request.user.username,
                     )
-                
+
                 # --- Post General Ledger Reversing Journal Entry ---
                 try:
                     amount = to_decimal(charge.amount)
@@ -721,6 +841,10 @@ class GenerateFinalBillView(APIView):
         extras_total = sum(to_decimal(c.amount) for c in folio_charges)
         grand_total = room_total + extras_total
 
+        is_prepaid = reservation.payment_status == "paid"
+        deposit_amount = to_decimal(reservation.deposit_amount or 0)
+        balance_due = extras_total if is_prepaid else max(grand_total - deposit_amount, Decimal("0.00"))
+
         settings_obj = get_system_settings()
         return Response({
             "reservation_id": reservation.id,
@@ -737,6 +861,10 @@ class GenerateFinalBillView(APIView):
             "folio_charges": FolioChargeSerializer(folio_charges, many=True).data,
             "extras_total": float(extras_total),
             "grand_total": float(grand_total),
+            "payment_status": reservation.payment_status,
+            "deposit_amount": float(deposit_amount),
+            "balance_due": float(balance_due),
+            "is_paid": is_prepaid and extras_total == 0,
             "hotel_name": settings_obj.hotel_name,
             "hotel_address": settings_obj.address,
             "hotel_phone": settings_obj.phone_number,
@@ -757,15 +885,51 @@ class DigitalCheckInView(APIView):
         if room.status == "Maintenance":
             return Response({"error": "Room is under maintenance (Out of Order)."}, status=400)
 
-        # Find the active reservation for this room
-        reservation = Reservation.objects.filter(
-            room=room, status__in=["confirmed", "pending"]
-        ).order_by("-created_at").first()
+        today = timezone.now().date()
+        reservation_id = request.data.get("reservation_id")
+        if reservation_id:
+            reservation = Reservation.objects.filter(id=reservation_id, room=room).first()
+            if not reservation:
+                return Response({"error": "Reservation not found for this room."}, status=404)
+        else:
+            reservation = Reservation.objects.filter(
+                room=room, status="confirmed", check_in_date__lte=today, check_out_date__gt=today
+            ).order_by("check_in_date").first()
+
+        if not reservation:
+            return Response(
+                {"error": f"No confirmed reservation found for Room {room.room_number}. A valid confirmed reservation is required to check in."},
+                status=400,
+            )
+
+        if room.status == "Occupied":
+            other_active = Reservation.objects.filter(room=room, status="checked_in").exclude(id=reservation.id).exists()
+            if other_active:
+                return Response({"error": f"Room {room.room_number} is currently occupied by another guest."}, status=400)
+
+        if reservation.check_in_date > today:
+            return Response(
+                {"error": f"Reservation #{reservation.id} is scheduled for a future date ({reservation.check_in_date.isoformat()}). Early check-in is not permitted."},
+                status=400,
+            )
+        if reservation.check_out_date <= today:
+            return Response(
+                {"error": f"Reservation #{reservation.id} has expired (checkout date was {reservation.check_out_date.isoformat()}). Cannot check in an expired reservation."},
+                status=400,
+            )
+
+        if reservation.status == "checked_in":
+            return Response({"error": "Reservation is already checked in."}, status=400)
+        if reservation.status != "confirmed":
+            return Response(
+                {"error": f"Cannot check in reservation with status '{reservation.status}'. Only confirmed reservations can be checked in."},
+                status=400,
+            )
 
         with transaction.atomic():
             # Save guest profile if provided
             guest_data = request.data.get("guest_profile", {})
-            if guest_data and reservation:
+            if guest_data:
                 profile_data = {
                     "reservation": reservation.id,
                     "full_name": guest_data.get("full_name", reservation.guest_name),
@@ -786,119 +950,117 @@ class DigitalCheckInView(APIView):
             pay_method = request.data.get("payment_method", "Cash")
             pay_ref = request.data.get("payment_reference", "")
 
-            if reservation:
-                is_prepaid = reservation.payment_status == "paid"
-                nights = max((reservation.check_out_date - reservation.check_in_date).days, 1)
-                room_total = to_decimal(room.base_price) * nights
+            is_prepaid = reservation.payment_status == "paid"
+            nights = max((reservation.check_out_date - reservation.check_in_date).days, 1)
+            room_total = to_decimal(room.base_price) * nights
 
-                if pay_method == "Digital Payment" and not is_prepaid:
-                    # Return session token so frontend can complete digital payment
-                    tx_ref = f"checkin-{reservation.id}-{uuid4().hex[:10]}"
-                    callback_url = f"{settings.BACKEND_BASE_URL.rstrip('/')}/api/users/payments/chapa/webhook/"
-                    return_url = f"{get_tenant_frontend_base(request=request)}/dashboard?payment=returned&res_id={reservation.id}&room_no={room.room_number}"
+            if pay_method == "Digital Payment" and not is_prepaid:
+                # Return session token so frontend can complete digital payment
+                tx_ref = f"checkin-{reservation.id}-{uuid4().hex[:10]}"
+                callback_url = f"{settings.BACKEND_BASE_URL.rstrip('/')}/api/users/payments/chapa/webhook/"
+                return_url = f"{get_tenant_frontend_base(request=request)}/dashboard?payment=returned&res_id={reservation.id}&room_no={room.room_number}"
 
-                    payload = {
-                        "amount": str(room_total),
-                        "currency": "ETB",
-                        "email": reservation.guest_email or "guest@example.com",
-                        "first_name": reservation.guest_name,
-                        "last_name": f"Room {room.room_number}",
-                        "tx_ref": tx_ref,
-                        "callback_url": callback_url,
-                        "return_url": return_url,
-                        "customization": {
-                            "title": "Room Check-in",
-                            "description": f"Check-in Room {room.room_number} - Total due ETB {room_total}",
-                        },
-                        "meta": {
-                            "reservation_id": reservation.id,
-                            "room_id": room.id,
-                            "booking_source": "checkin",
-                        },
-                    }
-                    try:
-                        chapa_response = chapa_request("transaction/initialize", payload=payload, method="POST")
-                        checkout_url = (
-                            chapa_response.get("data", {}).get("checkout_url")
-                            or chapa_response.get("data", {}).get("link")
-                            or chapa_response.get("checkout_url")
-                        )
-                        if not checkout_url:
-                            raise ValueError("Chapa did not return a checkout URL.")
-
-                        reservation.chapa_tx_ref = tx_ref
-                        reservation.chapa_checkout_url = checkout_url
-                        reservation.save(update_fields=["chapa_tx_ref", "chapa_checkout_url", "updated_at"])
-
-                        return Response({
-                            "status": "payment_required",
-                            "checkout_url": checkout_url,
-                            "tx_ref": tx_ref,
-                            "grand_total": float(room_total),
-                            "reservation_id": reservation.id,
-                        })
-                    except Exception as exc:
-                        logger.exception("Check-in payment initialization failed")
-                        return Response({"error": "Unable to initialize payment."}, status=400)
-
-                # For Cash/Bank Transfer or prepaid reservations:
-                room.status = "Occupied"
-                room.save(update_fields=["status"])
-
-                reservation, _ = transition_reservation(reservation_id=reservation.pk, to_status="checked_in")
-                reservation.checked_in_at = timezone.now()
-                if not is_prepaid:
-                    reservation.payment_status = "paid"
-                    if pay_ref:
-                        reservation.payment_reference = f"{pay_method} - {pay_ref}"
-                    else:
-                        reservation.payment_reference = pay_method
-                    reservation.total_amount = room_total
-
-                reservation.save()
-
-                if not is_prepaid:
-                    RoomHistory.objects.create(
-                        room=room,
-                        event_type="checkin",
-                        guest_name=reservation.guest_name,
-                        check_in_date=reservation.check_in_date,
-                        check_out_date=reservation.check_out_date,
-                        revenue=room_total,
-                        payment_method=pay_method,
-                        notes=f"Check-in by {request.user.username} via {pay_method}",
+                payload = {
+                    "amount": str(room_total),
+                    "currency": "ETB",
+                    "email": reservation.guest_email or "guest@example.com",
+                    "first_name": reservation.guest_name,
+                    "last_name": f"Room {room.room_number}",
+                    "tx_ref": tx_ref,
+                    "callback_url": callback_url,
+                    "return_url": return_url,
+                    "customization": {
+                        "title": "Room Check-in",
+                        "description": f"Check-in Room {room.room_number} - Total due ETB {room_total}",
+                    },
+                    "meta": {
+                        "reservation_id": reservation.id,
+                        "room_id": room.id,
+                        "booking_source": "checkin",
+                    },
+                }
+                try:
+                    chapa_response = chapa_request("transaction/initialize", payload=payload, method="POST")
+                    checkout_url = (
+                        chapa_response.get("data", {}).get("checkout_url")
+                        or chapa_response.get("data", {}).get("link")
+                        or chapa_response.get("checkout_url")
                     )
+                    if not checkout_url:
+                        raise ValueError("Chapa did not return a checkout URL.")
 
-                    # --- Post General Ledger Journal Entry ---
-                    try:
-                        pay_code = "1000" if pay_method == "Cash" else "1010"
-                        if room_total > 0:
-                            post_journal_entry(
-                                description=f"Auto JV: Room Check-in #{reservation.id} payment",
-                                items=[
-                                    {
-                                        "account_code": pay_code,
-                                        "debit": room_total,
-                                        "credit": Decimal("0.00")
-                                    },
-                                    {
-                                        "account_code": "4000", # Room Revenue
-                                        "debit": Decimal("0.00"),
-                                        "credit": room_total
-                                    }
-                                ]
-                            )
-                    except Exception as e:
-                        print(f"GL Auto-post error for checkin payment: {e}")
-            else:
-                # Fallback if no reservation (though normally check-in requires reservation)
-                room.status = "Occupied"
-                room.save(update_fields=["status"])
+                    reservation.chapa_tx_ref = tx_ref
+                    reservation.chapa_checkout_url = checkout_url
+                    reservation.save(update_fields=["chapa_tx_ref", "chapa_checkout_url", "updated_at"])
+
+                    return Response({
+                        "status": "payment_required",
+                        "checkout_url": checkout_url,
+                        "tx_ref": tx_ref,
+                        "grand_total": float(room_total),
+                        "reservation_id": reservation.id,
+                    })
+                except Exception as exc:
+                    logger.exception("Check-in payment initialization failed")
+                    return Response({"error": "Unable to initialize payment."}, status=400)
+
+            # For Cash/Bank Transfer or prepaid reservations:
+            room.status = "Occupied"
+            room.save(update_fields=["status"])
+
+            try:
+                reservation, _ = transition_reservation(reservation_id=reservation.pk, to_status="checked_in")
+            except ValidationError as exc:
+                return Response({"error": str(exc)}, status=400)
+            reservation.checked_in_at = timezone.now()
+            if not is_prepaid:
+                reservation.payment_status = "paid"
+                if pay_ref:
+                    reservation.payment_reference = f"{pay_method} - {pay_ref}"
+                else:
+                    reservation.payment_reference = pay_method
+                reservation.total_amount = room_total
+
+            reservation.save()
+
+            if not is_prepaid:
+                RoomHistory.objects.create(
+                    room=room,
+                    event_type="checkin",
+                    guest_name=reservation.guest_name,
+                    check_in_date=reservation.check_in_date,
+                    check_out_date=reservation.check_out_date,
+                    revenue=room_total,
+                    payment_method=pay_method,
+                    notes=f"Check-in by {request.user.username} via {pay_method}",
+                )
+
+                # --- Post General Ledger Journal Entry ---
+                try:
+                    pay_code = "1000" if pay_method == "Cash" else "1010"
+                    if room_total > 0:
+                        post_journal_entry(
+                            description=f"Auto JV: Room Check-in #{reservation.id} payment",
+                            items=[
+                                {
+                                    "account_code": pay_code,
+                                    "debit": room_total,
+                                    "credit": Decimal("0.00")
+                                },
+                                {
+                                    "account_code": "4000", # Room Revenue
+                                    "debit": Decimal("0.00"),
+                                    "credit": room_total
+                                }
+                            ]
+                        )
+                except Exception as e:
+                    print(f"GL Auto-post error for checkin payment: {e}")
 
         return Response({
             "message": "Guest checked in successfully.",
             "room_status": room.status,
-            "reservation_id": reservation.id if reservation else None,
+            "reservation_id": reservation.id,
         })
 
 
@@ -911,6 +1073,26 @@ class EnhancedCheckoutView(APIView):
         except Reservation.DoesNotExist:
             return Response({"error": "Reservation not found."}, status=404)
 
+        if reservation.status == "checked_out":
+            return Response(
+                {
+                    "message": "Reservation is already checked out.",
+                    "already_checked_out": True,
+                    "reservation_id": reservation.id,
+                    "status": reservation.room.status,
+                    "room_status": reservation.room.status,
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        if reservation.status != "checked_in":
+            return Response(
+                {
+                    "error": f"Cannot check out reservation with status '{reservation.status}'. Only checked-in reservations can be checked out."
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         room = reservation.room
         nights = max((reservation.check_out_date - reservation.check_in_date).days, 1)
         room_total = to_decimal(room.base_price) * nights
@@ -918,25 +1100,47 @@ class EnhancedCheckoutView(APIView):
         extras_total = sum(to_decimal(c.amount) for c in folio_charges)
         grand_total = room_total + extras_total
 
-        checkout_revenue = extras_total if reservation.payment_status == "paid" else grand_total
+        is_prepaid = reservation.payment_status == "paid"
+        deposit_amount = to_decimal(reservation.deposit_amount or 0)
+        balance_due = extras_total if is_prepaid else max(grand_total - deposit_amount, Decimal("0.00"))
+
+        pay_status = request.data.get("payment_status", "paid")
+        pay_method = request.data.get("payment_method", "Cash")
+        pay_ref = request.data.get("payment_reference", "")
+
+        if balance_due > 0 and (not pay_method or str(pay_method).lower() in ["none", ""]):
+            return Response(
+                {"error": f"A valid payment method is required to settle the outstanding balance of ETB {balance_due}."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        checkout_revenue = extras_total if is_prepaid else balance_due
 
         with transaction.atomic():
-            is_prepaid = reservation.payment_status == "paid"
+            try:
+                reservation, transitioned = transition_reservation(reservation_id=reservation.pk, to_status="checked_out")
+            except ValidationError as exc:
+                return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
-            reservation, _ = transition_reservation(reservation_id=reservation.pk, to_status="checked_out")
+            if not transitioned:
+                return Response(
+                    {
+                        "message": "Reservation is already checked out.",
+                        "already_checked_out": True,
+                        "reservation_id": reservation.id,
+                        "status": room.status,
+                        "room_status": room.status,
+                    },
+                    status=status.HTTP_200_OK,
+                )
+
             reservation.checked_out_at = timezone.now()
-            
-            pay_status = request.data.get("payment_status", "paid")
-            pay_method = request.data.get("payment_method", "Cash")
-            pay_ref = request.data.get("payment_reference", "")
-            
             reservation.payment_status = pay_status
             if pay_ref:
                 reservation.payment_reference = f"{pay_method} - {pay_ref}"
             else:
                 reservation.payment_reference = pay_method
             reservation.total_amount = grand_total
-            
             reservation.save(update_fields=["status", "checked_out_at", "payment_status", "payment_reference", "total_amount", "updated_at"])
 
             room.status = "Cleaning"
@@ -950,7 +1154,7 @@ class EnhancedCheckoutView(APIView):
                     actor_username=request.user.username or "Front Desk",
                 )
             except Exception as e:
-                print(f"Housekeeping auto-task error: {e}")
+                logger.exception("Housekeeping auto-task error: %s", e)
 
             RoomHistory.objects.create(
                 room=room,
@@ -965,7 +1169,7 @@ class EnhancedCheckoutView(APIView):
 
             # --- Post General Ledger Journal Entry ---
             try:
-                if checkout_revenue > 0:
+                if checkout_revenue > 0 and str(pay_method).lower() not in ["none", ""]:
                     pay_code = "1000" if pay_method == "Cash" else "1010"
                     jv_items = [
                         {
@@ -982,11 +1186,12 @@ class EnhancedCheckoutView(APIView):
                                 "credit": extras_total
                             })
                     else:
-                        if room_total > 0:
+                        remaining_room = max(room_total - deposit_amount, Decimal("0.00"))
+                        if remaining_room > 0:
                             jv_items.append({
                                 "account_code": "4000", # Room Revenue
                                 "debit": Decimal("0.00"),
-                                "credit": room_total
+                                "credit": remaining_room
                             })
                         if extras_total > 0:
                             jv_items.append({
@@ -994,12 +1199,12 @@ class EnhancedCheckoutView(APIView):
                                 "debit": Decimal("0.00"),
                                 "credit": extras_total
                             })
-                    
+
                     debit_sum = sum(x["debit"] for x in jv_items)
                     credit_sum = sum(x["credit"] for x in jv_items)
                     diff = debit_sum - credit_sum
                     if diff != 0:
-                        target_code = "4000" if room_total > 0 else "1200"
+                        target_code = "4000" if (not is_prepaid and room_total > 0) else "1200"
                         for item in jv_items:
                             if item["account_code"] == target_code:
                                 item["credit"] += diff
@@ -1011,11 +1216,13 @@ class EnhancedCheckoutView(APIView):
                             items=jv_items
                         )
             except Exception as e:
-                print(f"GL Auto-post error for checkout: {e}")
+                logger.exception("GL Auto-post error for checkout: %s", e)
 
         settings_obj = get_system_settings()
         return Response({
             "message": "Guest checked out. Room set to Cleaning.",
+            "status": "Cleaning",
+            "room_status": "Cleaning",
             "final_bill": {
                 "reservation_id": reservation.id,
                 "confirmation_code": reservation.confirmation_code,
@@ -1031,6 +1238,10 @@ class EnhancedCheckoutView(APIView):
                 "folio_charges": FolioChargeSerializer(folio_charges, many=True).data,
                 "extras_total": float(extras_total),
                 "grand_total": float(grand_total),
+                "balance_due": float(balance_due),
+                "checkout_revenue": float(checkout_revenue),
+                "payment_status": reservation.payment_status,
+                "payment_method": pay_method,
                 "hotel_name": settings_obj.hotel_name,
                 "hotel_address": settings_obj.address,
                 "hotel_phone": settings_obj.phone_number,
@@ -1058,7 +1269,8 @@ class CreateCheckoutPaymentSessionView(APIView):
         if payment_type == "checkin":
             grand_total = room_total
         else:
-            grand_total = extras_total if reservation.payment_status == "paid" else (room_total + extras_total)
+            deposit_amount = to_decimal(reservation.deposit_amount or 0)
+            grand_total = extras_total if reservation.payment_status == "paid" else max(room_total + extras_total - deposit_amount, Decimal("0.00"))
 
         idempotency_key = request.headers.get("Idempotency-Key") or f"reservation-{reservation.pk}-{payment_type}-{grand_total}"
         try:
@@ -1071,7 +1283,7 @@ class CreateCheckoutPaymentSessionView(APIView):
         tx_ref = attempt.provider_tx_ref
         callback_url = f"{settings.BACKEND_BASE_URL.rstrip('/')}/api/users/payments/chapa/webhook/"
         return_url = f"{get_tenant_frontend_base(request=request)}/dashboard?payment=returned&res_id={reservation.id}&room_no={room.room_number}"
-        
+
         payload = {
             "amount": str(grand_total),
             "currency": "ETB",
@@ -1140,7 +1352,7 @@ class VerifyCheckoutPaymentView(APIView):
 
         verification_data = verification.get("data", verification)
         status_value = str(verification_data.get("status", "")).lower()
-        
+
         if status_value not in {"success", "successful"}:
             return Response({"message": "Payment is still pending.", "status": status_value}, status=202)
 
@@ -1260,7 +1472,7 @@ class VerifyCheckoutPaymentView(APIView):
                                     "debit": Decimal("0.00"),
                                     "credit": extras_total
                                 })
-                        
+
                         debit_sum = sum(x["debit"] for x in jv_items)
                         credit_sum = sum(x["credit"] for x in jv_items)
                         diff = debit_sum - credit_sum
@@ -1353,4 +1565,74 @@ class ReservationNoShowView(APIView):
         )
 
 
+class ReservationCancelView(APIView):
+    """Cancel a pending or confirmed reservation and release room inventory."""
+    permission_classes = [IsReservationOperator]
 
+    def post(self, request, reservation_id):
+        try:
+            reservation = Reservation.objects.select_related("room").get(id=reservation_id)
+        except Reservation.DoesNotExist:
+            return Response({"error": "Reservation not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        if reservation.status == "cancelled":
+            return Response(
+                {
+                    "message": "Reservation is already cancelled.",
+                    "reservation": build_reservation_summary(reservation),
+                    "already_cancelled": True,
+                    "status": reservation.room.status,
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        if reservation.status not in ["pending", "confirmed"]:
+            return Response(
+                {
+                    "error": f"Cannot transition reservation from {reservation.status} to cancelled. Only pending or confirmed reservations can be cancelled."
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        now = timezone.now()
+        with transaction.atomic():
+            try:
+                reservation, transitioned = transition_reservation(
+                    reservation_id=reservation.pk,
+                    to_status="cancelled",
+                )
+            except ValidationError as exc:
+                return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+            if not transitioned:
+                return Response(
+                    {
+                        "message": "Reservation is already cancelled.",
+                        "reservation": build_reservation_summary(reservation),
+                        "already_cancelled": True,
+                        "status": room.status,
+                    },
+                    status=status.HTTP_200_OK,
+                )
+
+            room = reservation.room
+            today = now.date()
+            has_other_active = Reservation.objects.filter(
+                room=room,
+                status__in=["confirmed", "checked_in"],
+                check_in_date__lte=today,
+                check_out_date__gt=today,
+            ).exclude(id=reservation.id).exists()
+            if not has_other_active and room.status == "Reserved":
+                room.status = "Available"
+                room.booking_source = "front_desk"
+                room.save(update_fields=["status", "booking_source"])
+
+        return Response(
+            {
+                "message": "Reservation cancelled successfully.",
+                "reservation": build_reservation_summary(reservation),
+                "status": room.status,
+            },
+            status=status.HTTP_200_OK,
+        )

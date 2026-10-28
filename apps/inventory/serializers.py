@@ -1,5 +1,6 @@
 """Inventory serializers."""
 from users.serializers import *  # noqa: F401,F403
+from hotel.models import InventoryWasteRecord
 
 class InventoryCategorySerializer(serializers.ModelSerializer):
     class Meta:
@@ -32,9 +33,9 @@ class InventoryItemSerializer(serializers.ModelSerializer):
     class Meta:
         model = InventoryItem
         fields = [
-            "id", "item_code", "name", "category", "category_name", "category_type", "unit", 
+            "id", "item_code", "name", "category", "category_name", "category_type", "unit",
             "current_stock", "min_reorder_level", "unit_cost", "selling_price",
-            "last_supplier", "supplier_name", "last_stocked_at", "created_at"
+            "last_supplier", "supplier_name", "units_per_pack", "last_stocked_at", "created_at"
         ]
         read_only_fields = ["current_stock", "last_stocked_at", "created_at"]
 
@@ -47,8 +48,8 @@ class StockTransactionSerializer(serializers.ModelSerializer):
     class Meta:
         model = StockTransaction
         fields = [
-            "id", "item", "item_name", "item_unit", "transaction_type", 
-            "quantity", "unit_cost", "supplier", "supplier_name", 
+            "id", "item", "item_name", "item_unit", "transaction_type",
+            "quantity", "unit_cost", "supplier", "supplier_name",
             "reference_number", "notes", "destination_dept", "destination_room",
             "logged_by_username", "timestamp", "reversal_of"
         ]
@@ -63,8 +64,33 @@ class RecipeBOMSerializer(serializers.ModelSerializer):
     class Meta:
         model = RecipeBOM
         fields = [
-            "id", "menu_item", "menu_item_name", "ingredient", 
+            "id", "menu_item", "menu_item_name", "ingredient",
             "ingredient_name", "ingredient_unit", "quantity_required"
         ]
 
 
+class InventoryWasteRecordSerializer(serializers.ModelSerializer):
+    item_name = serializers.ReadOnlyField(source="item.name")
+    item_unit = serializers.ReadOnlyField(source="item.unit")
+    item_code = serializers.ReadOnlyField(source="item.item_code")
+    source_dispatch_reference = serializers.ReadOnlyField(source="source_dispatch.reference_number")
+
+    class Meta:
+        model = InventoryWasteRecord
+        fields = [
+            "id", "idempotency_key", "item", "item_name", "item_code", "item_unit",
+            "entered_quantity", "entered_unit", "base_quantity",
+            "waste_category", "waste_source", "unit_cost_snapshot", "total_cost_loss",
+            "stock_deducted", "stock_transaction", "source_dispatch", "source_dispatch_reference",
+            "journal_entry", "notes", "storage_area", "reported_by_username", "recorded_at",
+            "is_reversed", "reversal_of", "reversal_reason", "reversed_at", "reversed_by_username",
+            "status", "reviewed_by", "reviewed_by_username", "reviewed_at", "rejection_reason",
+            "is_self_reviewed", "self_review_justification"
+        ]
+        read_only_fields = [
+            "base_quantity", "unit_cost_snapshot", "total_cost_loss", "stock_deducted",
+            "stock_transaction", "journal_entry", "reported_by_username", "recorded_at",
+            "is_reversed", "reversal_of", "reversal_reason", "reversed_at", "reversed_by_username",
+            "status", "reviewed_by", "reviewed_by_username", "reviewed_at", "rejection_reason",
+            "is_self_reviewed", "self_review_justification"
+        ]

@@ -3,9 +3,10 @@
 from users.views import *  # noqa: F401,F403
 import users.views as legacy_views
 from .services import create_order_idempotently, settle_dining_session, build_session_payment_summary
-from hotel.integrity import transition_order
-from hotel.models import DiningSession
+from hotel.integrity import transition_order, ORDER_STATUS_TRANSITIONS
+from hotel.models import DiningSession, CashHandover
 from .serializers import DiningSessionSerializer
+from django.core.exceptions import ValidationError
 
 
 def finalize_paid_order(*args, **kwargs):
@@ -406,21 +407,291 @@ class RequestBillView(APIView):
 
     def post(self, request, order_id):
         try:
-            owned = Order.objects.get(id=order_id, waiter_id_ref=request.user.id)
-            order, _ = transition_order(order_id=owned.pk, to_status="bill_requested")
-            sync_order_financials(order)
-            message = f"Bill requested for Table {order.table.table_code}. Please process payment."
-            cashiers = User.objects.filter(role="cashier", is_active=True)
-            if cashiers.exists():
-                notify_users(cashiers, message)
-            else:
-                Notification.objects.create(user_id_ref=request.user.id, message=message)
-            return Response({"message": "Bill request sent successfully!"})
+            order = Order.objects.select_related("table", "session").get(id=order_id)
         except Order.DoesNotExist:
-            return Response({"error": "Order not found"}, status=404)
+            return Response({"error": "Order not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        # Role-based authorization: assigned waiter or supervisory admin/manager
+        if request.user.role in ["admin", "manager"] or request.user.is_superuser:
+            pass
+        elif request.user.role == "waiter":
+            if order.waiter_id_ref is not None and order.waiter_id_ref != request.user.id:
+                return Response(
+                    {"error": "You are not authorized to request a bill for another waiter's order."},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+            if order.waiter_id_ref is None:
+                # Unassigned self-service order: claiming waiter takes ownership
+                order.waiter_id_ref = request.user.id
+                order.waiter_username = request.user.username
+                order.save(update_fields=["waiter_id_ref", "waiter_username"])
+        else:
+            return Response(
+                {"error": "You do not have permission to request a bill."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        if order.status in ["paid", "cancelled"]:
+            return Response(
+                {"error": f"Cannot request bill for {order.status} order."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Idempotent retry: if already in bill_requested status, return 200 without error
+        if order.status == "bill_requested":
+            sync_order_financials(order)
+            return Response({
+                "message": "Bill request sent successfully!",
+                "order_id": order.id,
+                "status": order.status,
+                "bill_prepared": bool(getattr(order, "bill_prepared_at", None)),
+            }, status=status.HTTP_200_OK)
+
+        if order.status != "served":
+            return Response(
+                {"error": f"Cannot request bill for order in '{order.status}' status. Order must be served first."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            with transaction.atomic():
+                order, _ = transition_order(order_id=order.pk, to_status="bill_requested")
+                sync_order_financials(order)
+
+                # Dining session synchronization: transition all other served orders in this session
+                if order.session:
+                    for other_ord in (
+                        order.session.orders.exclude(id=order.id)
+                        .select_for_update()
+                        .filter(status="served")
+                    ):
+                        updated_ord, _ = transition_order(order_id=other_ord.pk, to_status="bill_requested")
+                        sync_order_financials(updated_ord)
+        except ValidationError as exc:
+            return Response({"error": str(exc.message if hasattr(exc, "message") else exc)}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as exc:
             logger.exception("Bill request failed")
-            return Response({"error": "Unable to request bill."}, status=500)
+            return Response({"error": "Unable to request bill."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        message = f"Bill requested for Table {order.table.table_code} (ORD-{order.id}). Please prepare bill."
+        cashiers = User.objects.filter(role="cashier", is_active=True)
+        if cashiers.exists():
+            notify_users(cashiers, message)
+        else:
+            Notification.objects.create(user_id_ref=request.user.id, message=message)
+
+        return Response({
+            "message": "Bill request sent successfully!",
+            "order_id": order.id,
+            "status": order.status,
+            "bill_prepared": False,
+        }, status=status.HTTP_200_OK)
+
+
+class PrepareBillView(APIView):
+    """
+    Cashier prepares/issues the fiscal bill for a served or bill-requested order,
+    notifying the waiter that it is ready for customer presentation.
+    """
+    permission_classes = [IsCashierOrAdmin]
+
+    def post(self, request, order_id):
+        try:
+            order = Order.objects.select_related("table", "session").get(id=order_id)
+        except Order.DoesNotExist:
+            return Response({"error": "Order not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        if order.status in ["paid", "cancelled"]:
+            return Response({"error": f"Cannot prepare bill for {order.status} order."}, status=status.HTTP_400_BAD_REQUEST)
+
+        if order.status not in ["served", "bill_requested"]:
+            return Response(
+                {"error": f"Cannot prepare bill for order in '{order.status}' status. Order must be served or bill requested first."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        with transaction.atomic():
+            sync_order_financials(order)
+            order.bill_prepared_at = timezone.now()
+            order.bill_prepared_by_id_ref = request.user.id
+            order.save(update_fields=["bill_prepared_at", "bill_prepared_by_id_ref", "updated_at"])
+
+            if order.session:
+                for so in order.session.orders.exclude(status="cancelled"):
+                    so.bill_prepared_at = order.bill_prepared_at
+                    so.bill_prepared_by_id_ref = request.user.id
+                    so.save(update_fields=["bill_prepared_at", "bill_prepared_by_id_ref", "updated_at"])
+
+        waiter_id = order.waiter_id_ref or (order.session.opened_by_id_ref if order.session else None)
+        if waiter_id:
+            Notification.objects.create(
+                user_id_ref=waiter_id,
+                message=f"Bill prepared for Table {order.table.table_code} (ORD-{order.id}). Ready to present to customer.",
+            )
+
+        return Response({
+            "message": "Bill prepared and made available to waiter.",
+            "order_id": order.id,
+            "bill_prepared_at": order.bill_prepared_at.isoformat(),
+        })
+
+
+class RecordCashHandoverView(APIView):
+    """
+    Waiter records cash collected from the guest and initiates an auditable cash handover
+    to be verified and confirmed by the cashier.
+    """
+    permission_classes = [IsWaiterOrAdmin]
+
+    def post(self, request, order_id):
+        try:
+            order = Order.objects.select_related("table", "session").get(id=order_id)
+        except Order.DoesNotExist:
+            return Response({"error": "Order not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        if request.user.role in ["admin", "manager"] or request.user.is_superuser:
+            pass
+        elif request.user.role == "waiter":
+            if order.waiter_id_ref and order.waiter_id_ref != request.user.id:
+                return Response({"error": "You are not authorized to collect cash for another waiter's order."}, status=status.HTTP_403_FORBIDDEN)
+            if order.waiter_id_ref is None:
+                order.waiter_id_ref = request.user.id
+                order.waiter_username = request.user.username
+                order.save(update_fields=["waiter_id_ref", "waiter_username"])
+        else:
+            return Response({"error": "Permission denied."}, status=status.HTTP_403_FORBIDDEN)
+
+        if order.payment_status == "paid":
+            return Response({"error": "Order is already paid."}, status=status.HTTP_400_BAD_REQUEST)
+        if order.status not in ["served", "bill_requested"]:
+            return Response({"error": f"Cannot collect cash for order in '{order.status}' status. Order must be served first."}, status=status.HTTP_400_BAD_REQUEST)
+
+        with transaction.atomic():
+            sync_order_financials(order)
+            existing = CashHandover.objects.select_for_update().filter(order=order, status="pending").first()
+            amount = to_decimal(order.total_amount)
+            tip_amount = to_decimal(request.data.get("tip_amount", order.tip_amount or 0))
+            ref = request.data.get("payment_reference") or f"HANDOVER-ORD-{order.id}-{timezone.now().strftime('%H%M%S')}"
+            notes = request.data.get("notes", "")
+
+            if existing:
+                existing.amount = amount
+                existing.tip_amount = tip_amount
+                existing.payment_reference = ref
+                existing.notes = notes
+                existing.save()
+                handover = existing
+            else:
+                handover = CashHandover.objects.create(
+                    order=order,
+                    session=order.session,
+                    waiter_id_ref=request.user.id,
+                    waiter_username=request.user.username,
+                    amount=amount,
+                    tip_amount=tip_amount,
+                    payment_reference=ref,
+                    status="pending",
+                    notes=notes,
+                )
+
+        notify_cashiers(
+            f"Cash Handover: Waiter {request.user.username} collected ETB {handover.amount + handover.tip_amount} for Table {order.table.table_code} (ORD-{order.id}). Please verify and confirm receipt."
+        )
+
+        return Response({
+            "message": f"Cash collection of ETB {handover.amount + handover.tip_amount} recorded. Please hand over the collected cash to the cashier.",
+            "handover_id": handover.id,
+            "amount": float(handover.amount),
+            "tip_amount": float(handover.tip_amount),
+            "status": "pending_handover",
+        }, status=status.HTTP_201_CREATED if not existing else status.HTTP_200_OK)
+
+
+class ConfirmCashHandoverView(APIView):
+    """
+    Cashier verifies physical cash received from the waiter, confirms the cash handover,
+    and settles the order atomically through the canonical finalize_paid_order service.
+    """
+    permission_classes = [IsCashierOrAdmin]
+
+    def post(self, request, order_id):
+        try:
+            with transaction.atomic():
+                order = (
+                    Order.objects.select_for_update()
+                    .select_related("table")
+                    .prefetch_related("items__menu_item")
+                    .get(id=order_id)
+                )
+
+                if order.payment_status == "paid":
+                    return Response({"error": "Order is already paid."}, status=status.HTTP_400_BAD_REQUEST)
+
+                handover = CashHandover.objects.select_for_update().filter(order=order, status="pending").first()
+                tip_amount = to_decimal(request.data.get("tip_amount", (handover.tip_amount if handover else order.tip_amount) or 0))
+                payment_ref = request.data.get("payment_reference") or (handover.payment_reference if handover else f"CASH-ORD-{order.id}-{timezone.now().strftime('%H%M%S')}")
+
+                if handover:
+                    handover.status = "confirmed"
+                    handover.cashier_id_ref = request.user.id
+                    handover.cashier_username = request.user.username
+                    handover.confirmed_at = timezone.now()
+                    handover.tip_amount = tip_amount
+                    handover.payment_reference = payment_ref
+                    handover.save()
+                else:
+                    # Direct counter cash payment confirmed by cashier
+                    handover = CashHandover.objects.create(
+                        order=order,
+                        session=order.session,
+                        waiter_id_ref=order.waiter_id_ref or request.user.id,
+                        waiter_username=order.waiter_username or request.user.username,
+                        cashier_id_ref=request.user.id,
+                        cashier_username=request.user.username,
+                        amount=to_decimal(order.total_amount),
+                        tip_amount=tip_amount,
+                        payment_reference=payment_ref,
+                        status="confirmed",
+                        confirmed_at=timezone.now(),
+                        notes=request.data.get("notes", "Direct counter cash handover confirmed"),
+                    )
+
+                # Canonical payment settlement & GL posting
+                finalize_paid_order(
+                    order,
+                    payment_method="Cash",
+                    payment_reference=handover.payment_reference,
+                    tip_amount=handover.tip_amount,
+                    cashier=request.user,
+                )
+
+                if order.session and request.data.get("settle_session", False):
+                    for other_ord in order.session.orders.select_for_update().filter(payment_status="pending").exclude(id=order.id):
+                        finalize_paid_order(
+                            other_ord,
+                            payment_method="Cash",
+                            payment_reference=f"SESS-{order.session.id}-{other_ord.id}",
+                            tip_amount=Decimal("0.00"),
+                            cashier=request.user,
+                        )
+
+            if handover.waiter_id_ref:
+                Notification.objects.create(
+                    user_id_ref=handover.waiter_id_ref,
+                    message=f"Cash handover confirmed for Table {order.table.table_code} (ORD-{order.id}). Order settled.",
+                )
+
+            return Response({
+                "message": "Cash handover confirmed and payment settled successfully. Table is now available!",
+                "order_id": order.id,
+                "handover_id": handover.id,
+                "summary": build_payment_summary(order),
+            })
+        except Order.DoesNotExist:
+            return Response({"error": "Order not found"}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as exc:
+            logger.exception("Confirm cash handover failed")
+            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
 
 class CompleteOrderView(APIView):
@@ -434,11 +705,42 @@ class CompleteOrderView(APIView):
                     .select_related("table")
                     .get(id=order_id)
                 )
+                if order.payment_status == "paid":
+                    return Response({"error": "Order is already paid."}, status=status.HTTP_400_BAD_REQUEST)
+
+                method = request.data.get("payment_method", "Cash")
+                tip = to_decimal(request.data.get("tip_amount", order.tip_amount))
+                ref = request.data.get("payment_reference", f"CASH-{order.id}")
+
+                if method == "Cash":
+                    handover = CashHandover.objects.select_for_update().filter(order=order, status="pending").first()
+                    if handover:
+                        handover.status = "confirmed"
+                        handover.cashier_id_ref = request.user.id
+                        handover.cashier_username = request.user.username
+                        handover.confirmed_at = timezone.now()
+                        handover.save()
+                    else:
+                        CashHandover.objects.create(
+                            order=order,
+                            session=order.session,
+                            waiter_id_ref=order.waiter_id_ref or request.user.id,
+                            waiter_username=order.waiter_username or request.user.username,
+                            cashier_id_ref=request.user.id,
+                            cashier_username=request.user.username,
+                            amount=to_decimal(order.total_amount),
+                            tip_amount=tip,
+                            payment_reference=ref,
+                            status="confirmed",
+                            confirmed_at=timezone.now(),
+                            notes="Completed by cashier",
+                        )
+
                 finalize_paid_order(
                     order,
-                    payment_method=request.data.get("payment_method", "Cash"),
-                    payment_reference=request.data.get("payment_reference", f"CASH-{order.id}"),
-                    tip_amount=request.data.get("tip_amount", order.tip_amount),
+                    payment_method=method,
+                    payment_reference=ref,
+                    tip_amount=tip,
                     cashier=request.user,
                 )
                 return Response({"message": "Payment completed. Table is now available!"})
@@ -656,7 +958,7 @@ class CashierOrderProcessView(APIView):
                 order = (
                     Order.objects.select_for_update()
                     .prefetch_related("items__menu_item")
-                    .select_related("table", "session")
+                    .select_related("table")
                     .get(id=order_id)
                 )
                 if order.payment_status == "paid":
@@ -736,7 +1038,7 @@ class CashierPendingBillsView(APIView):
             )
             .exclude(status="cancelled")
             .select_related("table", "session")
-            .prefetch_related("items__menu_item__category")
+            .prefetch_related("items__menu_item__category", "cash_handovers")
             .order_by("created_at")
         )
 
@@ -747,7 +1049,7 @@ class CashierPendingBillsView(APIView):
                 payment_status="pending",
             )
             .select_related("table")
-            .prefetch_related("items__menu_item__category")
+            .prefetch_related("items__menu_item__category", "cash_handovers")
             .order_by("-updated_at")
         )
 
@@ -771,6 +1073,9 @@ class CashierPendingBillsView(APIView):
             tip = Decimal("0.00")
 
             order_summaries = []
+            session_handover = None
+            session_bill_prepared = any(bool(getattr(o, "bill_prepared_at", None)) for o in sess_orders)
+
             for o in sess_orders:
                 sub_total += to_decimal(o.sub_total)
                 service_charge += to_decimal(o.service_charge_amount)
@@ -783,6 +1088,11 @@ class CashierPendingBillsView(APIView):
                     "total_amount": float(o.total_amount),
                     "created_at": o.created_at,
                 })
+                if not session_handover:
+                    h = o.cash_handovers.filter(status="pending").first()
+                    if h:
+                        session_handover = h
+
                 for it in o.items.all():
                     all_items.append({
                         "id": it.id,
@@ -820,6 +1130,13 @@ class CashierPendingBillsView(APIView):
                 "payment_status": "pending",
                 "payment_method": primary_order.payment_method,
                 "payment_reference": primary_order.payment_reference,
+                "bill_prepared_at": primary_order.bill_prepared_at.isoformat() if getattr(primary_order, "bill_prepared_at", None) else None,
+                "is_bill_prepared": session_bill_prepared,
+                "has_pending_handover": bool(session_handover),
+                "handover_id": session_handover.id if session_handover else None,
+                "handover_amount": float(session_handover.amount) if session_handover else None,
+                "handover_tip": float(session_handover.tip_amount) if session_handover else None,
+                "handover_waiter": session_handover.waiter_username if session_handover else None,
                 "created_at": session_obj.created_at if session_obj else primary_order.created_at,
             }
             consolidated_bills.append(bill_data)
@@ -890,6 +1207,17 @@ class CashierReceiptView(APIView):
 
         sync_order_financials(order)
         settings_obj = get_system_settings()
+
+        if order.status in ["served", "bill_requested"] and not order.bill_prepared_at:
+            order.bill_prepared_at = timezone.now()
+            order.bill_prepared_by_id_ref = request.user.id
+            order.save(update_fields=["bill_prepared_at", "bill_prepared_by_id_ref", "updated_at"])
+            waiter_id = order.waiter_id_ref or (order.session.opened_by_id_ref if order.session else None)
+            if waiter_id:
+                Notification.objects.create(
+                    user_id_ref=waiter_id,
+                    message=f"Bill prepared for Table {order.table.table_code} (ORD-{order.id}). Ready to present to customer.",
+                )
 
         if order.session:
             session_orders = list(

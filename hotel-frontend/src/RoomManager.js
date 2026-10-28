@@ -408,9 +408,12 @@ const RoomManager = ({ activeSection = 'rooms' }) => {
       const billData = response.data;
       setFinalBillData(billData);
       
-      if (Number(billData.extras_total || 0) === 0) {
+      const isRoomPaid = res.payment_status === 'paid';
+      const balanceDue = Number(billData.balance_due ?? billData.extras_total ?? 0);
+
+      if (isRoomPaid && balanceDue === 0) {
         setActionLoading(prev => ({ ...prev, [room.id]: null }));
-        if (window.confirm(`Guest has no extra charges. Proceed with direct check-out for Room ${room.room_number}?`)) {
+        if (window.confirm(`Guest has no outstanding balance. Proceed with direct check-out for Room ${room.room_number}?`)) {
           setActionLoading(prev => ({ ...prev, checkout_btn: true }));
           try {
             await axios.post(`${RESERVATIONS_API}${res.id}/enhanced-checkout/`, {

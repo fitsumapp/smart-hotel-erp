@@ -168,16 +168,29 @@ function WaiterDashboard({ userData, handleLogout }) {
     }
   };
 
+  const requestBill = async (orderId) => {
+    setIsBusy(true);
+    try {
+      const res = await axios.post(`${API_BASE}orders/${orderId}/request-bill/`, {}, { headers: headers() });
+      alert(res.data?.message || 'Bill requested successfully. Cashier has been notified.');
+      await loadAllData();
+    } catch (err) {
+      alert(err.response?.data?.error || err.response?.data?.detail || 'Failed to request bill.');
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
   const confirmCashPayment = async () => {
     if (!checkoutOrder) return;
     setIsBusy(true);
     try {
-      await axios.post(`${API_BASE}orders/${checkoutOrder.id}/cash-payment/`, {}, { headers: headers() });
-      alert('Cash payment recorded successfully.');
+      const res = await axios.post(`${API_BASE}orders/${checkoutOrder.id}/cash-handover/`, {}, { headers: headers() });
+      alert(res.data?.message || 'Cash payment recorded. Please hand over collected cash to the cashier for confirmation.');
       closeCheckout();
       await loadAllData();
     } catch (err) {
-      alert(err.response?.data?.error || 'Cash payment failed');
+      alert(err.response?.data?.error || err.response?.data?.detail || 'Cash payment failed');
     } finally {
       setIsBusy(false);
     }
@@ -310,7 +323,7 @@ function WaiterDashboard({ userData, handleLogout }) {
   );
   const readyOrders = useMemo(() => orders.filter((order) => order.status === 'ready'), [orders]);
   const payableOrders = useMemo(
-    () => orders.filter((order) => order.status === 'served' && order.payment_status !== 'paid'),
+    () => orders.filter((order) => ['served', 'bill_requested'].includes(order.status) && order.payment_status !== 'paid'),
     [orders]
   );
   const paidOrders = useMemo(() => orders.filter((order) => order.payment_status === 'paid'), [orders]);
@@ -554,6 +567,16 @@ function WaiterDashboard({ userData, handleLogout }) {
                         <div style={styles.badgeRow}>
                           <span style={statusBadge(order.status)}>{order.status}</span>
                           <span style={paymentBadge(order.payment_status)}>{order.payment_status || 'pending'}</span>
+                          {order.bill_prepared_at && (
+                            <span style={{ fontSize: '11px', fontWeight: 700, padding: '3px 8px', borderRadius: '999px', background: '#dbeafe', color: '#1d4ed8' }}>
+                              Bill Prepared
+                            </span>
+                          )}
+                          {order.has_pending_handover && (
+                            <span style={{ fontSize: '11px', fontWeight: 700, padding: '3px 8px', borderRadius: '999px', background: '#fef3c7', color: '#b45309' }}>
+                              Handover Pending
+                            </span>
+                          )}
                         </div>
                       </div>
 
@@ -568,7 +591,14 @@ function WaiterDashboard({ userData, handleLogout }) {
                           <button style={styles.smallPrimary} onClick={() => markServed(order.id)}>Mark Served</button>
                         ) : null}
                         {order.status === 'served' && order.payment_status !== 'paid' ? (
-                          <button style={styles.smallSuccess} onClick={() => openCheckout(order)}>Open Checkout</button>
+                          <button style={styles.smallPrimary} onClick={() => requestBill(order.id)} disabled={isBusy}>
+                            Request Bill
+                          </button>
+                        ) : null}
+                        {(order.status === 'served' || order.status === 'bill_requested') && order.payment_status !== 'paid' ? (
+                          <button style={styles.smallSuccess} onClick={() => openCheckout(order)}>
+                            Open Checkout
+                          </button>
                         ) : null}
                         <button style={styles.smallGhost} onClick={() => setDetailsOrder(order)}>Details</button>
                       </div>
@@ -885,11 +915,32 @@ function WaiterDashboard({ userData, handleLogout }) {
                 </button>
               </div>
 
+              {checkoutSummary?.bill_prepared_at ? (
+                <div style={{ fontSize: '12px', color: '#166534', background: '#dcfce7', padding: '8px 12px', borderRadius: '6px', fontWeight: 600 }}>
+                  ✓ Official Bill prepared by Cashier
+                </div>
+              ) : (
+                <div style={{ fontSize: '12px', color: '#854d0e', background: '#fef9c3', padding: '8px 12px', borderRadius: '6px' }}>
+                  ⏳ Awaiting cashier bill preparation, or proceed with customer bill collection.
+                </div>
+              )}
+              {checkoutSummary?.has_pending_handover && (
+                <div style={{ fontSize: '12px', color: '#b45309', background: '#fef3c7', padding: '8px 12px', borderRadius: '6px', fontWeight: 600 }}>
+                  ⏳ Cash handover is pending cashier confirmation.
+                </div>
+              )}
+
               {paymentChoice === 'Cash' ? (
-                <button style={styles.primaryButton} onClick={confirmCashPayment} disabled={isBusy}>
-                  {isBusy ? <LoaderCircle size={16} /> : <Wallet size={16} />}
-                  {isBusy ? 'Recording...' : 'Confirm Cash Payment'}
-                </button>
+                <div style={styles.stack}>
+                  <div style={{ fontSize: '12px', color: '#475569', background: '#f8fafc', padding: '10px', borderRadius: '8px', border: '1px solid #e2e8f0', lineHeight: '1.4' }}>
+                    💵 <strong>Cash Collection & Handover</strong><br/>
+                    Collect cash from the customer, then submit handover request to the cashier. The cashier verifies funds to finalize settlement.
+                  </div>
+                  <button style={styles.primaryButton} onClick={confirmCashPayment} disabled={isBusy}>
+                    {isBusy ? <LoaderCircle size={16} /> : <Wallet size={16} />}
+                    {isBusy ? 'Submitting Handover...' : 'Record Cash & Submit Handover'}
+                  </button>
+                </div>
               ) : paymentChoice === 'Digital' ? (
                 <div style={styles.stack}>
                   {!digitalSession ? (

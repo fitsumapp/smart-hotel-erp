@@ -20,4 +20,8 @@ class Migration(migrations.Migration):
             name='status',
             field=models.CharField(choices=[('pending', 'Pending'), ('preparing', 'Preparing'), ('ready', 'Ready')], default='pending', max_length=20),
         ),
+        migrations.RunSQL(
+            sql="ALTER TABLE hotel_orderitem ALTER COLUMN notes SET DEFAULT ''; ALTER TABLE hotel_orderitem ALTER COLUMN status SET DEFAULT 'pending';",
+            reverse_sql="ALTER TABLE hotel_orderitem ALTER COLUMN notes DROP DEFAULT; ALTER TABLE hotel_orderitem ALTER COLUMN status DROP DEFAULT;",
+        ),
     ]

@@ -138,6 +138,31 @@ class OrderSerializer(serializers.ModelSerializer):
                 return w.username
         return ""
 
+    bill_prepared_at = serializers.DateTimeField(read_only=True)
+    has_pending_handover = serializers.SerializerMethodField()
+    handover_details = serializers.SerializerMethodField()
+
+    def get_has_pending_handover(self, obj):
+        if hasattr(obj, "prefetched_cash_handovers"):
+            return any(h.status == "pending" for h in obj.prefetched_cash_handovers)
+        return obj.cash_handovers.filter(status="pending").exists()
+
+    def get_handover_details(self, obj):
+        if hasattr(obj, "prefetched_cash_handovers"):
+            h = next((h for h in obj.prefetched_cash_handovers if h.status == "pending"), None)
+        else:
+            h = obj.cash_handovers.filter(status="pending").first()
+        if h:
+            return {
+                "id": h.id,
+                "amount": float(h.amount),
+                "tip_amount": float(h.tip_amount),
+                "waiter_name": h.waiter_username,
+                "payment_reference": h.payment_reference,
+                "created_at": h.created_at.isoformat(),
+            }
+        return None
+
     class Meta:
         model = Order
         fields = [
@@ -145,7 +170,8 @@ class OrderSerializer(serializers.ModelSerializer):
             "items", "sub_total", "service_charge_amount", "vat_amount",
             "total_amount", "status", "station_status", "payment_status", "payment_method",
             "payment_reference", "tip_amount", "payment_page_token",
-            "chapa_tx_ref", "chapa_checkout_url", "created_at", "hotel_info",
+            "chapa_tx_ref", "chapa_checkout_url", "bill_prepared_at",
+            "has_pending_handover", "handover_details", "created_at", "hotel_info",
         ]
 
     # Cache settings per serializer context to avoid N+1 queries
