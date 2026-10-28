@@ -23,6 +23,7 @@ class User(AbstractUser):
     BAR = "bar"
     INVENTORY = "inventory"
     DELIVERY = "delivery"
+    HOUSEKEEPING = "housekeeping"
     FINANCE = "finance"
     CUSTOMER = "customer"
 
@@ -35,6 +36,7 @@ class User(AbstractUser):
         (BAR, "Bar"),
         (INVENTORY, "Inventory"),
         (DELIVERY, "Delivery"),
+        (HOUSEKEEPING, "Housekeeping"),
         (FINANCE, "Finance"),
         (CUSTOMER, "Customer"),
     ]

@@ -55,7 +55,7 @@ const BarDashboard = ({ userData, handleLogout }) => {
       const token = localStorage.getItem('access_token');
       await axios.post(
         `${API_BASE}orders/${orderId}/update-status/`,
-        { status: newStatus },
+        { status: newStatus, station: 'Bar' },
         { headers: { Authorization: `Bearer ${token}` } }
       );
       fetchBarOrders();
@@ -127,10 +127,40 @@ const BarDashboard = ({ userData, handleLogout }) => {
 
                   <div style={itemListStyle}>
                     {order.items && order.items.map((item, idx) => (
-                      <div key={idx} style={itemRow}>
-                        <span style={qtyStyle}>{item.quantity}×</span>
-                        <span style={nameStyle}>{item.menu_item_name}</span>
-                        <span style={priceStyle}>ETB {parseFloat(item.price_at_order || 0).toFixed(2)}</span>
+                      <div key={idx} style={{ ...itemRow, flexDirection: 'column', alignItems: 'stretch' }}>
+                        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', width: '100%' }}>
+                          <span style={qtyStyle}>{item.quantity}×</span>
+                          <span style={nameStyle}>{item.menu_item_name}</span>
+                          {item.status && (
+                            <span style={{
+                              fontSize: '11px',
+                              fontWeight: '700',
+                              padding: '2px 8px',
+                              borderRadius: '10px',
+                              backgroundColor: item.status === 'ready' ? '#dcfce7' : item.status === 'preparing' ? '#fef3c7' : '#fee2e2',
+                              color: item.status === 'ready' ? '#166534' : item.status === 'preparing' ? '#b45309' : '#991b1b',
+                              textTransform: 'uppercase'
+                            }}>
+                              {item.status}
+                            </span>
+                          )}
+                          <span style={priceStyle}>ETB {parseFloat(item.price_at_order || 0).toFixed(2)}</span>
+                        </div>
+                        {item.notes ? (
+                          <div style={{
+                            fontSize: '13px',
+                            color: '#6b21a8',
+                            backgroundColor: '#f3e8ff',
+                            padding: '4px 10px',
+                            borderRadius: '6px',
+                            marginTop: '6px',
+                            marginLeft: '40px',
+                            fontWeight: '600',
+                            borderLeft: '3px solid #9333ea'
+                          }}>
+                            📝 Note: {item.notes}
+                          </div>
+                        ) : null}
                       </div>
                     ))}
                   </div>

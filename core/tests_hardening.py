@@ -222,3 +222,17 @@ class PrivateGuestIdentityAccessTest(TestCase):
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
         self.assertIn("Content-Disposition", response.headers)
+
+
+class AdminRoutingTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+
+    def test_admin_direct_and_api_admin_routes_accessible(self):
+        # Direct /admin/ route
+        resp_direct = self.client.get("/admin/")
+        self.assertIn(resp_direct.status_code, [200, 302])
+
+        # cPanel /api/admin/ rewrite route
+        resp_api = self.client.get("/api/admin/")
+        self.assertIn(resp_api.status_code, [200, 302])

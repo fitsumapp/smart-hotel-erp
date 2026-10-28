@@ -10,7 +10,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from hotel.integrity import record_stock_change
-from hotel.models import MenuItem, Notification, Order, OrderItem, PaymentAttempt, RestaurantTable, SystemSettings
+from hotel.models import DiningSession, MenuItem, Notification, Order, OrderItem, PaymentAttempt, RestaurantTable, SystemSettings
 from users.models import User
 
 
@@ -90,7 +90,7 @@ def _order_fingerprint(table_id, items, waiter_id):
 
 
 @transaction.atomic
-def create_order_idempotently(*, table_id, items, waiter, idempotency_key=None):
+def create_order_idempotently(*, table_id, items, waiter, idempotency_key=None, session_id=None):
     if idempotency_key and len(idempotency_key) > 120:
         raise ValidationError("Idempotency-Key must not exceed 120 characters.")
     if not items:
@@ -102,10 +102,45 @@ def create_order_idempotently(*, table_id, items, waiter, idempotency_key=None):
             if existing.idempotency_fingerprint != fingerprint:
                 raise ValidationError("Idempotency key was already used for a different order request.")
             return existing, False
+
     table = RestaurantTable.objects.select_for_update().get(pk=table_id)
+    if table.status == "reserved":
+        raise ValidationError(f"Table '{table.table_code}' is currently reserved.")
+
+    # Resolve or create active DiningSession
+    session = None
+    if session_id:
+        try:
+            session = DiningSession.objects.select_for_update().get(pk=session_id)
+        except DiningSession.DoesNotExist:
+            raise ValidationError(f"Dining session #{session_id} not found.")
+        if session.table_id != table.id:
+            raise ValidationError(
+                f"Dining session #{session_id} belongs to table '{session.table.table_code}', not '{table.table_code}'."
+            )
+        if session.status != "active":
+            raise ValidationError(f"Dining session #{session_id} is {session.status} and cannot accept new orders.")
+    else:
+        # Check for existing active session for this table
+        session = DiningSession.objects.select_for_update().filter(table=table, status="active").first()
+        if not session:
+            session = DiningSession.objects.create(
+                table=table,
+                status="active",
+                opened_by_id_ref=waiter.id,
+                opened_by_username=waiter.username,
+            )
+            # Retroactively link any existing unassigned unpaid orders for this table to this session
+            Order.objects.filter(table=table, payment_status="pending", session__isnull=True).update(session=session)
+
     order = Order.objects.create(
-        table=table, waiter_id_ref=waiter.id, waiter_username=waiter.username,
-        status="pending", payment_status="pending", idempotency_key=idempotency_key,
+        table=table,
+        session=session,
+        waiter_id_ref=waiter.id,
+        waiter_username=waiter.username,
+        status="pending",
+        payment_status="pending",
+        idempotency_key=idempotency_key,
         idempotency_fingerprint=fingerprint,
     )
     for item in items:
@@ -114,12 +149,21 @@ def create_order_idempotently(*, table_id, items, waiter, idempotency_key=None):
             menu_item = MenuItem.objects.get(pk=item["id"])
         except MenuItem.DoesNotExist:
             raise ValidationError(f"Menu item (ID {item.get('id')}) was not found or has been removed.")
-
         if not menu_item.is_available:
             raise ValidationError(f"'{menu_item.name}' is currently unavailable (አልቋል / አይገኝም). Please remove it from cart.")
-        OrderItem.objects.create(order=order, menu_item=menu_item, quantity=quantity, price_at_order=menu_item.price)
-    table.status = "occupied"
-    table.save(update_fields=["status"])
+
+        notes = str(item.get("notes") or "").strip()[:255]
+        OrderItem.objects.create(
+            order=order,
+            menu_item=menu_item,
+            quantity=quantity,
+            price_at_order=menu_item.price,
+            notes=notes,
+            status="pending",
+        )
+    if table.status != "occupied":
+        table.status = "occupied"
+        table.save(update_fields=["status"])
     sync_order_financials(order)
     return order, True
 
@@ -141,8 +185,9 @@ def build_payment_summary(order, settings_obj=None):
     settings_obj = settings_obj or get_system_settings()
     totals = sync_order_financials(order, settings_obj=settings_obj, save=False)
     tip_amount = to_decimal(order.tip_amount)
-    return {
+    data = {
         "order_id": order.id,
+        "session_id": order.session_id,
         "table_code": order.table.table_code if order.table else "",
         "sub_total": float(totals["sub_total"]),
         "service_charge": float(totals["service_charge"]),
@@ -155,7 +200,22 @@ def build_payment_summary(order, settings_obj=None):
         "currency": settings_obj.currency_symbol,
         "payment_status": order.payment_status,
         "payment_method": order.payment_method,
+        "bill_prepared_at": order.bill_prepared_at.isoformat() if getattr(order, "bill_prepared_at", None) else None,
+        "has_pending_handover": order.cash_handovers.filter(status="pending").exists() if hasattr(order, "cash_handovers") else False,
     }
+    if hasattr(order, "cash_handovers"):
+        pending_h = order.cash_handovers.filter(status="pending").first()
+        if pending_h:
+            data["handover"] = {
+                "id": pending_h.id,
+                "amount": float(pending_h.amount),
+                "tip_amount": float(pending_h.tip_amount),
+                "waiter_username": pending_h.waiter_username,
+                "created_at": pending_h.created_at.isoformat(),
+            }
+    if order.session_id and order.session:
+        data["session_summary"] = build_session_payment_summary(order.session, settings_obj=settings_obj)
+    return data
 
 
 def create_payment_page_url(order, request=None):
@@ -313,11 +373,148 @@ def finalize_paid_order(order, payment_method, payment_reference=None, tip_amoun
             raise ValueError(f"Inventory deduction failed for Order #{order.id}: {e}") from e
 
     if order.table:
-        order.table.status = "available"
-        order.table.save(update_fields=["status"])
+        session = order.session
+        remaining_unpaid = False
+        if session:
+            remaining_unpaid = Order.objects.filter(
+                session=session,
+                payment_status="pending",
+            ).exclude(pk=order.pk).exists()
+        else:
+            remaining_unpaid = Order.objects.filter(
+                table=order.table,
+                payment_status="pending",
+            ).exclude(pk=order.pk).exists()
+
+        if not remaining_unpaid:
+            if session and session.status == "active":
+                session.status = "closed"
+                session.closed_at = timezone.now()
+                session.closed_by_id_ref = cashier.id if cashier else None
+                session.save(update_fields=["status", "closed_at", "closed_by_id_ref"])
+
+            order.table.status = "available"
+            order.table.save(update_fields=["status"])
 
     notify_cashiers(f"Order Paid - Print Receipt: Table {order.table.table_code} / ORD-{order.id}")
     return order, True
+
+
+@transaction.atomic
+def settle_dining_session(
+    session,
+    payment_method="Cash",
+    payment_reference=None,
+    tip_amount=None,
+    cashier=None,
+    reservation=None,
+):
+    """
+    Settle all unpaid orders belonging to a dining session in one atomic transaction.
+    """
+    session = (
+        DiningSession.objects.select_for_update()
+        .select_related("table")
+        .prefetch_related("orders")
+        .get(pk=session.pk)
+    )
+    if session.status == "closed":
+        raise ValidationError("Dining session is already closed.")
+
+    unpaid_orders = list(
+        session.orders.select_for_update()
+        .filter(payment_status="pending")
+        .exclude(status="cancelled")
+        .order_by("created_at")
+    )
+    if not unpaid_orders:
+        if session.orders.exclude(status="cancelled").filter(payment_status="paid").exists():
+            session.status = "closed"
+            session.closed_at = timezone.now()
+            session.closed_by_id_ref = cashier.id if cashier else None
+            session.save(update_fields=["status", "closed_at", "closed_by_id_ref"])
+            if session.table:
+                session.table.status = "available"
+                session.table.save(update_fields=["status"])
+            return session, []
+        raise ValidationError("No orders to settle in this dining session.")
+
+    settled_orders = []
+    total_tip = to_decimal(tip_amount or 0)
+    for idx, ord_obj in enumerate(unpaid_orders):
+        order_tip = total_tip if idx == 0 else Decimal("0.00")
+        ref = payment_reference or f"SESS-{session.id}-{ord_obj.id}"
+        settled, _ = finalize_paid_order(
+            ord_obj,
+            payment_method=payment_method,
+            payment_reference=ref,
+            tip_amount=order_tip,
+            cashier=cashier,
+            reservation=reservation,
+        )
+        settled_orders.append(settled)
+
+    session.refresh_from_db()
+    if session.status != "closed":
+        session.status = "closed"
+        session.closed_at = timezone.now()
+        session.closed_by_id_ref = cashier.id if cashier else None
+        session.save(update_fields=["status", "closed_at", "closed_by_id_ref"])
+    if session.table and session.table.status != "available":
+        session.table.status = "available"
+        session.table.save(update_fields=["status"])
+
+    return session, settled_orders
+
+
+def build_session_payment_summary(session, settings_obj=None):
+    settings_obj = settings_obj or get_system_settings()
+    orders = session.orders.exclude(status="cancelled").select_related("table")
+    sub_total = Decimal("0.00")
+    service_charge = Decimal("0.00")
+    vat = Decimal("0.00")
+    grand_total = Decimal("0.00")
+    tip_amount = Decimal("0.00")
+
+    paid_total = Decimal("0.00")
+    unpaid_total = Decimal("0.00")
+
+    for ord_obj in orders:
+        totals = sync_order_financials(ord_obj, settings_obj=settings_obj, save=False)
+        sub_total += to_decimal(totals["sub_total"])
+        service_charge += to_decimal(totals["service_charge"])
+        vat += to_decimal(totals["vat"])
+        grand_total += to_decimal(totals["grand_total"])
+        tip_amount += to_decimal(ord_obj.tip_amount)
+
+        ord_total_with_tip = to_decimal(totals["grand_total"]) + to_decimal(ord_obj.tip_amount)
+        if ord_obj.payment_status == "paid":
+            paid_total += ord_total_with_tip
+        else:
+            unpaid_total += ord_total_with_tip
+
+    all_paid = bool(orders) and all(o.payment_status == "paid" for o in orders)
+    amount_due = (
+        Decimal("0.00") if all_paid else unpaid_total.quantize(TWOPLACES, rounding=ROUND_HALF_UP)
+    )
+
+    return {
+        "session_id": session.id,
+        "table_code": session.table.table_code if session.table else "",
+        "table_id": session.table_id,
+        "rounds_count": orders.count(),
+        "sub_total": float(sub_total),
+        "service_charge": float(service_charge),
+        "vat": float(vat),
+        "grand_total": float(grand_total),
+        "tip_amount": float(tip_amount),
+        "paid_amount": float(paid_total),
+        "outstanding_balance": float(amount_due),
+        "amount_due": float(amount_due),
+        "currency": settings_obj.currency_symbol,
+        "session_status": session.status,
+        "payment_status": "paid" if all_paid else "pending",
+    }
 
 
 def get_public_order_from_token(token):

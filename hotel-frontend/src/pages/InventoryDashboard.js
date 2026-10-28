@@ -2,11 +2,12 @@ import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import {
   Package, LogOut, AlertTriangle, CheckCircle, RefreshCw,
-  Plus, Users, DollarSign, ArrowRight,
-  ShoppingCart, Truck, Printer, Trash2
+  Plus, Users, DollarSign, ArrowRight, ArrowLeft,
+  ShoppingCart, Truck, Printer, Trash2, X, RotateCcw, Check
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { API_BASE_URL } from '../apiConfig';
+import { apiErrorMessage } from '../apiClient';
 
 const API_BASE = `${API_BASE_URL}/users/`;
 
@@ -19,7 +20,7 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
   const [ledger, setLedger] = useState([]);
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
-  
+
   // Tab states: 'overview', 'items', 'actions', 'recipes', 'ledger', 'categories', 'suppliers', 'reports'
   const [activeTab, setActiveTab] = useState('overview');
   const [selectedReport, setSelectedReport] = useState(null);
@@ -30,7 +31,7 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
   const [reportLowCategory, setReportLowCategory] = useState('');
   const [reportLowSupplier, setReportLowSupplier] = useState('');
   const [reportConsumptionDept, setReportConsumptionDept] = useState('');
-  
+
   // Set default dates for consumption report (past 30 days)
   const [reportConsumptionStart, setReportConsumptionStart] = useState(() => {
     const d = new Date();
@@ -48,11 +49,95 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
   const [isSupplierModalOpen, setIsSupplierModalOpen] = useState(false);
   const [isRecipeModalOpen, setIsRecipeModalOpen] = useState(false);
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
+  const [categoryModalError, setCategoryModalError] = useState('');
+  const [editCategoryModalError, setEditCategoryModalError] = useState('');
+
+  // Waste Management states
+  const [wasteRecords, setWasteRecords] = useState([]);
+  const [isWasteModalOpen, setIsWasteModalOpen] = useState(false);
+  const [wasteSubmitting, setWasteSubmitting] = useState(false);
+  const [wasteFilterCategory, setWasteFilterCategory] = useState('');
+  const [wasteFilterSource, setWasteFilterSource] = useState('');
+  const [wasteFilterStatus, setWasteFilterStatus] = useState('all');
+  const [wasteSearch, setWasteSearch] = useState('');
+  const [reverseTargetRecord, setReverseTargetRecord] = useState(null);
+  const [reversalReason, setReversalReason] = useState('');
+  const [reversalSubmitting, setReversalSubmitting] = useState(false);
+
+  // Waste Approval & Rejection states
+  const [approveTargetRecord, setApproveTargetRecord] = useState(null);
+  const [approveJustification, setApproveJustification] = useState('');
+  const [approveSubmitting, setApproveSubmitting] = useState(false);
+  const [rejectTargetRecord, setRejectTargetRecord] = useState(null);
+  const [rejectReason, setRejectReason] = useState('');
+  const [rejectJustification, setRejectJustification] = useState('');
+  const [rejectSubmitting, setRejectSubmitting] = useState(false);
+
+  const [newWaste, setNewWaste] = useState({
+    item: '',
+    entered_quantity: '',
+    entered_unit: 'kg',
+    waste_category: 'food_spoilage_or_expiry',
+    waste_source: 'direct_loss',
+    source_dispatch: '',
+    storage_area: '',
+    notes: ''
+  });
 
   // Edit modal states
   const [editItem, setEditItem] = useState(null);
   const [editCategory, setEditCategory] = useState(null);
   const [editSupplier, setEditSupplier] = useState(null);
+
+  const isAnyModalOpen = Boolean(
+    isItemModalOpen || isSupplierModalOpen || isRecipeModalOpen || isCategoryModalOpen ||
+    isWasteModalOpen || reverseTargetRecord || approveTargetRecord || rejectTargetRecord ||
+    editItem || editCategory || editSupplier
+  );
+
+  const closeAllModals = useCallback(() => {
+    setIsItemModalOpen(false);
+    setIsSupplierModalOpen(false);
+    setIsRecipeModalOpen(false);
+    setIsCategoryModalOpen(false);
+    setIsWasteModalOpen(false);
+    setReverseTargetRecord(null);
+    setApproveTargetRecord(null);
+    setRejectTargetRecord(null);
+    setReversalReason('');
+    setEditItem(null);
+    setEditCategory(null);
+    setEditSupplier(null);
+    setCategoryModalError('');
+    setEditCategoryModalError('');
+  }, []);
+
+  const dismissModal = useCallback((closeAction) => {
+    if (typeof closeAction === 'function') {
+      closeAction();
+    } else {
+      closeAllModals();
+    }
+    if (window.history.state?.inventoryModalOpen) {
+      window.history.back();
+    }
+  }, [closeAllModals]);
+
+  // Intercept phone browser back button when any modal is open so it closes the modal instead of navigating away/logging out
+  useEffect(() => {
+    if (!isAnyModalOpen) return;
+
+    window.history.pushState({ inventoryModalOpen: true }, '');
+
+    const handlePopState = () => {
+      closeAllModals();
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, [isAnyModalOpen, closeAllModals]);
 
   // Form states
   const [newItem, setNewItem] = useState({ item_code: '', name: '', category: '', unit: 'pcs', min_reorder_level: '5.00', unit_cost: '0.00', selling_price: '0.00', last_supplier: '' });
@@ -92,7 +177,7 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
   const fetchData = useCallback(async () => {
     try {
       const headers = getHeaders();
-      const [itemsRes, catsRes, supsRes, menusRes, recipesRes, ledgerRes, statsRes, roomsRes] = await Promise.all([
+      const [itemsRes, catsRes, supsRes, menusRes, recipesRes, ledgerRes, statsRes, roomsRes, wasteRes] = await Promise.all([
         axios.get(`${API_BASE}inventory-items/`, { headers }),
         axios.get(`${API_BASE}inventory-categories/`, { headers }),
         axios.get(`${API_BASE}suppliers/`, { headers }),
@@ -100,7 +185,8 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
         axios.get(`${API_BASE}recipes/`, { headers }),
         axios.get(`${API_BASE}stock-transactions/`, { headers }),
         axios.get(`${API_BASE}inventory/dashboard-stats/`, { headers }),
-        axios.get(`${API_BASE}rooms/`, { headers }).catch(() => ({ data: [] }))
+        axios.get(`${API_BASE}rooms/`, { headers }).catch(() => ({ data: [] })),
+        axios.get(`${API_BASE}waste-records/`, { headers }).catch(() => ({ data: [] }))
       ]);
       setItems(itemsRes.data || []);
       setCategories(catsRes.data || []);
@@ -110,6 +196,7 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
       setLedger(ledgerRes.data || []);
       setStats(statsRes.data || null);
       setRooms(roomsRes.data || []);
+      setWasteRecords(wasteRes.data || []);
     } catch (err) {
       console.error('Inventory fetch error:', err);
     } finally {
@@ -131,11 +218,11 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
         last_supplier: newItem.last_supplier || null
       };
       await axios.post(`${API_BASE}inventory-items/`, payload, { headers: getHeaders() });
-      setIsItemModalOpen(false);
+      dismissModal(() => setIsItemModalOpen(false));
       setNewItem({ item_code: '', name: '', category: '', unit: 'pcs', min_reorder_level: '5.00', unit_cost: '0.00', selling_price: '0.00', last_supplier: '' });
       fetchData();
     } catch (err) {
-      alert("Error creating item: " + JSON.stringify(err.response?.data || err.message));
+      alert(apiErrorMessage(err, "Failed to create item."));
     }
   };
 
@@ -143,23 +230,39 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
     e.preventDefault();
     try {
       await axios.post(`${API_BASE}suppliers/`, newSupplier, { headers: getHeaders() });
-      setIsSupplierModalOpen(false);
+      dismissModal(() => setIsSupplierModalOpen(false));
       setNewSupplier({ name: '', contact_person: '', phone: '', email: '', address: '', tin_number: '', supplied_categories: [], supply_items: '' });
       fetchData();
     } catch (err) {
-      alert("Error creating supplier: " + JSON.stringify(err.response?.data || err.message));
+      alert(apiErrorMessage(err, "Failed to create supplier."));
     }
   };
 
   const handleCreateCategory = async (e) => {
     e.preventDefault();
+    setCategoryModalError('');
+    const trimmedName = (newCategory.name || '').trim();
+    if (!trimmedName) {
+      setCategoryModalError('Please enter a category name.');
+      return;
+    }
+
+    const duplicate = categories.find(
+      c => c.name && c.name.trim().toLowerCase() === trimmedName.toLowerCase()
+    );
+    if (duplicate) {
+      setCategoryModalError(`An inventory category named "${trimmedName}" already exists. Please choose a different name.`);
+      return;
+    }
+
     try {
-      await axios.post(`${API_BASE}inventory-categories/`, newCategory, { headers: getHeaders() });
-      setIsCategoryModalOpen(false);
+      await axios.post(`${API_BASE}inventory-categories/`, { ...newCategory, name: trimmedName }, { headers: getHeaders() });
+      dismissModal(() => setIsCategoryModalOpen(false));
       setNewCategory({ name: '', description: '', category_type: 'f_and_b' });
+      setCategoryModalError('');
       fetchData();
     } catch (err) {
-      alert("Error creating category: " + JSON.stringify(err.response?.data || err.message));
+      setCategoryModalError(apiErrorMessage(err, 'Failed to create category.'));
     }
   };
 
@@ -172,21 +275,37 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
         last_supplier: editItem.last_supplier || null
       };
       await axios.patch(`${API_BASE}inventory-items/${editItem.id}/`, payload, { headers: getHeaders() });
-      setEditItem(null);
+      dismissModal(() => setEditItem(null));
       fetchData();
     } catch (err) {
-      alert("Error updating item: " + JSON.stringify(err.response?.data || err.message));
+      alert(apiErrorMessage(err, "Failed to update item."));
     }
   };
 
   const handleEditCategory = async (e) => {
     e.preventDefault();
+    setEditCategoryModalError('');
+    const trimmedName = (editCategory.name || '').trim();
+    if (!trimmedName) {
+      setEditCategoryModalError('Please enter a category name.');
+      return;
+    }
+
+    const duplicate = categories.find(
+      c => c.id !== editCategory.id && c.name && c.name.trim().toLowerCase() === trimmedName.toLowerCase()
+    );
+    if (duplicate) {
+      setEditCategoryModalError(`An inventory category named "${trimmedName}" already exists. Please choose a different name.`);
+      return;
+    }
+
     try {
-      await axios.put(`${API_BASE}inventory-categories/${editCategory.id}/`, editCategory, { headers: getHeaders() });
-      setEditCategory(null);
+      await axios.put(`${API_BASE}inventory-categories/${editCategory.id}/`, { ...editCategory, name: trimmedName }, { headers: getHeaders() });
+      dismissModal(() => setEditCategory(null));
+      setEditCategoryModalError('');
       fetchData();
     } catch (err) {
-      alert("Error updating category: " + JSON.stringify(err.response?.data || err.message));
+      setEditCategoryModalError(apiErrorMessage(err, 'Failed to update category.'));
     }
   };
 
@@ -194,10 +313,10 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
     e.preventDefault();
     try {
       await axios.put(`${API_BASE}suppliers/${editSupplier.id}/`, editSupplier, { headers: getHeaders() });
-      setEditSupplier(null);
+      dismissModal(() => setEditSupplier(null));
       fetchData();
     } catch (err) {
-      alert("Error updating supplier: " + JSON.stringify(err.response?.data || err.message));
+      alert(apiErrorMessage(err, "Failed to update supplier."));
     }
   };
 
@@ -229,7 +348,7 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
       setNewGRN({ item: '', quantity: '', unit_cost: '', supplier: '', reference_number: '', notes: '' });
       fetchData();
     } catch (err) {
-      alert("Error recording GRN: " + JSON.stringify(err.response?.data || err.message));
+      alert(apiErrorMessage(err, "Failed to record GRN."));
     }
   };
 
@@ -253,7 +372,7 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
       setDispatchTargetType('department');
       fetchData();
     } catch (err) {
-      alert("Error dispatching stock: " + JSON.stringify(err.response?.data || err.message));
+      alert(apiErrorMessage(err, "Failed to dispatch stock."));
     }
   };
 
@@ -285,18 +404,153 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
             quantity_required: parseFloat(row.quantity_required)
           }))
       };
-      
+
       await axios.post(`${API_BASE}recipes/bulk-save/`, payload, { headers: getHeaders() });
-      setIsRecipeModalOpen(false);
+      dismissModal(() => setIsRecipeModalOpen(false));
       setSelectedRecipeMenu('');
       setRecipeRows([{ ingredient: '', quantity_required: '' }]);
       alert("Recipe Saved successfully!");
       fetchData();
     } catch (err) {
-      alert("Error saving recipe: " + JSON.stringify(err.response?.data || err.message));
+      alert(apiErrorMessage(err, "Failed to save recipe."));
     }
   };
 
+  const handleCreateWaste = async (e) => {
+    e.preventDefault();
+    if (wasteSubmitting) return;
+
+    if (!newWaste.item) {
+      alert("Please select an inventory item.");
+      return;
+    }
+    if (!newWaste.entered_quantity || parseFloat(newWaste.entered_quantity) <= 0) {
+      alert("Please enter a positive waste quantity.");
+      return;
+    }
+    if (newWaste.waste_source === 'kitchen_prep_waste' && !newWaste.source_dispatch) {
+      alert("Please select the parent kitchen issuance transaction for preparation waste.");
+      return;
+    }
+
+    setWasteSubmitting(true);
+    try {
+      const idempotencyKey = `waste-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+      const payload = {
+        item: parseInt(newWaste.item),
+        entered_quantity: newWaste.entered_quantity,
+        entered_unit: newWaste.entered_unit,
+        waste_category: newWaste.waste_category,
+        waste_source: newWaste.waste_source,
+        notes: newWaste.notes || '',
+        storage_area: newWaste.storage_area || '',
+        source_dispatch: newWaste.waste_source === 'kitchen_prep_waste' ? parseInt(newWaste.source_dispatch) : null
+      };
+
+      await axios.post(`${API_BASE}waste-records/`, payload, {
+        headers: {
+          ...getHeaders(),
+          'Idempotency-Key': idempotencyKey
+        }
+      });
+
+      dismissModal(() => setIsWasteModalOpen(false));
+      setNewWaste({
+        item: '',
+        entered_quantity: '',
+        entered_unit: 'kg',
+        waste_category: 'food_spoilage_or_expiry',
+        waste_source: 'direct_loss',
+        source_dispatch: '',
+        storage_area: '',
+        notes: ''
+      });
+      alert("Waste record successfully recorded!");
+      fetchData();
+    } catch (err) {
+      alert(apiErrorMessage(err, "Failed to record waste loss."));
+    } finally {
+      setWasteSubmitting(false);
+    }
+  };
+
+  const handleReverseWaste = async (e) => {
+    e.preventDefault();
+    if (!reverseTargetRecord || reversalSubmitting) return;
+    if (!reversalReason.trim()) {
+      alert("Please enter a reversal reason.");
+      return;
+    }
+
+    setReversalSubmitting(true);
+    try {
+      await axios.post(`${API_BASE}waste-records/${reverseTargetRecord.id}/reverse/`, {
+        reason: reversalReason.trim()
+      }, { headers: getHeaders() });
+
+      dismissModal(() => {
+        setReverseTargetRecord(null);
+        setReversalReason('');
+      });
+      alert("Waste record successfully reversed and compensating transaction recorded!");
+      fetchData();
+    } catch (err) {
+      alert(apiErrorMessage(err, "Failed to reverse waste record."));
+    } finally {
+      setReversalSubmitting(false);
+    }
+  };
+
+  const handleApproveWaste = async (e) => {
+    e.preventDefault();
+    if (!approveTargetRecord || approveSubmitting) return;
+    setApproveSubmitting(true);
+    try {
+      await axios.post(`${API_BASE}waste-records/${approveTargetRecord.id}/approve/`, {
+        justification: approveJustification.trim()
+      }, { headers: getHeaders() });
+
+      dismissModal(() => {
+        setApproveTargetRecord(null);
+        setApproveJustification('');
+      });
+      alert("Waste record successfully approved! Stock and accounting entries updated.");
+      fetchData();
+    } catch (err) {
+      alert(apiErrorMessage(err, "Failed to approve waste record."));
+    } finally {
+      setApproveSubmitting(false);
+    }
+  };
+
+  const handleRejectWaste = async (e) => {
+    e.preventDefault();
+    if (!rejectTargetRecord || rejectSubmitting) return;
+    if (!rejectReason.trim()) {
+      alert("Please enter a rejection reason.");
+      return;
+    }
+
+    setRejectSubmitting(true);
+    try {
+      await axios.post(`${API_BASE}waste-records/${rejectTargetRecord.id}/reject/`, {
+        reason: rejectReason.trim(),
+        justification: rejectJustification.trim()
+      }, { headers: getHeaders() });
+
+      dismissModal(() => {
+        setRejectTargetRecord(null);
+        setRejectReason('');
+        setRejectJustification('');
+      });
+      alert("Waste record successfully rejected.");
+      fetchData();
+    } catch (err) {
+      alert(apiErrorMessage(err, "Failed to reject waste record."));
+    } finally {
+      setRejectSubmitting(false);
+    }
+  };
 
   const printReport = () => {
     window.print();
@@ -439,8 +693,8 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
             </div>
 
             <div style={{ display: 'flex', gap: '10px', backgroundColor: 'rgba(241,245,249,0.7)', padding: '5px', borderRadius: '12px', width: 'fit-content', border: '1px solid rgba(148,163,184,0.1)' }}>
-              <button 
-                onClick={() => setItemsTypeFilter('all')} 
+              <button
+                onClick={() => setItemsTypeFilter('all')}
                 style={{
                   padding: '6px 16px',
                   borderRadius: '8px',
@@ -455,8 +709,8 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
               >
                 Show All
               </button>
-              <button 
-                onClick={() => setItemsTypeFilter('f_and_b')} 
+              <button
+                onClick={() => setItemsTypeFilter('f_and_b')}
                 style={{
                   padding: '6px 16px',
                   borderRadius: '8px',
@@ -471,8 +725,8 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
               >
                 Food & Beverage (F&B)
               </button>
-              <button 
-                onClick={() => setItemsTypeFilter('housekeeping')} 
+              <button
+                onClick={() => setItemsTypeFilter('housekeeping')}
                 style={{
                   padding: '6px 16px',
                   borderRadius: '8px',
@@ -497,6 +751,7 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
                       <th style={thStyle}>Code</th>
                       <th style={thStyle}>Item Name</th>
                       <th style={thStyle}>Category</th>
+                      <th style={thStyle}>Unit</th>
                       <th style={thStyle}>Current Stock</th>
                       <th style={thStyle}>Min Level</th>
                       <th style={thStyle}>Unit Cost</th>
@@ -515,6 +770,19 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
                           <td style={tdStyle}>
                             <span style={badgeCategoryStyle}>
                               {item.category_name} ({item.category_type === 'f_and_b' ? 'F&B' : 'Room'})
+                            </span>
+                          </td>
+                          <td style={tdStyle}>
+                            <span style={{
+                              backgroundColor: '#f0fdfa',
+                              color: '#0f766e',
+                              padding: '2px 8px',
+                              borderRadius: '4px',
+                              fontSize: '11px',
+                              fontWeight: '800',
+                              border: '1px solid #ccfbf1'
+                            }}>
+                              {item.unit}
                             </span>
                           </td>
                           <td style={{ ...tdStyle, fontWeight: '700', color: isLow ? '#ef4444' : '#10b981' }}>
@@ -544,6 +812,9 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
         );
 
       case 'actions':
+        const selectedGRNItem = items.find(i => String(i.id) === String(newGRN.item));
+        const selectedDispatchItem = items.find(i => String(i.id) === String(newDispatch.item));
+
         return (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '30px' }}>
             {/* Purchasing Form */}
@@ -553,26 +824,100 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
                 <h3 style={{ margin: 0, color: '#0f172a', fontWeight: '800' }}>Purchase Stock (Stock-In / GRN)</h3>
               </div>
               <p style={{ color: '#64748b', fontSize: '13px', marginBottom: '20px' }}>Record incoming inventory goods from purchase orders or suppliers.</p>
-              
+
               <form onSubmit={handleReceiveGRN} style={formStyle}>
                 <div style={formGroupStyle}>
                   <label style={labelStyle}>Select Stock Item</label>
-                  <select required style={inputStyle} value={newGRN.item} onChange={e => setNewGRN({ ...newGRN, item: e.target.value })}>
+                  <select
+                    required
+                    style={inputStyle}
+                    value={newGRN.item}
+                    onChange={e => {
+                      const selId = e.target.value;
+                      const itm = items.find(i => String(i.id) === String(selId));
+                      setNewGRN({
+                        ...newGRN,
+                        item: selId,
+                        unit_cost: itm && !newGRN.unit_cost ? itm.unit_cost : newGRN.unit_cost,
+                        supplier: itm && itm.last_supplier && !newGRN.supplier ? String(itm.last_supplier) : newGRN.supplier,
+                      });
+                    }}
+                  >
                     <option value="">-- Choose Item --</option>
                     {items.map(item => (
-                      <option key={item.id} value={item.id}>{item.name} ({item.item_code})</option>
+                      <option key={item.id} value={item.id}>
+                        {item.name} ({item.item_code}) — [{item.unit}]
+                      </option>
                     ))}
                   </select>
+                  {selectedGRNItem && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px', fontSize: '12px', color: '#475569' }}>
+                      <span style={{ backgroundColor: '#ccfbf1', color: '#0f766e', border: '1px solid #99f6e4', padding: '2px 8px', borderRadius: '4px', fontWeight: '700' }}>
+                        Unit of Measure: {selectedGRNItem.unit}
+                      </span>
+                      <span>Current On-Hand: <strong>{parseFloat(selectedGRNItem.current_stock).toFixed(2)} {selectedGRNItem.unit}</strong></span>
+                    </div>
+                  )}
                 </div>
 
                 <div style={formRowStyle}>
                   <div style={formGroupStyle}>
-                    <label style={labelStyle}>Quantity Received</label>
-                    <input required type="number" step="0.01" style={inputStyle} value={newGRN.quantity} placeholder="e.g. 50" onChange={e => setNewGRN({ ...newGRN, quantity: e.target.value })} />
+                    <label style={labelStyle}>
+                      Quantity Received
+                      {selectedGRNItem ? (
+                        <span style={{ color: '#0f766e', fontWeight: '700', marginLeft: '6px' }}>
+                          ({selectedGRNItem.unit})
+                        </span>
+                      ) : (
+                        <span style={{ color: '#94a3b8', fontWeight: '400', fontSize: '12px', marginLeft: '6px' }}>
+                          (Unit: --)
+                        </span>
+                      )}
+                    </label>
+                    <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                      <input
+                        required
+                        type="number"
+                        step="0.01"
+                        min="0.01"
+                        style={{ ...inputStyle, paddingRight: selectedGRNItem ? '65px' : '12px' }}
+                        value={newGRN.quantity}
+                        placeholder={selectedGRNItem ? `e.g. 50 ${selectedGRNItem.unit}` : "e.g. 50"}
+                        onChange={e => setNewGRN({ ...newGRN, quantity: e.target.value })}
+                      />
+                      {selectedGRNItem && (
+                        <span style={{
+                          position: 'absolute',
+                          right: '8px',
+                          fontSize: '12px',
+                          fontWeight: '700',
+                          color: '#0f766e',
+                          backgroundColor: '#ccfbf1',
+                          padding: '3px 8px',
+                          borderRadius: '4px',
+                          border: '1px solid #99f6e4',
+                          pointerEvents: 'none'
+                        }}>
+                          {selectedGRNItem.unit}
+                        </span>
+                      )}
+                    </div>
                   </div>
                   <div style={formGroupStyle}>
-                    <label style={labelStyle}>Unit Cost (ETB)</label>
+                    <label style={labelStyle}>
+                      Unit Cost (ETB)
+                      {selectedGRNItem && (
+                        <span style={{ color: '#0f766e', fontWeight: '700', marginLeft: '6px' }}>
+                          (per {selectedGRNItem.unit})
+                        </span>
+                      )}
+                    </label>
                     <input required type="number" step="0.01" style={inputStyle} value={newGRN.unit_cost} placeholder="e.g. 12.50" onChange={e => setNewGRN({ ...newGRN, unit_cost: e.target.value })} />
+                    {newGRN.quantity && newGRN.unit_cost && selectedGRNItem && (
+                      <div style={{ fontSize: '11px', color: '#0f766e', marginTop: '4px', fontWeight: '600' }}>
+                        Total: {(parseFloat(newGRN.quantity || 0) * parseFloat(newGRN.unit_cost || 0)).toFixed(2)} ETB ({newGRN.quantity} {selectedGRNItem.unit})
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -620,6 +965,14 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
                       <option key={item.id} value={item.id}>{item.name} (Current: {parseFloat(item.current_stock).toFixed(2)} {item.unit})</option>
                     ))}
                   </select>
+                  {selectedDispatchItem && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px', fontSize: '12px', color: '#475569' }}>
+                      <span style={{ backgroundColor: '#e0f2fe', color: '#0284c7', border: '1px solid #bae6fd', padding: '2px 8px', borderRadius: '4px', fontWeight: '700' }}>
+                        Unit of Measure: {selectedDispatchItem.unit}
+                      </span>
+                      <span>Available: <strong style={{ color: parseFloat(selectedDispatchItem.current_stock) <= parseFloat(selectedDispatchItem.min_reorder_level) ? '#dc2626' : '#166534' }}>{parseFloat(selectedDispatchItem.current_stock).toFixed(2)} {selectedDispatchItem.unit}</strong></span>
+                    </div>
+                  )}
                 </div>
 
                 <div style={formGroupStyle}>
@@ -638,8 +991,54 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
 
                 <div style={formRowStyle}>
                   <div style={formGroupStyle}>
-                    <label style={labelStyle}>Quantity to Issue</label>
-                    <input required type="number" step="0.01" style={inputStyle} value={newDispatch.quantity} placeholder="e.g. 5" onChange={e => setNewDispatch({ ...newDispatch, quantity: e.target.value })} />
+                    <label style={labelStyle}>
+                      Quantity to Issue
+                      {selectedDispatchItem ? (
+                        <span style={{ color: '#0284c7', fontWeight: '700', marginLeft: '6px' }}>
+                          ({selectedDispatchItem.unit})
+                        </span>
+                      ) : (
+                        <span style={{ color: '#94a3b8', fontWeight: '400', fontSize: '12px', marginLeft: '6px' }}>
+                          (Unit: --)
+                        </span>
+                      )}
+                    </label>
+                    <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                      <input
+                        required
+                        type="number"
+                        step="0.01"
+                        min="0.01"
+                        style={{ ...inputStyle, paddingRight: selectedDispatchItem ? '65px' : '12px' }}
+                        value={newDispatch.quantity}
+                        placeholder={selectedDispatchItem ? `e.g. 5 ${selectedDispatchItem.unit}` : "e.g. 5"}
+                        onChange={e => setNewDispatch({ ...newDispatch, quantity: e.target.value })}
+                      />
+                      {selectedDispatchItem && (
+                        <span style={{
+                          position: 'absolute',
+                          right: '8px',
+                          fontSize: '12px',
+                          fontWeight: '700',
+                          color: '#0284c7',
+                          backgroundColor: '#e0f2fe',
+                          padding: '3px 8px',
+                          borderRadius: '4px',
+                          border: '1px solid #bae6fd',
+                          pointerEvents: 'none'
+                        }}>
+                          {selectedDispatchItem.unit}
+                        </span>
+                      )}
+                    </div>
+                    {newDispatch.quantity && selectedDispatchItem && (
+                      <div style={{ fontSize: '11px', marginTop: '4px', color: (parseFloat(selectedDispatchItem.current_stock) - parseFloat(newDispatch.quantity || 0)) < 0 ? '#dc2626' : '#475569' }}>
+                        Remaining after issue: <strong>{(parseFloat(selectedDispatchItem.current_stock) - parseFloat(newDispatch.quantity || 0)).toFixed(2)} {selectedDispatchItem.unit}</strong>
+                        {(parseFloat(selectedDispatchItem.current_stock) - parseFloat(newDispatch.quantity || 0)) < 0 && (
+                          <span style={{ color: '#dc2626', fontWeight: '700', marginLeft: '6px' }}>⚠️ Exceeds current stock!</span>
+                        )}
+                      </div>
+                    )}
                   </div>
                   {dispatchTargetType === 'department' ? (
                     <div style={formGroupStyle}>
@@ -674,6 +1073,405 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
                   <ArrowRight size={16} style={{ marginRight: '6px' }} /> Record Stock-Out
                 </button>
               </form>
+            </div>
+          </div>
+        );
+
+      case 'waste':
+        const filteredWaste = wasteRecords.filter(w => {
+          if (wasteFilterCategory && w.waste_category !== wasteFilterCategory) return false;
+          if (wasteFilterSource && w.waste_source !== wasteFilterSource) return false;
+          if (wasteFilterStatus === 'approved' && (w.status !== 'approved' || w.is_reversed)) return false;
+          if (wasteFilterStatus === 'pending_review' && w.status !== 'pending_review') return false;
+          if (wasteFilterStatus === 'rejected' && w.status !== 'rejected') return false;
+          if (wasteFilterStatus === 'reversed' && !w.is_reversed) return false;
+          if (wasteSearch) {
+            const query = wasteSearch.toLowerCase();
+            const itemName = (w.item_name || '').toLowerCase();
+            const itemCode = (w.item_code || '').toLowerCase();
+            const notes = (w.notes || '').toLowerCase();
+            return itemName.includes(query) || itemCode.includes(query) || notes.includes(query);
+          }
+          return true;
+        });
+
+        const totalActiveWasteCost = wasteRecords
+          .filter(w => !w.is_reversed && w.status === 'approved' && w.stock_deducted)
+          .reduce((sum, w) => sum + parseFloat(w.total_cost_loss || 0), 0);
+
+        const directLossCount = wasteRecords.filter(w => w.waste_source === 'direct_loss' && !w.is_reversed && w.status === 'approved').length;
+        const prepWasteCount = wasteRecords.filter(w => w.waste_source === 'kitchen_prep_waste' && !w.is_reversed && w.status === 'approved').length;
+        const pendingCount = wasteRecords.filter(w => w.status === 'pending_review').length;
+
+        const getCategoryBadge = (cat) => {
+          switch (cat) {
+            case 'food_spoilage_or_expiry':
+              return { label: 'Spoilage / Expiry', bg: 'rgba(239, 68, 68, 0.1)', color: '#dc2626', border: '#fca5a5' };
+            case 'unissued_prep_loss':
+              return { label: 'Prep / Trimming Loss', bg: 'rgba(245, 158, 11, 0.1)', color: '#d97706', border: '#fcd34d' };
+            case 'breakage_or_damage':
+              return { label: 'Breakage / Damage', bg: 'rgba(225, 29, 72, 0.1)', color: '#e11d48', border: '#fda4af' };
+            case 'spillage':
+              return { label: 'Spillage', bg: 'rgba(14, 165, 233, 0.1)', color: '#0284c7', border: '#7dd3fc' };
+            default:
+              return { label: 'Other Loss', bg: 'rgba(100, 116, 139, 0.1)', color: '#475569', border: '#cbd5e1' };
+          }
+        };
+
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '25px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <h2 style={{ margin: 0, color: '#0f172a', fontSize: '20px', fontWeight: '800' }}>Waste & Inventory Loss Tracking</h2>
+                <p style={{ margin: 0, color: '#64748b', fontSize: '13px' }}>
+                  Register confirmed storeroom stock-outs and kitchen preparation waste with multi-tier approval controls and automated GL tracking.
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setNewWaste({
+                    item: '',
+                    entered_quantity: '',
+                    entered_unit: 'kg',
+                    waste_category: 'food_spoilage_or_expiry',
+                    waste_source: 'direct_loss',
+                    source_dispatch: '',
+                    storage_area: '',
+                    notes: ''
+                  });
+                  setIsWasteModalOpen(true);
+                }}
+                style={{ ...btnPrimaryStyle, backgroundColor: '#dc2626' }}
+              >
+                <Plus size={16} style={{ marginRight: '6px' }} /> Register Waste Entry
+              </button>
+            </div>
+
+            {/* Waste summary stats */}
+            <div style={statsGrid} className="inventory-stats-grid">
+              <StatCard
+                icon={<DollarSign size={22} color="#dc2626" />}
+                title="Active Waste Valuation"
+                value={`${totalActiveWasteCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ETB`}
+                color="#dc2626"
+              />
+              <StatCard
+                icon={<AlertTriangle size={22} color="#ea580c" />}
+                title="Direct Store Losses"
+                value={directLossCount}
+                color="#ea580c"
+              />
+              <StatCard
+                icon={<Package size={22} color="#7c3aed" />}
+                title="Kitchen Prep Wastes"
+                value={prepWasteCount}
+                color="#7c3aed"
+              />
+              <StatCard
+                icon={<AlertTriangle size={22} color={pendingCount > 0 ? "#f59e0b" : "#94a3b8"} />}
+                title="Pending Approvals"
+                value={pendingCount}
+                color={pendingCount > 0 ? "#f59e0b" : "#94a3b8"}
+              />
+            </div>
+
+            {/* Filters */}
+            <div style={cardStyle}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '15px', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '15px', alignItems: 'center' }}>
+                  <div style={{ width: '200px' }}>
+                    <label style={filterLabelStyle}>Category Filter</label>
+                    <select
+                      style={filterInputStyle}
+                      value={wasteFilterCategory}
+                      onChange={e => setWasteFilterCategory(e.target.value)}
+                    >
+                      <option value="">All Categories</option>
+                      <option value="food_spoilage_or_expiry">Food Spoilage or Expiry</option>
+                      <option value="unissued_prep_loss">Prep / Trimming Loss</option>
+                      <option value="breakage_or_damage">Breakage or Damage</option>
+                      <option value="spillage">Spillage</option>
+                      <option value="other">Other Confirmed Loss</option>
+                    </select>
+                  </div>
+                  <div style={{ width: '180px' }}>
+                    <label style={filterLabelStyle}>Waste Source</label>
+                    <select
+                      style={filterInputStyle}
+                      value={wasteFilterSource}
+                      onChange={e => setWasteFilterSource(e.target.value)}
+                    >
+                      <option value="">All Sources</option>
+                      <option value="direct_loss">Direct Storeroom Loss</option>
+                      <option value="kitchen_prep_waste">Kitchen Prep Waste</option>
+                    </select>
+                  </div>
+                  <div style={{ width: '160px' }}>
+                    <label style={filterLabelStyle}>Status Filter</label>
+                    <select
+                      style={filterInputStyle}
+                      value={wasteFilterStatus}
+                      onChange={e => setWasteFilterStatus(e.target.value)}
+                    >
+                      <option value="all">All Records</option>
+                      <option value="pending_review">⏳ Pending Review ({pendingCount})</option>
+                      <option value="approved">✓ Approved Only</option>
+                      <option value="rejected">✕ Rejected Only</option>
+                      <option value="reversed">↩ Reversed Only</option>
+                    </select>
+                  </div>
+                </div>
+                <div style={{ width: '240px' }}>
+                  <label style={filterLabelStyle}>Search Logs</label>
+                  <input
+                    type="text"
+                    style={filterInputStyle}
+                    placeholder="Search item, code, notes..."
+                    value={wasteSearch}
+                    onChange={e => setWasteSearch(e.target.value)}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Waste History Table */}
+            <div style={cardStyle}>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={tableStyle}>
+                  <thead>
+                    <tr style={theadStyle}>
+                      <th style={thStyle}>Date & Time</th>
+                      <th style={thStyle}>Item</th>
+                      <th style={thStyle}>Waste Quantity</th>
+                      <th style={thStyle}>Category</th>
+                      <th style={thStyle}>Source & Stock Effect</th>
+                      <th style={thStyle}>Financial Loss</th>
+                      <th style={thStyle}>Location & Staff</th>
+                      <th style={thStyle}>Status</th>
+                      <th style={{ ...thStyle, textAlign: 'center' }}>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredWaste.length === 0 ? (
+                      <tr>
+                        <td colSpan="9" style={{ ...tdStyle, textAlign: 'center', color: '#94a3b8', padding: '40px' }}>
+                          No waste records found matching the selected filters.
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredWaste.map(w => {
+                        const catBadge = getCategoryBadge(w.waste_category);
+                        const isDirect = w.waste_source === 'direct_loss';
+                        const showNormalized = w.entered_unit !== w.item_unit || parseFloat(w.entered_quantity) !== parseFloat(w.base_quantity);
+                        const canReverse = !w.is_reversed && !w.reversal_of && w.status === 'approved' && (userData?.role === 'admin' || userData?.role === 'inventory');
+                        const isSubmitter = Boolean(userData?.username && userData.username === w.reported_by_username);
+                        const canReview = (userData?.role === 'admin' || userData?.is_superuser) && (!isSubmitter || userData?.is_superuser);
+
+                        return (
+                          <tr key={w.id} style={{ ...trStyle, opacity: w.is_reversed ? 0.65 : 1 }}>
+                            <td style={{ ...tdStyle, fontSize: '12px', color: '#64748b', whiteSpace: 'nowrap' }}>
+                              {new Date(w.recorded_at).toLocaleString()}
+                            </td>
+                            <td style={tdStyle}>
+                              <div style={{ fontWeight: '700', color: '#0f172a' }}>{w.item_name}</div>
+                              <div style={{ fontSize: '11px', color: '#64748b' }}>{w.item_code}</div>
+                            </td>
+                            <td style={tdStyle}>
+                              <div style={{ fontWeight: '800', color: w.is_reversed ? '#64748b' : '#dc2626' }}>
+                                -{parseFloat(w.entered_quantity).toFixed(2)} {w.entered_unit}
+                              </div>
+                              {showNormalized && (
+                                <div style={{ fontSize: '11px', color: '#64748b' }}>
+                                  ({parseFloat(w.base_quantity).toFixed(2)} {w.item_unit} base)
+                                </div>
+                              )}
+                            </td>
+                            <td style={tdStyle}>
+                              <span style={{
+                                ...badgeStyle,
+                                backgroundColor: catBadge.bg,
+                                color: catBadge.color,
+                                border: `1px solid ${catBadge.border}`
+                              }}>
+                                {catBadge.label}
+                              </span>
+                            </td>
+                            <td style={tdStyle}>
+                              {isDirect ? (
+                                <span style={{
+                                  ...badgeStyle,
+                                  backgroundColor: w.stock_deducted ? 'rgba(220, 38, 38, 0.08)' : 'rgba(245, 158, 11, 0.08)',
+                                  color: w.stock_deducted ? '#dc2626' : '#d97706',
+                                  border: `1px solid ${w.stock_deducted ? '#fca5a5' : '#fde68a'}`
+                                }}>
+                                  {w.stock_deducted ? 'Direct Loss (Stock Deducted)' : 'Direct Loss (Pending Stock Deduction)'}
+                                </span>
+                              ) : (
+                                <span style={{
+                                  ...badgeStyle,
+                                  backgroundColor: 'rgba(124, 58, 237, 0.08)',
+                                  color: '#7c3aed',
+                                  border: '1px solid #c4b5fd'
+                                }}>
+                                  Kitchen Prep (Issuance #{w.source_dispatch || '—'})
+                                </span>
+                              )}
+                            </td>
+                            <td style={{ ...tdStyle, fontWeight: '700', color: w.is_reversed ? '#64748b' : '#0f172a' }}>
+                              {parseFloat(w.total_cost_loss || 0).toFixed(2)} ETB
+                              {parseFloat(w.unit_cost_snapshot || 0) <= 0 && (
+                                <div style={{ fontSize: '10px', color: '#d97706', fontWeight: '600' }}>⚠️ 0.00 Unit Cost</div>
+                              )}
+                            </td>
+                            <td style={tdStyle}>
+                              <div style={{ fontSize: '12px', fontWeight: '600', color: '#334155' }}>
+                                {w.reported_by_username || 'system'}
+                              </div>
+                              {w.storage_area && (
+                                <div style={{ fontSize: '11px', color: '#64748b' }}>
+                                  📍 {w.storage_area}
+                                </div>
+                              )}
+                            </td>
+                            <td style={tdStyle}>
+                              {w.is_reversed ? (
+                                <div>
+                                  <span style={{
+                                    ...badgeStyle,
+                                    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                                    color: '#ef4444',
+                                    border: '1px solid #ef4444'
+                                  }}>
+                                    Reversed
+                                  </span>
+                                  {w.reversal_reason && (
+                                    <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px', maxWidth: '160px' }} title={w.reversal_reason}>
+                                      {w.reversal_reason}
+                                    </div>
+                                  )}
+                                </div>
+                              ) : w.status === 'pending_review' ? (
+                                <div>
+                                  <span style={{
+                                    ...badgeStyle,
+                                    backgroundColor: 'rgba(245, 158, 11, 0.1)',
+                                    color: '#d97706',
+                                    border: '1px solid #fcd34d'
+                                  }}>
+                                    ⏳ Pending Review
+                                  </span>
+                                  <div style={{ fontSize: '10px', color: '#b45309', marginTop: '3px' }}>
+                                    {parseFloat(w.unit_cost_snapshot || 0) <= 0 ? 'Zero Unit Cost' : '> 1,000 ETB'}
+                                  </div>
+                                </div>
+                              ) : w.status === 'rejected' ? (
+                                <div>
+                                  <span style={{
+                                    ...badgeStyle,
+                                    backgroundColor: 'rgba(100, 116, 139, 0.1)',
+                                    color: '#64748b',
+                                    border: '1px solid #cbd5e1'
+                                  }}>
+                                    ✕ Rejected
+                                  </span>
+                                  {w.rejection_reason && (
+                                    <div style={{ fontSize: '10px', color: '#dc2626', marginTop: '3px', maxWidth: '160px' }} title={w.rejection_reason}>
+                                      {w.rejection_reason}
+                                    </div>
+                                  )}
+                                </div>
+                              ) : (
+                                <div>
+                                  <span style={{
+                                    ...badgeStyle,
+                                    backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                                    color: '#10b981',
+                                    border: '1px solid #10b981'
+                                  }}>
+                                    ✓ Approved
+                                  </span>
+                                  {w.reviewed_by_username && (
+                                    <div style={{ fontSize: '10px', color: '#64748b', marginTop: '2px' }}>
+                                      By: {w.reviewed_by_username} {w.is_self_reviewed && '(Exception)'}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </td>
+                            <td style={{ ...tdStyle, textAlign: 'center' }}>
+                              {w.status === 'pending_review' ? (
+                                <div style={{ display: 'inline-flex', gap: '6px' }}>
+                                  <button
+                                    type="button"
+                                    disabled={!canReview}
+                                    onClick={() => {
+                                      setApproveTargetRecord(w);
+                                      setApproveJustification('');
+                                    }}
+                                    style={{
+                                      ...editBtnStyle,
+                                      backgroundColor: canReview ? 'rgba(16, 185, 129, 0.1)' : '#f1f5f9',
+                                      color: canReview ? '#059669' : '#94a3b8',
+                                      cursor: canReview ? 'pointer' : 'not-allowed',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '4px'
+                                    }}
+                                    title={!canReview ? "Self-approval prohibited without superuser exception." : "Approve waste"}
+                                  >
+                                    <Check size={12} /> Approve
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={!canReview}
+                                    onClick={() => {
+                                      setRejectTargetRecord(w);
+                                      setRejectReason('');
+                                      setRejectJustification('');
+                                    }}
+                                    style={{
+                                      ...deleteBtnStyle,
+                                      backgroundColor: canReview ? 'rgba(239, 68, 68, 0.08)' : '#f1f5f9',
+                                      color: canReview ? '#dc2626' : '#94a3b8',
+                                      cursor: canReview ? 'pointer' : 'not-allowed',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '4px'
+                                    }}
+                                    title={!canReview ? "Self-rejection prohibited without superuser exception." : "Reject waste"}
+                                  >
+                                    <X size={12} /> Reject
+                                  </button>
+                                </div>
+                              ) : canReverse ? (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setReverseTargetRecord(w);
+                                    setReversalReason('');
+                                  }}
+                                  style={{
+                                    ...deleteBtnStyle,
+                                    backgroundColor: 'rgba(239, 68, 68, 0.08)',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '4px'
+                                  }}
+                                  title="Reverse this waste entry"
+                                >
+                                  <RotateCcw size={13} /> Reverse
+                                </button>
+                              ) : (
+                                <span style={{ color: '#cbd5e1' }}>—</span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         );
@@ -737,7 +1535,7 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
                   const totalRawCost = group.ingredients.reduce((sum, ing) => sum + ing.total_cost, 0);
                   const marginAmount = group.selling_price - totalRawCost;
                   const marginPct = group.selling_price > 0 ? (marginAmount / group.selling_price) * 100 : 0;
-                  
+
                   return (
                     <div key={group.menu_item_id} style={{
                       ...cardStyle,
@@ -869,9 +1667,10 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
                     {ledger.map(tx => {
                       const typeLabel = tx.transaction_type === 'purchase' ? 'Stock-In' :
                                         tx.transaction_type === 'issuance' ? 'Dispatch' :
-                                        tx.transaction_type === 'sale_deduction' ? 'Auto-Deduct' : 'Adjustment';
+                                        tx.transaction_type === 'sale_deduction' ? 'Auto-Deduct' :
+                                        tx.transaction_type === 'loss' ? 'Waste / Loss' : 'Adjustment';
                       const isAddition = tx.transaction_type === 'purchase' || (tx.transaction_type === 'adjustment' && parseFloat(tx.quantity) > 0);
-                      
+
                       return (
                         <tr key={tx.id} style={trStyle}>
                           <td style={{ ...tdStyle, color: '#64748b', fontSize: '12px' }}>
@@ -882,11 +1681,14 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
                             <span style={{
                               ...badgeStyle,
                               backgroundColor: tx.transaction_type === 'purchase' ? 'rgba(16,185,129,0.1)' :
-                                               tx.transaction_type === 'issuance' ? 'rgba(14,165,233,0.1)' : 'rgba(245,158,11,0.1)',
+                                               tx.transaction_type === 'issuance' ? 'rgba(14,165,233,0.1)' :
+                                               tx.transaction_type === 'loss' ? 'rgba(239,68,68,0.1)' : 'rgba(245,158,11,0.1)',
                               color: tx.transaction_type === 'purchase' ? '#10b981' :
-                                     tx.transaction_type === 'issuance' ? '#0ea5e9' : '#f59e0b',
+                                     tx.transaction_type === 'issuance' ? '#0ea5e9' :
+                                     tx.transaction_type === 'loss' ? '#ef4444' : '#f59e0b',
                               border: `1px solid ${tx.transaction_type === 'purchase' ? '#10b981' :
-                                                   tx.transaction_type === 'issuance' ? '#0ea5e9' : '#f59e0b'}`
+                                                   tx.transaction_type === 'issuance' ? '#0ea5e9' :
+                                                   tx.transaction_type === 'loss' ? '#ef4444' : '#f59e0b'}`
                             }}>
                               {typeLabel}
                             </span>
@@ -918,7 +1720,7 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
                 <h2 style={{ margin: 0, color: '#0f172a', fontSize: '20px', fontWeight: '800' }}>Category List</h2>
                 <p style={{ margin: 0, color: '#64748b', fontSize: '13px' }}>Manage groups and classifications for your ingredients and materials.</p>
               </div>
-              <button onClick={() => setIsCategoryModalOpen(true)} style={btnPrimaryStyle}>
+              <button onClick={() => { setCategoryModalError(''); setIsCategoryModalOpen(true); }} style={btnPrimaryStyle}>
                 <Plus size={16} style={{ marginRight: '6px' }} /> Add Category
               </button>
             </div>
@@ -947,14 +1749,14 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
                           <td style={tdStyle}>{cat.description || '—'}</td>
                           <td style={tdStyle}>
                             <div style={{ display: 'flex', gap: '6px' }}>
-                              <button onClick={() => setEditCategory({ ...cat })} style={editBtnStyle}>Edit</button>
+                              <button onClick={() => { setEditCategoryModalError(''); setEditCategory({ ...cat }); }} style={editBtnStyle}>Edit</button>
                               <button onClick={async () => {
                                 if (window.confirm(`Are you sure you want to delete the category "${cat.name}"?`)) {
                                   try {
                                     await axios.delete(`${API_BASE}inventory-categories/${cat.id}/`, { headers: getHeaders() });
                                     fetchData();
                                   } catch (err) {
-                                    alert("Error deleting category. It might be in use by stock items.");
+                                    alert(apiErrorMessage(err, "Error deleting category. It might be in use by stock items."));
                                   }
                                 }
                               }} style={deleteBtnStyle}>Delete</button>
@@ -1063,7 +1865,7 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
         // Compute report card summary stats
         const totalValuationVal = items.reduce((sum, item) => sum + (parseFloat(item.current_stock) * parseFloat(item.unit_cost)), 0);
         const lowStockCountVal = items.filter(item => parseFloat(item.current_stock) < parseFloat(item.min_reorder_level)).length;
-        
+
         // Dispatches in last 30 days
         const thirtyDaysAgo = new Date();
         thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
@@ -1370,19 +2172,19 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
             // Dispatches filter
             const filtered = ledger.filter(tx => {
               if (tx.transaction_type !== 'issuance') return false;
-              
+
               // Date filter
               const txDateStr = tx.timestamp.split('T')[0];
               const matchesStartDate = !reportConsumptionStart || txDateStr >= reportConsumptionStart;
               const matchesEndDate = !reportConsumptionEnd || txDateStr <= reportConsumptionEnd;
-              
+
               // Department filter
               let matchesDept = true;
               if (reportConsumptionDept) {
                 // notes contains e.g. "Dispatched to Kitchen"
                 matchesDept = tx.notes?.toLowerCase().includes(`dispatched to ${reportConsumptionDept.toLowerCase()}`);
               }
-              
+
               return matchesStartDate && matchesEndDate && matchesDept;
             });
 
@@ -1502,10 +2304,10 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
             const list = Object.values(grouped).filter(item => {
               const marginAmount = item.price - item.cost;
               const marginPct = item.price > 0 ? (marginAmount / item.price) * 100 : 0;
-              
+
               // Category filter
               const matchesCategory = !reportRecipeCategory || item.category?.toString() === reportRecipeCategory;
-              
+
               // Margin filter
               let matchesMargin = true;
               if (reportRecipeMarginFilter === 'low') {
@@ -1634,16 +2436,54 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
     }
   };
 
+  const selectedWasteItem = items.find(i => String(i.id) === String(newWaste.item));
+  const candidateIssuances = selectedWasteItem
+    ? ledger.filter(tx => tx.transaction_type === 'issuance' && String(tx.item) === String(selectedWasteItem.id))
+    : [];
+  const selectedIssuance = candidateIssuances.find(tx => String(tx.id) === String(newWaste.source_dispatch));
+
+  // Compute normalized base quantity for real-time preview
+  let previewNormalizedQty = 0;
+  if (selectedWasteItem && newWaste.entered_quantity && parseFloat(newWaste.entered_quantity) > 0) {
+    const rawQty = parseFloat(newWaste.entered_quantity);
+    const u = newWaste.entered_unit;
+    const baseU = selectedWasteItem.unit;
+    if (u === baseU) {
+      previewNormalizedQty = rawQty;
+    } else if (baseU === 'kg' && u === 'g') {
+      previewNormalizedQty = rawQty / 1000;
+    } else if (baseU === 'g' && u === 'kg') {
+      previewNormalizedQty = rawQty * 1000;
+    } else if (baseU === 'l' && u === 'ml') {
+      previewNormalizedQty = rawQty / 1000;
+    } else if (baseU === 'ml' && u === 'l') {
+      previewNormalizedQty = rawQty * 1000;
+    } else if (u === 'pack') {
+      previewNormalizedQty = rawQty * (parseFloat(selectedWasteItem.units_per_pack) || 1);
+    } else {
+      previewNormalizedQty = rawQty;
+    }
+  }
+
+  // Compute remaining issuance ceiling for preparation waste
+  let issuanceRemainingCeiling = 0;
+  if (selectedIssuance) {
+    const priorWaste = wasteRecords
+      .filter(w => String(w.source_dispatch) === String(selectedIssuance.id) && !w.is_reversed)
+      .reduce((sum, w) => sum + parseFloat(w.base_quantity || 0), 0);
+    issuanceRemainingCeiling = Math.max(0, parseFloat(selectedIssuance.quantity) - priorWaste);
+  }
+
   return (
     <div style={containerStyle} className="inventory-container">
       {/* Dynamic Font Styling */}
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
-        
+
         .inventory-container {
           font-family: 'Plus Jakarta Sans', sans-serif !important;
         }
-        
+
         .tab-btn-active {
           border-bottom: 3px solid #0f766e !important;
           color: #0f766e !important;
@@ -1744,6 +2584,7 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
       <div style={tabBar} className="no-print inventory-tab-bar">
         <button onClick={() => { setActiveTab('overview'); setSelectedReport(null); }} style={tabBtn} className={activeTab === 'overview' ? 'tab-btn-active' : ''}>Overview</button>
         <button onClick={() => { setActiveTab('actions'); setSelectedReport(null); }} style={tabBtn} className={activeTab === 'actions' ? 'tab-btn-active' : ''}>Stock Actions</button>
+        <button onClick={() => { setActiveTab('waste'); setSelectedReport(null); }} style={tabBtn} className={activeTab === 'waste' ? 'tab-btn-active' : ''}>Waste & Loss</button>
         <button onClick={() => { setActiveTab('recipes'); setSelectedReport(null); }} style={tabBtn} className={activeTab === 'recipes' ? 'tab-btn-active' : ''}>Recipes BOM</button>
         <button onClick={() => { setActiveTab('ledger'); setSelectedReport(null); }} style={tabBtn} className={activeTab === 'ledger' ? 'tab-btn-active' : ''}>Stock Ledger</button>
         <button onClick={() => { setActiveTab('items'); setSelectedReport(null); }} style={tabBtn} className={activeTab === 'items' ? 'tab-btn-active' : ''}>Ingredients & Stock List</button>
@@ -1761,9 +2602,9 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
       {/* Item Modal */}
       <AnimatePresence>
         {isItemModalOpen && (
-          <div style={modalOverlayStyle}>
-            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} style={modalContentStyle}>
-              <h3 style={{ margin: '0 0 20px', color: '#0f172a', fontWeight: '800' }}>Add New Ingredient / Stock Item</h3>
+          <div style={modalOverlayStyle} onClick={() => dismissModal(() => setIsItemModalOpen(false))}>
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} style={{ ...modalContentStyle, width: '560px' }} onClick={e => e.stopPropagation()}>
+              <ModalHeader title="Add New Ingredient / Stock Item" onClose={() => dismissModal(() => setIsItemModalOpen(false))} />
               <form onSubmit={handleCreateItem} style={formStyle}>
                 <div style={formGroupStyle}>
                   <label style={labelStyle}>Item Code (Unique)</label>
@@ -1798,16 +2639,16 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
                 </div>
                 <div style={formRowStyle}>
                   <div style={formGroupStyle}>
-                    <label style={labelStyle}>Min Reorder Warning Level</label>
+                    <label style={labelStyle}>Min Reorder Warning Level ({newItem.unit})</label>
                     <input required type="number" step="0.01" style={inputStyle} value={newItem.min_reorder_level} onChange={e => setNewItem({ ...newItem, min_reorder_level: e.target.value })} />
                   </div>
                   <div style={formGroupStyle}>
-                    <label style={labelStyle}>Purchase Unit Cost (ETB)</label>
+                    <label style={labelStyle}>Purchase Unit Cost (ETB per {newItem.unit})</label>
                     <input required type="number" step="0.01" style={inputStyle} value={newItem.unit_cost} onChange={e => setNewItem({ ...newItem, unit_cost: e.target.value })} />
                   </div>
                 </div>
                 <div style={formGroupStyle}>
-                  <label style={labelStyle}>Guest Selling Price (ETB) <span style={{ color: '#94a3b8', fontWeight: 400 }}>— for minibar / room charges</span></label>
+                  <label style={labelStyle}>Guest Selling Price (ETB per {newItem.unit}) <span style={{ color: '#94a3b8', fontWeight: 400 }}>— for minibar / room charges</span></label>
                   <input type="number" step="0.01" style={inputStyle} value={newItem.selling_price} placeholder="0.00" onChange={e => setNewItem({ ...newItem, selling_price: e.target.value })} />
                 </div>
                 <div style={formGroupStyle}>
@@ -1819,8 +2660,8 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
                     ))}
                   </select>
                 </div>
-                <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
-                  <button type="button" onClick={() => setIsItemModalOpen(false)} style={btnSecondaryStyle}>Cancel</button>
+                <div style={{ display: 'flex', gap: '10px', marginTop: '10px', justifyContent: 'flex-end' }}>
+                  <button type="button" onClick={() => dismissModal(() => setIsItemModalOpen(false))} style={modalCancelBtnStyle}><ArrowLeft size={14} /> Cancel</button>
                   <button type="submit" style={btnPrimaryStyle}>Save Item</button>
                 </div>
               </form>
@@ -1832,9 +2673,9 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
       {/* Supplier Modal */}
       <AnimatePresence>
         {isSupplierModalOpen && (
-          <div style={modalOverlayStyle}>
-            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} style={modalContentStyle}>
-              <h3 style={{ margin: '0 0 20px', color: '#0f172a', fontWeight: '800' }}>Add New Supplier</h3>
+          <div style={modalOverlayStyle} onClick={() => dismissModal(() => setIsSupplierModalOpen(false))}>
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} style={{ ...modalContentStyle, width: '580px' }} onClick={e => e.stopPropagation()}>
+              <ModalHeader title="Add New Supplier" onClose={() => dismissModal(() => setIsSupplierModalOpen(false))} />
               <form onSubmit={handleCreateSupplier} style={formStyle}>
                 <div style={formGroupStyle}>
                   <label style={labelStyle}>Supplier / Company Name</label>
@@ -1916,8 +2757,8 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
                   <label style={labelStyle}>Company Address</label>
                   <textarea style={inputStyle} rows="2" value={newSupplier.address} placeholder="Office location..." onChange={e => setNewSupplier({ ...newSupplier, address: e.target.value })} />
                 </div>
-                <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
-                  <button type="button" onClick={() => setIsSupplierModalOpen(false)} style={btnSecondaryStyle}>Cancel</button>
+                <div style={{ display: 'flex', gap: '10px', marginTop: '10px', justifyContent: 'flex-end' }}>
+                  <button type="button" onClick={() => dismissModal(() => setIsSupplierModalOpen(false))} style={modalCancelBtnStyle}><ArrowLeft size={14} /> Cancel</button>
                   <button type="submit" style={btnPrimaryStyle}>Save Supplier</button>
                 </div>
               </form>
@@ -1929,11 +2770,11 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
       {/* Recipe BOM Modal */}
       <AnimatePresence>
         {isRecipeModalOpen && (
-          <div style={modalOverlayStyle}>
-            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} style={{ ...modalContentStyle, width: '650px', maxWidth: '95%' }}>
-              <h3 style={{ margin: '0 0 20px', color: '#0f172a', fontWeight: '800' }}>Define Recipe / Bill of Materials</h3>
+          <div style={modalOverlayStyle} onClick={() => dismissModal(() => setIsRecipeModalOpen(false))}>
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} style={{ ...modalContentStyle, width: '650px', maxWidth: '96vw' }} onClick={e => e.stopPropagation()}>
+              <ModalHeader title="Define Recipe / Bill of Materials" onClose={() => dismissModal(() => setIsRecipeModalOpen(false))} />
               <form onSubmit={handleSaveRecipeBOM} style={formStyle}>
-                
+
                 {/* Menu Item Selection */}
                 <div style={formGroupStyle}>
                   <label style={labelStyle}>Select F&B Menu Item</label>
@@ -1980,13 +2821,15 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
                               <select required style={inputStyle} value={row.ingredient} onChange={e => handleRowChange(index, 'ingredient', e.target.value)}>
                                 <option value="">-- Select Ingredient --</option>
                                 {items.map(item => (
-                                  <option key={item.id} value={item.id}>{item.name} ({item.item_code})</option>
+                                  <option key={item.id} value={item.id}>
+                                    {item.name} ({item.item_code}) — [{item.unit}]
+                                  </option>
                                 ))}
                               </select>
                             </div>
                             <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '5px' }}>
                               <input required type="number" step="0.001" style={{ ...inputStyle, width: '100%' }} value={row.quantity_required} placeholder="Qty" onChange={e => handleRowChange(index, 'quantity_required', e.target.value)} />
-                              <span style={{ fontSize: '12px', color: '#64748b', minWidth: '35px' }}>{unit}</span>
+                              <span style={{ fontSize: '12px', color: '#0f766e', minWidth: '40px', fontWeight: '700', backgroundColor: '#f0fdfa', padding: '3px 6px', borderRadius: '4px', border: '1px solid #ccfbf1', textAlign: 'center' }}>{unit || '—'}</span>
                             </div>
                             <div style={{ minWidth: '80px', textAlign: 'right', fontSize: '13px', fontWeight: '700', color: '#0f766e' }}>
                               {rowCost.toFixed(2)} ETB
@@ -2050,7 +2893,7 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
 
                 {/* Footer Buttons */}
                 <div style={{ display: 'flex', gap: '10px', marginTop: '20px', justifyContent: 'flex-end' }}>
-                  <button type="button" onClick={() => setIsRecipeModalOpen(false)} style={btnSecondaryStyle}>Cancel</button>
+                  <button type="button" onClick={() => dismissModal(() => setIsRecipeModalOpen(false))} style={modalCancelBtnStyle}><ArrowLeft size={14} /> Cancel</button>
                   <button type="submit" disabled={!selectedRecipeMenu || recipeRows.length === 0} style={{
                     ...btnPrimaryStyle,
                     opacity: (!selectedRecipeMenu || recipeRows.length === 0) ? 0.6 : 1,
@@ -2068,13 +2911,40 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
       {/* Category Modal */}
       <AnimatePresence>
         {isCategoryModalOpen && (
-          <div style={modalOverlayStyle}>
-            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} style={modalContentStyle}>
-              <h3 style={{ margin: '0 0 20px', color: '#0f172a', fontWeight: '800' }}>Add New Inventory Category</h3>
+          <div style={modalOverlayStyle} onClick={() => dismissModal(() => { setCategoryModalError(''); setIsCategoryModalOpen(false); })}>
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} style={modalContentStyle} onClick={e => e.stopPropagation()}>
+              <ModalHeader title="Add New Inventory Category" onClose={() => dismissModal(() => { setCategoryModalError(''); setIsCategoryModalOpen(false); })} />
+              {categoryModalError && (
+                <div style={{
+                  backgroundColor: '#fef2f2',
+                  color: '#991b1b',
+                  border: '1px solid #fecaca',
+                  padding: '10px 14px',
+                  borderRadius: '8px',
+                  fontSize: '0.875rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  marginBottom: '16px'
+                }}>
+                  <AlertTriangle size={18} style={{ flexShrink: 0 }} />
+                  <span>{categoryModalError}</span>
+                </div>
+              )}
               <form onSubmit={handleCreateCategory} style={formStyle}>
                 <div style={formGroupStyle}>
                   <label style={labelStyle}>Category Name</label>
-                  <input required type="text" style={inputStyle} value={newCategory.name} placeholder="e.g. Food, Beverages, Housekeeping" onChange={e => setNewCategory({ ...newCategory, name: e.target.value })} />
+                  <input
+                    required
+                    type="text"
+                    style={inputStyle}
+                    value={newCategory.name}
+                    placeholder="e.g. Food, Beverages, Housekeeping"
+                    onChange={e => {
+                      setCategoryModalError('');
+                      setNewCategory({ ...newCategory, name: e.target.value });
+                    }}
+                  />
                 </div>
                 <div style={formGroupStyle}>
                   <label style={labelStyle}>Category Type</label>
@@ -2087,8 +2957,8 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
                   <label style={labelStyle}>Description (Optional)</label>
                   <textarea style={inputStyle} rows="3" value={newCategory.description} placeholder="Describe what items belong to this category..." onChange={e => setNewCategory({ ...newCategory, description: e.target.value })} />
                 </div>
-                <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
-                  <button type="button" onClick={() => setIsCategoryModalOpen(false)} style={btnSecondaryStyle}>Cancel</button>
+                <div style={{ display: 'flex', gap: '10px', marginTop: '10px', justifyContent: 'flex-end' }}>
+                  <button type="button" onClick={() => dismissModal(() => { setCategoryModalError(''); setIsCategoryModalOpen(false); })} style={modalCancelBtnStyle}><ArrowLeft size={14} /> Cancel</button>
                   <button type="submit" style={btnPrimaryStyle}>Save Category</button>
                 </div>
               </form>
@@ -2100,9 +2970,9 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
       {/* ── EDIT ITEM MODAL ─────────────────────────────────────── */}
       <AnimatePresence>
         {editItem && (
-          <div style={modalOverlayStyle}>
-            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} style={modalContentStyle}>
-              <h3 style={{ margin: '0 0 20px', color: '#0f172a', fontWeight: '800' }}>✏️ Edit Ingredient / Stock Item</h3>
+          <div style={modalOverlayStyle} onClick={() => dismissModal(() => setEditItem(null))}>
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} style={{ ...modalContentStyle, width: '560px' }} onClick={e => e.stopPropagation()}>
+              <ModalHeader title="✏️ Edit Ingredient / Stock Item" onClose={() => dismissModal(() => setEditItem(null))} />
               <form onSubmit={handleEditItem} style={formStyle}>
                 <div style={formGroupStyle}>
                   <label style={labelStyle}>Item Code</label>
@@ -2135,16 +3005,16 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
                 </div>
                 <div style={formRowStyle}>
                   <div style={formGroupStyle}>
-                    <label style={labelStyle}>Min Reorder Level</label>
+                    <label style={labelStyle}>Min Reorder Level ({editItem.unit})</label>
                     <input required type="number" step="0.01" style={inputStyle} value={editItem.min_reorder_level} onChange={e => setEditItem({ ...editItem, min_reorder_level: e.target.value })} />
                   </div>
                   <div style={formGroupStyle}>
-                    <label style={labelStyle}>Purchase Unit Cost (ETB)</label>
+                    <label style={labelStyle}>Purchase Unit Cost (ETB per {editItem.unit})</label>
                     <input required type="number" step="0.01" style={inputStyle} value={editItem.unit_cost} onChange={e => setEditItem({ ...editItem, unit_cost: e.target.value })} />
                   </div>
                 </div>
                 <div style={formGroupStyle}>
-                  <label style={labelStyle}>Guest Selling Price (ETB) <span style={{ color: '#94a3b8', fontWeight: 400 }}>— for minibar / room charges</span></label>
+                  <label style={labelStyle}>Guest Selling Price (ETB per {editItem.unit}) <span style={{ color: '#94a3b8', fontWeight: 400 }}>— for minibar / room charges</span></label>
                   <input type="number" step="0.01" style={inputStyle} value={editItem.selling_price ?? ''} placeholder="0.00" onChange={e => setEditItem({ ...editItem, selling_price: e.target.value })} />
                 </div>
                 <div style={formGroupStyle}>
@@ -2154,8 +3024,8 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
                     {suppliers.map(sup => <option key={sup.id} value={sup.id}>{sup.name}</option>)}
                   </select>
                 </div>
-                <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
-                  <button type="button" onClick={() => setEditItem(null)} style={btnSecondaryStyle}>Cancel</button>
+                <div style={{ display: 'flex', gap: '10px', marginTop: '10px', justifyContent: 'flex-end' }}>
+                  <button type="button" onClick={() => dismissModal(() => setEditItem(null))} style={modalCancelBtnStyle}><ArrowLeft size={14} /> Cancel</button>
                   <button type="submit" style={btnPrimaryStyle}>Save Changes</button>
                 </div>
               </form>
@@ -2167,20 +3037,46 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
       {/* ── EDIT CATEGORY MODAL ──────────────────────────────────── */}
       <AnimatePresence>
         {editCategory && (
-          <div style={modalOverlayStyle}>
-            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} style={modalContentStyle}>
-              <h3 style={{ margin: '0 0 20px', color: '#0f172a', fontWeight: '800' }}>✏️ Edit Category</h3>
+          <div style={modalOverlayStyle} onClick={() => dismissModal(() => { setEditCategoryModalError(''); setEditCategory(null); })}>
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} style={modalContentStyle} onClick={e => e.stopPropagation()}>
+              <ModalHeader title="✏️ Edit Category" onClose={() => dismissModal(() => { setEditCategoryModalError(''); setEditCategory(null); })} />
+              {editCategoryModalError && (
+                <div style={{
+                  backgroundColor: '#fef2f2',
+                  color: '#991b1b',
+                  border: '1px solid #fecaca',
+                  padding: '10px 14px',
+                  borderRadius: '8px',
+                  fontSize: '0.875rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  marginBottom: '16px'
+                }}>
+                  <AlertTriangle size={18} style={{ flexShrink: 0 }} />
+                  <span>{editCategoryModalError}</span>
+                </div>
+              )}
               <form onSubmit={handleEditCategory} style={formStyle}>
                 <div style={formGroupStyle}>
                   <label style={labelStyle}>Category Name</label>
-                  <input required type="text" style={inputStyle} value={editCategory.name} onChange={e => setEditCategory({ ...editCategory, name: e.target.value })} />
+                  <input
+                    required
+                    type="text"
+                    style={inputStyle}
+                    value={editCategory.name}
+                    onChange={e => {
+                      setEditCategoryModalError('');
+                      setEditCategory({ ...editCategory, name: e.target.value });
+                    }}
+                  />
                 </div>
                 <div style={formGroupStyle}>
                   <label style={labelStyle}>Description (Optional)</label>
                   <textarea style={inputStyle} rows="3" value={editCategory.description || ''} onChange={e => setEditCategory({ ...editCategory, description: e.target.value })} />
                 </div>
-                <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
-                  <button type="button" onClick={() => setEditCategory(null)} style={btnSecondaryStyle}>Cancel</button>
+                <div style={{ display: 'flex', gap: '10px', marginTop: '10px', justifyContent: 'flex-end' }}>
+                  <button type="button" onClick={() => dismissModal(() => { setEditCategoryModalError(''); setEditCategory(null); })} style={modalCancelBtnStyle}><ArrowLeft size={14} /> Cancel</button>
                   <button type="submit" style={btnPrimaryStyle}>Save Changes</button>
                 </div>
               </form>
@@ -2192,9 +3088,9 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
       {/* ── EDIT SUPPLIER MODAL ──────────────────────────────────── */}
       <AnimatePresence>
         {editSupplier && (
-          <div style={modalOverlayStyle}>
-            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} style={{ ...modalContentStyle, width: '560px', maxWidth: '95%', maxHeight: '90vh', overflowY: 'auto' }}>
-              <h3 style={{ margin: '0 0 20px', color: '#0f172a', fontWeight: '800' }}>✏️ Edit Supplier</h3>
+          <div style={modalOverlayStyle} onClick={() => dismissModal(() => setEditSupplier(null))}>
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} style={{ ...modalContentStyle, width: '580px', maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
+              <ModalHeader title="✏️ Edit Supplier" onClose={() => dismissModal(() => setEditSupplier(null))} />
               <form onSubmit={handleEditSupplier} style={formStyle}>
                 <div style={formGroupStyle}>
                   <label style={labelStyle}>Company Name</label>
@@ -2247,9 +3143,537 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
                   <label style={labelStyle}>Company Address</label>
                   <textarea style={inputStyle} rows="2" value={editSupplier.address || ''} onChange={e => setEditSupplier({ ...editSupplier, address: e.target.value })} />
                 </div>
-                <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
-                  <button type="button" onClick={() => setEditSupplier(null)} style={btnSecondaryStyle}>Cancel</button>
+                <div style={{ display: 'flex', gap: '10px', marginTop: '10px', justifyContent: 'flex-end' }}>
+                  <button type="button" onClick={() => dismissModal(() => setEditSupplier(null))} style={modalCancelBtnStyle}><ArrowLeft size={14} /> Cancel</button>
                   <button type="submit" style={btnPrimaryStyle}>Save Changes</button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ── REGISTER WASTE MODAL ─────────────────────────────────── */}
+      <AnimatePresence>
+        {isWasteModalOpen && (
+          <div style={modalOverlayStyle} onClick={() => dismissModal(() => setIsWasteModalOpen(false))}>
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              style={{ ...modalContentStyle, width: '620px', maxHeight: '90vh', overflowY: 'auto' }}
+              onClick={e => e.stopPropagation()}
+            >
+              <ModalHeader title="🗑️ Register Inventory Waste / Loss" onClose={() => dismissModal(() => setIsWasteModalOpen(false))} />
+              <form onSubmit={handleCreateWaste} style={formStyle}>
+
+                {/* Waste Source Switcher */}
+                <div style={formGroupStyle}>
+                  <label style={labelStyle}>Waste Tracking Type</label>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginTop: '4px' }}>
+                    <label style={{
+                      display: 'flex', flexDirection: 'column', gap: '4px', padding: '12px',
+                      borderRadius: '12px', border: `2px solid ${newWaste.waste_source === 'direct_loss' ? '#dc2626' : '#e2e8f0'}`,
+                      backgroundColor: newWaste.waste_source === 'direct_loss' ? 'rgba(220, 38, 38, 0.05)' : '#ffffff',
+                      cursor: 'pointer'
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <input
+                          type="radio"
+                          name="waste_source"
+                          checked={newWaste.waste_source === 'direct_loss'}
+                          onChange={() => setNewWaste({ ...newWaste, waste_source: 'direct_loss', source_dispatch: '' })}
+                          style={{ accentColor: '#dc2626' }}
+                        />
+                        <strong style={{ fontSize: '13px', color: '#0f172a' }}>Direct Storeroom Loss</strong>
+                      </div>
+                      <span style={{ fontSize: '11px', color: '#64748b', paddingLeft: '22px' }}>
+                        Stock still in store/warehouse. Deducts usable current stock and posts GL loss.
+                      </span>
+                    </label>
+
+                    <label style={{
+                      display: 'flex', flexDirection: 'column', gap: '4px', padding: '12px',
+                      borderRadius: '12px', border: `2px solid ${newWaste.waste_source === 'kitchen_prep_waste' ? '#7c3aed' : '#e2e8f0'}`,
+                      backgroundColor: newWaste.waste_source === 'kitchen_prep_waste' ? 'rgba(124, 58, 237, 0.05)' : '#ffffff',
+                      cursor: 'pointer'
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <input
+                          type="radio"
+                          name="waste_source"
+                          checked={newWaste.waste_source === 'kitchen_prep_waste'}
+                          onChange={() => setNewWaste({ ...newWaste, waste_source: 'kitchen_prep_waste' })}
+                          style={{ accentColor: '#7c3aed' }}
+                        />
+                        <strong style={{ fontSize: '13px', color: '#0f172a' }}>Kitchen Prep Waste</strong>
+                      </div>
+                      <span style={{ fontSize: '11px', color: '#64748b', paddingLeft: '22px' }}>
+                        Peeling/trimming on previously issued stock. Records against issuance without warehouse deduction.
+                      </span>
+                    </label>
+                  </div>
+                </div>
+
+                {/* Item Select */}
+                <div style={formGroupStyle}>
+                  <label style={labelStyle}>Select Inventory Item</label>
+                  <select
+                    required
+                    style={inputStyle}
+                    value={newWaste.item}
+                    onChange={e => {
+                      const selId = e.target.value;
+                      const itm = items.find(i => String(i.id) === String(selId));
+                      setNewWaste({
+                        ...newWaste,
+                        item: selId,
+                        entered_unit: itm ? itm.unit : newWaste.entered_unit,
+                        source_dispatch: ''
+                      });
+                    }}
+                  >
+                    <option value="">-- Select Item --</option>
+                    {items.map(itm => (
+                      <option key={itm.id} value={itm.id}>
+                        {itm.name} ({itm.item_code}) — On Hand: {parseFloat(itm.current_stock).toFixed(2)} {itm.unit}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* If Kitchen Prep Waste: Parent Kitchen Issuance Transaction */}
+                {newWaste.waste_source === 'kitchen_prep_waste' && (
+                  <div style={formGroupStyle}>
+                    <label style={labelStyle}>Parent Kitchen Issuance Transaction</label>
+                    {candidateIssuances.length === 0 ? (
+                      <div style={{ padding: '10px 14px', backgroundColor: '#fffbeb', border: '1px solid #fef3c7', borderRadius: '10px', fontSize: '12px', color: '#92400e' }}>
+                        ⚠️ No kitchen issuance transactions recorded for this item yet. Please dispatch stock to the kitchen first under "Stock Actions".
+                      </div>
+                    ) : (
+                      <select
+                        required
+                        style={inputStyle}
+                        value={newWaste.source_dispatch}
+                        onChange={e => setNewWaste({ ...newWaste, source_dispatch: e.target.value })}
+                      >
+                        <option value="">-- Select Kitchen Issuance --</option>
+                        {candidateIssuances.map(tx => {
+                          const priorWaste = wasteRecords
+                            .filter(w => String(w.source_dispatch) === String(tx.id) && !w.is_reversed)
+                            .reduce((sum, w) => sum + parseFloat(w.base_quantity || 0), 0);
+                          const remaining = Math.max(0, parseFloat(tx.quantity) - priorWaste);
+                          return (
+                            <option key={tx.id} value={tx.id}>
+                              Issuance #{tx.id} ({new Date(tx.timestamp).toLocaleDateString()}) — Issued: {parseFloat(tx.quantity).toFixed(2)} {tx.item_unit} | Remaining Ceiling: {remaining.toFixed(2)} {tx.item_unit}
+                            </option>
+                          );
+                        })}
+                      </select>
+                    )}
+                    {selectedIssuance && (
+                      <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
+                        Issued to <strong>{selectedIssuance.destination_dept || 'Kitchen'}</strong> on {new Date(selectedIssuance.timestamp).toLocaleDateString()}.
+                        Maximum remaining allowable preparation waste: <strong style={{ color: '#7c3aed' }}>{issuanceRemainingCeiling.toFixed(2)} {selectedWasteItem?.unit}</strong>.
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Storage Area (for direct loss) */}
+                {newWaste.waste_source === 'direct_loss' && (
+                  <div style={formGroupStyle}>
+                    <label style={labelStyle}>Physical Storage Location (Optional)</label>
+                    <input
+                      type="text"
+                      style={inputStyle}
+                      placeholder="e.g. Cold Room A, Dry Store Shelf 2, Bar Fridge"
+                      value={newWaste.storage_area}
+                      onChange={e => setNewWaste({ ...newWaste, storage_area: e.target.value })}
+                    />
+                  </div>
+                )}
+
+                {/* Quantity and UoM */}
+                <div style={formRowStyle}>
+                  <div style={formGroupStyle}>
+                    <label style={labelStyle}>Entered Quantity</label>
+                    <input
+                      required
+                      type="number"
+                      step="0.01"
+                      min="0.01"
+                      style={inputStyle}
+                      placeholder="e.g. 2.50"
+                      value={newWaste.entered_quantity}
+                      onChange={e => setNewWaste({ ...newWaste, entered_quantity: e.target.value })}
+                    />
+                  </div>
+                  <div style={formGroupStyle}>
+                    <label style={labelStyle}>Unit of Measure</label>
+                    <select
+                      required
+                      style={inputStyle}
+                      value={newWaste.entered_unit}
+                      onChange={e => setNewWaste({ ...newWaste, entered_unit: e.target.value })}
+                    >
+                      <option value="kg">Kilogram (kg)</option>
+                      <option value="g">Gram (g)</option>
+                      <option value="l">Liter (L)</option>
+                      <option value="ml">Milliliter (ml)</option>
+                      <option value="pcs">Pieces (pcs)</option>
+                      <option value="pack">Packs (pack)</option>
+                      <option value="bottle">Bottles (bottle)</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Dynamic Real-time Calculations / Validation Preview */}
+                {selectedWasteItem && newWaste.entered_quantity && parseFloat(newWaste.entered_quantity) > 0 && (() => {
+                  const unitCost = parseFloat(selectedWasteItem.unit_cost || 0);
+                  const estLoss = previewNormalizedQty * unitCost;
+                  const isDiscrete = ['pcs', 'bottle'].includes(newWaste.entered_unit);
+                  const isFractionalDiscrete = isDiscrete && (parseFloat(newWaste.entered_quantity) % 1 !== 0);
+                  const isZeroCost = unitCost <= 0;
+                  const exceedsThreshold = estLoss > 1000;
+
+                  return (
+                    <div style={{ padding: '12px 16px', backgroundColor: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0', fontSize: '12px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                        <span style={{ color: '#64748b' }}>Normalized Base Quantity:</span>
+                        <strong>{previewNormalizedQty.toFixed(2)} {selectedWasteItem.unit}</strong>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                        <span style={{ color: '#64748b' }}>Estimated Financial Loss:</span>
+                        <strong style={{ color: isZeroCost ? '#d97706' : '#dc2626' }}>{estLoss.toFixed(2)} ETB {isZeroCost && '(Zero Cost)'}</strong>
+                      </div>
+
+                      {newWaste.waste_source === 'direct_loss' ? (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '6px', borderTop: '1px solid #e2e8f0', marginTop: '6px' }}>
+                          <span style={{ color: '#64748b' }}>Remaining Stock after Loss:</span>
+                          <strong style={{ color: (parseFloat(selectedWasteItem.current_stock) - previewNormalizedQty) < 0 ? '#dc2626' : '#0f766e' }}>
+                            {(parseFloat(selectedWasteItem.current_stock) - previewNormalizedQty).toFixed(2)} {selectedWasteItem.unit}
+                            {(parseFloat(selectedWasteItem.current_stock) - previewNormalizedQty) < 0 && ' (⚠️ Exceeds Available Stock!)'}
+                          </strong>
+                        </div>
+                      ) : (
+                        selectedIssuance && (
+                          <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '6px', borderTop: '1px solid #e2e8f0', marginTop: '6px' }}>
+                            <span style={{ color: '#64748b' }}>Remaining Issuance Ceiling:</span>
+                            <strong style={{ color: (issuanceRemainingCeiling - previewNormalizedQty) < 0 ? '#dc2626' : '#7c3aed' }}>
+                              {(issuanceRemainingCeiling - previewNormalizedQty).toFixed(2)} {selectedWasteItem.unit}
+                              {(issuanceRemainingCeiling - previewNormalizedQty) < 0 && ' (⚠️ Exceeds Issuance Ceiling!)'}
+                            </strong>
+                          </div>
+                        )
+                      )}
+
+                      {/* Phase 2 Threshold / Zero Cost / Precision Notices */}
+                      {isFractionalDiscrete && (
+                        <div style={{ marginTop: '8px', padding: '8px 10px', backgroundColor: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', color: '#b91c1c', fontSize: '11px', fontWeight: '600' }}>
+                          ⚠️ Discrete unit '{newWaste.entered_unit}' requires whole numbers. Decimals will be rejected.
+                        </div>
+                      )}
+                      {isZeroCost && (
+                        <div style={{ marginTop: '8px', padding: '8px 10px', backgroundColor: '#fffbeb', border: '1px solid #fef3c7', borderRadius: '8px', color: '#b45309', fontSize: '11px', fontWeight: '600' }}>
+                          ⚠️ Item has 0.00 ETB unit cost. Waste will be held as <strong>Pending Review</strong> for manager evaluation before stock deduction.
+                        </div>
+                      )}
+                      {!isZeroCost && exceedsThreshold && (
+                        <div style={{ marginTop: '8px', padding: '8px 10px', backgroundColor: '#eff6ff', border: '1px solid #dbeafe', borderRadius: '8px', color: '#1d4ed8', fontSize: '11px', fontWeight: '600' }}>
+                          ℹ️ Total loss exceeds ETB 1,000 threshold. Waste will be held as <strong>Pending Review</strong> until an administrator approves it.
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                {/* Waste Category */}
+                <div style={formGroupStyle}>
+                  <label style={labelStyle}>Waste Loss Category</label>
+                  <select
+                    required
+                    style={inputStyle}
+                    value={newWaste.waste_category}
+                    onChange={e => setNewWaste({ ...newWaste, waste_category: e.target.value })}
+                  >
+                    <option value="food_spoilage_or_expiry">Food Spoilage or Expiry</option>
+                    <option value="unissued_prep_loss">Preparation / Trimming Loss</option>
+                    <option value="breakage_or_damage">Breakage or Accidental Damage</option>
+                    <option value="spillage">Spillage</option>
+                    <option value="other">Other Confirmed Loss</option>
+                  </select>
+                </div>
+
+                {/* Reason / Notes */}
+                <div style={formGroupStyle}>
+                  <label style={labelStyle}>Reason / Audit Description</label>
+                  <textarea
+                    required
+                    style={inputStyle}
+                    rows="3"
+                    placeholder="Provide specific details about the loss (e.g. Expired milk cartons discarded after morning temperature audit)..."
+                    value={newWaste.notes}
+                    onChange={e => setNewWaste({ ...newWaste, notes: e.target.value })}
+                  />
+                </div>
+
+                {/* Modal Buttons */}
+                <div style={{ display: 'flex', gap: '10px', marginTop: '10px', justifyContent: 'flex-end' }}>
+                  <button
+                    type="button"
+                    onClick={() => dismissModal(() => setIsWasteModalOpen(false))}
+                    style={modalCancelBtnStyle}
+                  >
+                    <ArrowLeft size={14} /> Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={wasteSubmitting}
+                    style={{ ...btnPrimaryStyle, backgroundColor: '#dc2626' }}
+                  >
+                    {wasteSubmitting ? 'Recording Loss...' : 'Confirm & Record Waste'}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ── REVERSE WASTE MODAL ──────────────────────────────────── */}
+      <AnimatePresence>
+        {reverseTargetRecord && (
+          <div style={modalOverlayStyle} onClick={() => dismissModal(() => { setReverseTargetRecord(null); setReversalReason(''); })}>
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              style={{ ...modalContentStyle, width: '520px' }}
+              onClick={e => e.stopPropagation()}
+            >
+              <ModalHeader
+                title={`↩️ Reverse Waste Record #${reverseTargetRecord.id}`}
+                onClose={() => dismissModal(() => { setReverseTargetRecord(null); setReversalReason(''); })}
+              />
+              <form onSubmit={handleReverseWaste} style={formStyle}>
+
+                {/* Target Record Summary */}
+                <div style={{ padding: '14px 16px', backgroundColor: '#fef2f2', borderRadius: '12px', border: '1px solid #fee2e2' }}>
+                  <div style={{ fontWeight: '800', color: '#991b1b', fontSize: '14px', marginBottom: '6px' }}>
+                    {reverseTargetRecord.item_name} ({reverseTargetRecord.item_code})
+                  </div>
+                  <div style={{ fontSize: '12px', color: '#7f1d1d', lineHeight: '1.6' }}>
+                    <div>Quantity to Reverse: <strong>{parseFloat(reverseTargetRecord.entered_quantity).toFixed(2)} {reverseTargetRecord.entered_unit}</strong> ({parseFloat(reverseTargetRecord.base_quantity).toFixed(2)} {reverseTargetRecord.item_unit} base)</div>
+                    <div>Original Cost Loss: <strong>{parseFloat(reverseTargetRecord.total_cost_loss).toFixed(2)} ETB</strong></div>
+                    <div>Source: <strong>{reverseTargetRecord.waste_source === 'direct_loss' ? 'Direct Storeroom Loss' : 'Kitchen Preparation Waste'}</strong></div>
+                  </div>
+                </div>
+
+                <div style={{ fontSize: '12px', color: '#64748b', lineHeight: '1.5' }}>
+                  {reverseTargetRecord.waste_source === 'direct_loss' ? (
+                    <span>
+                      ℹ️ This reversal will <strong>restore {parseFloat(reverseTargetRecord.base_quantity).toFixed(2)} {reverseTargetRecord.item_unit}</strong> to usable warehouse stock and post a balanced compensating General Ledger journal entry (Debit 1300 / Credit 5000).
+                    </span>
+                  ) : (
+                    <span>
+                      ℹ️ This reversal will <strong>release {parseFloat(reverseTargetRecord.base_quantity).toFixed(2)} {reverseTargetRecord.item_unit}</strong> back to the parent kitchen issuance ceiling (Issuance #{reverseTargetRecord.source_dispatch}). Warehouse stock is unchanged.
+                    </span>
+                  )}
+                </div>
+
+                <div style={formGroupStyle}>
+                  <label style={labelStyle}>Reversal Reason (Required)</label>
+                  <textarea
+                    required
+                    style={inputStyle}
+                    rows="3"
+                    placeholder="Enter the reason for reversing this waste record (e.g. Audit correction: wrong item selected by clerk)..."
+                    value={reversalReason}
+                    onChange={e => setReversalReason(e.target.value)}
+                  />
+                </div>
+
+                <div style={{ display: 'flex', gap: '10px', marginTop: '10px', justifyContent: 'flex-end' }}>
+                  <button
+                    type="button"
+                    onClick={() => dismissModal(() => { setReverseTargetRecord(null); setReversalReason(''); })}
+                    style={modalCancelBtnStyle}
+                  >
+                    <ArrowLeft size={14} /> Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={reversalSubmitting}
+                    style={{ ...btnPrimaryStyle, backgroundColor: '#dc2626' }}
+                  >
+                    {reversalSubmitting ? 'Reversing...' : 'Confirm Reversal'}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ── APPROVE WASTE MODAL ──────────────────────────────────── */}
+      <AnimatePresence>
+        {approveTargetRecord && (
+          <div style={modalOverlayStyle} onClick={() => dismissModal(() => { setApproveTargetRecord(null); setApproveJustification(''); })}>
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              style={{ ...modalContentStyle, width: '540px' }}
+              onClick={e => e.stopPropagation()}
+            >
+              <ModalHeader
+                title={`✓ Approve Waste Record #${approveTargetRecord.id}`}
+                onClose={() => dismissModal(() => { setApproveTargetRecord(null); setApproveJustification(''); })}
+              />
+              <form onSubmit={handleApproveWaste} style={formStyle}>
+                <div style={{ padding: '14px 16px', backgroundColor: '#f0fdf4', borderRadius: '12px', border: '1px solid #bbf7d0' }}>
+                  <div style={{ fontWeight: '800', color: '#166534', fontSize: '14px', marginBottom: '6px' }}>
+                    {approveTargetRecord.item_name} ({approveTargetRecord.item_code})
+                  </div>
+                  <div style={{ fontSize: '12px', color: '#14532d', lineHeight: '1.6' }}>
+                    <div>Quantity: <strong>{parseFloat(approveTargetRecord.entered_quantity).toFixed(2)} {approveTargetRecord.entered_unit}</strong> ({parseFloat(approveTargetRecord.base_quantity).toFixed(2)} {approveTargetRecord.item_unit} base)</div>
+                    <div>Total Cost Loss: <strong>{parseFloat(approveTargetRecord.total_cost_loss).toFixed(2)} ETB</strong></div>
+                    <div>Source: <strong>{approveTargetRecord.waste_source === 'direct_loss' ? 'Direct Storeroom Loss' : 'Kitchen Preparation Waste'}</strong></div>
+                    <div>Submitted by: <strong>{approveTargetRecord.reported_by_username || 'system'}</strong></div>
+                  </div>
+                </div>
+
+                <div style={{ fontSize: '12px', color: '#64748b', lineHeight: '1.5' }}>
+                  {approveTargetRecord.waste_source === 'direct_loss' ? (
+                    <span>
+                      ℹ️ Approving will <strong>deduct {parseFloat(approveTargetRecord.base_quantity).toFixed(2)} {approveTargetRecord.item_unit}</strong> from warehouse stock and create an automated General Ledger journal entry (Debit 5000 / Credit 1300).
+                    </span>
+                  ) : (
+                    <span>
+                      ℹ️ Approving will confirm the kitchen preparation waste against parent Issuance #{approveTargetRecord.source_dispatch}. Warehouse stock is already deducted.
+                    </span>
+                  )}
+                </div>
+
+                {parseFloat(approveTargetRecord.unit_cost_snapshot || 0) <= 0 && (
+                  <div style={{ padding: '10px 12px', backgroundColor: '#fffbeb', border: '1px solid #fef3c7', borderRadius: '8px', color: '#92400e', fontSize: '11px', fontWeight: '600' }}>
+                    ⚠️ Note: Item unit cost was ETB 0.00. The system will verify if the inventory item currently has a valid cost before financial posting.
+                  </div>
+                )}
+
+                {userData?.is_superuser && userData?.username === approveTargetRecord.reported_by_username && (
+                  <div style={formGroupStyle}>
+                    <div style={{ padding: '8px 12px', backgroundColor: '#fef3c7', border: '1px solid #fde68a', borderRadius: '8px', color: '#92400e', fontSize: '11px', fontWeight: '700', marginBottom: '6px' }}>
+                      ⭐ Superuser Self-Approval Exception: As submitter and superuser, please provide an auditable justification.
+                    </div>
+                    <label style={labelStyle}>Audit Justification</label>
+                    <textarea
+                      style={inputStyle}
+                      rows="2"
+                      placeholder="Enter justification for exercising superuser self-approval exception..."
+                      value={approveJustification}
+                      onChange={e => setApproveJustification(e.target.value)}
+                    />
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', gap: '10px', marginTop: '10px', justifyContent: 'flex-end' }}>
+                  <button
+                    type="button"
+                    onClick={() => dismissModal(() => { setApproveTargetRecord(null); setApproveJustification(''); })}
+                    style={modalCancelBtnStyle}
+                  >
+                    <ArrowLeft size={14} /> Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={approveSubmitting}
+                    style={{ ...btnPrimaryStyle, backgroundColor: '#059669' }}
+                  >
+                    {approveSubmitting ? 'Approving...' : 'Confirm & Approve Waste'}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ── REJECT WASTE MODAL ──────────────────────────────────── */}
+      <AnimatePresence>
+        {rejectTargetRecord && (
+          <div style={modalOverlayStyle} onClick={() => dismissModal(() => { setRejectTargetRecord(null); setRejectReason(''); setRejectJustification(''); })}>
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              style={{ ...modalContentStyle, width: '520px' }}
+              onClick={e => e.stopPropagation()}
+            >
+              <ModalHeader
+                title={`✕ Reject Waste Record #${rejectTargetRecord.id}`}
+                onClose={() => dismissModal(() => { setRejectTargetRecord(null); setRejectReason(''); setRejectJustification(''); })}
+              />
+              <form onSubmit={handleRejectWaste} style={formStyle}>
+                <div style={{ padding: '14px 16px', backgroundColor: '#fef2f2', borderRadius: '12px', border: '1px solid #fee2e2' }}>
+                  <div style={{ fontWeight: '800', color: '#991b1b', fontSize: '14px', marginBottom: '6px' }}>
+                    {rejectTargetRecord.item_name} ({rejectTargetRecord.item_code})
+                  </div>
+                  <div style={{ fontSize: '12px', color: '#7f1d1d', lineHeight: '1.6' }}>
+                    <div>Requested Waste: <strong>{parseFloat(rejectTargetRecord.entered_quantity).toFixed(2)} {rejectTargetRecord.entered_unit}</strong></div>
+                    <div>Source: <strong>{rejectTargetRecord.waste_source === 'direct_loss' ? 'Direct Storeroom Loss' : 'Kitchen Preparation Waste'}</strong></div>
+                    <div>Submitted by: <strong>{rejectTargetRecord.reported_by_username || 'system'}</strong></div>
+                  </div>
+                </div>
+
+                <div style={{ fontSize: '12px', color: '#64748b', lineHeight: '1.5' }}>
+                  ℹ️ Rejecting will mark this waste request as rejected. <strong>No warehouse stock will be deducted, and no accounting entries will be posted.</strong> Any pending kitchen reservation will be released.
+                </div>
+
+                <div style={formGroupStyle}>
+                  <label style={labelStyle}>Rejection Reason (Required)</label>
+                  <textarea
+                    required
+                    style={inputStyle}
+                    rows="3"
+                    placeholder="Enter reason for rejecting this waste entry (e.g. Physical stock inspection confirmed items are usable; recount requested)..."
+                    value={rejectReason}
+                    onChange={e => setRejectReason(e.target.value)}
+                  />
+                </div>
+
+                {userData?.is_superuser && userData?.username === rejectTargetRecord.reported_by_username && (
+                  <div style={formGroupStyle}>
+                    <div style={{ padding: '8px 12px', backgroundColor: '#fef3c7', border: '1px solid #fde68a', borderRadius: '8px', color: '#92400e', fontSize: '11px', fontWeight: '700', marginBottom: '6px' }}>
+                      ⭐ Superuser Self-Rejection Exception: Auditable justification required.
+                    </div>
+                    <label style={labelStyle}>Audit Justification</label>
+                    <textarea
+                      style={inputStyle}
+                      rows="2"
+                      placeholder="Superuser self-rejection explanation..."
+                      value={rejectJustification}
+                      onChange={e => setRejectJustification(e.target.value)}
+                    />
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', gap: '10px', marginTop: '10px', justifyContent: 'flex-end' }}>
+                  <button
+                    type="button"
+                    onClick={() => dismissModal(() => { setRejectTargetRecord(null); setRejectReason(''); setRejectJustification(''); })}
+                    style={modalCancelBtnStyle}
+                  >
+                    <ArrowLeft size={14} /> Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={rejectSubmitting}
+                    style={{ ...btnPrimaryStyle, backgroundColor: '#dc2626' }}
+                  >
+                    {rejectSubmitting ? 'Rejecting...' : 'Confirm Rejection'}
+                  </button>
                 </div>
               </form>
             </motion.div>
@@ -2323,8 +3747,41 @@ const progressBarContainer = { height: '6px', backgroundColor: '#e2e8f0', border
 const progressBar = { height: '100%', borderRadius: '3px' };
 
 // Modal styles
-const modalOverlayStyle = { position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(15,23,42,0.6)', backdropFilter: 'blur(4px)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 };
-const modalContentStyle = { backgroundColor: '#ffffff', padding: '30px', borderRadius: '24px', width: '480px', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)', border: '1px solid rgba(148,163,184,0.15)' };
+const modalOverlayStyle = { position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(15,23,42,0.6)', backdropFilter: 'blur(4px)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000, padding: '16px' };
+const modalContentStyle = { backgroundColor: '#ffffff', padding: '26px', borderRadius: '24px', width: '480px', maxWidth: '96vw', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.15)', border: '1px solid rgba(148,163,184,0.15)' };
+const modalHeaderStyle = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', gap: '12px', paddingBottom: '12px', borderBottom: '1px solid #f1f5f9' };
+const modalBackBtnStyle = { display: 'inline-flex', alignItems: 'center', gap: '6px', backgroundColor: '#f1f5f9', color: '#334155', border: '1px solid #cbd5e1', borderRadius: '10px', padding: '6px 12px', fontSize: '12px', fontWeight: '700', cursor: 'pointer', transition: 'all 0.2s', flexShrink: 0 };
+const modalCloseBtnStyle = { backgroundColor: '#f1f5f9', color: '#64748b', border: '1px solid #cbd5e1', borderRadius: '50%', width: '34px', height: '34px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'all 0.2s', flexShrink: 0 };
+const modalCancelBtnStyle = { backgroundColor: '#f1f5f9', color: '#334155', border: '1px solid #cbd5e1', borderRadius: '10px', padding: '10px 18px', fontSize: '13px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', transition: 'all 0.2s' };
+
+const ModalHeader = ({ title, onClose }) => (
+  <div style={modalHeaderStyle}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1, minWidth: 0 }}>
+      <button
+        type="button"
+        onClick={onClose}
+        style={modalBackBtnStyle}
+        title="Back"
+        aria-label="Back"
+      >
+        <ArrowLeft size={16} />
+        <span>Back</span>
+      </button>
+      <h3 style={{ margin: 0, color: '#0f172a', fontWeight: '800', fontSize: '17px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        {title}
+      </h3>
+    </div>
+    <button
+      type="button"
+      onClick={onClose}
+      style={modalCloseBtnStyle}
+      title="Close"
+      aria-label="Close"
+    >
+      <X size={18} />
+    </button>
+  </div>
+);
 
 // Form styles
 const formStyle = { display: 'flex', flexDirection: 'column', gap: '15px' };

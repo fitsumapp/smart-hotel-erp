@@ -168,16 +168,29 @@ function WaiterDashboard({ userData, handleLogout }) {
     }
   };
 
+  const requestBill = async (orderId) => {
+    setIsBusy(true);
+    try {
+      const res = await axios.post(`${API_BASE}orders/${orderId}/request-bill/`, {}, { headers: headers() });
+      alert(res.data?.message || 'Bill requested successfully. Cashier has been notified.');
+      await loadAllData();
+    } catch (err) {
+      alert(err.response?.data?.error || err.response?.data?.detail || 'Failed to request bill.');
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
   const confirmCashPayment = async () => {
     if (!checkoutOrder) return;
     setIsBusy(true);
     try {
-      await axios.post(`${API_BASE}orders/${checkoutOrder.id}/cash-payment/`, {}, { headers: headers() });
-      alert('Cash payment recorded successfully.');
+      const res = await axios.post(`${API_BASE}orders/${checkoutOrder.id}/cash-handover/`, {}, { headers: headers() });
+      alert(res.data?.message || 'Cash payment recorded. Please hand over collected cash to the cashier for confirmation.');
       closeCheckout();
       await loadAllData();
     } catch (err) {
-      alert(err.response?.data?.error || 'Cash payment failed');
+      alert(err.response?.data?.error || err.response?.data?.detail || 'Cash payment failed');
     } finally {
       setIsBusy(false);
     }
@@ -243,7 +256,11 @@ function WaiterDashboard({ userData, handleLogout }) {
         `${API_BASE}orders/create/`,
         {
           table_id: selectedTableId,
-          items: cart.map((item) => ({ id: item.id, quantity: item.quantity })),
+          items: cart.map((item) => ({
+            id: item.id,
+            quantity: item.quantity,
+            notes: (item.notes || '').trim().slice(0, 255),
+          })),
         },
         { headers: headers() }
       );
@@ -279,6 +296,12 @@ function WaiterDashboard({ userData, handleLogout }) {
     );
   };
 
+  const updateItemNotes = (id, notes) => {
+    setCart((prevCart) =>
+      prevCart.map((item) => (item.id === id ? { ...item, notes: notes.slice(0, 255) } : item))
+    );
+  };
+
   const cartTotal = useMemo(
     () => cart.reduce((sum, item) => sum + Number(item.price || 0) * item.quantity, 0),
     [cart]
@@ -300,7 +323,7 @@ function WaiterDashboard({ userData, handleLogout }) {
   );
   const readyOrders = useMemo(() => orders.filter((order) => order.status === 'ready'), [orders]);
   const payableOrders = useMemo(
-    () => orders.filter((order) => order.status === 'served' && order.payment_status !== 'paid'),
+    () => orders.filter((order) => ['served', 'bill_requested'].includes(order.status) && order.payment_status !== 'paid'),
     [orders]
   );
   const paidOrders = useMemo(() => orders.filter((order) => order.payment_status === 'paid'), [orders]);
@@ -308,7 +331,11 @@ function WaiterDashboard({ userData, handleLogout }) {
   const availableTables = useMemo(() => tables.filter((table) => table.status !== 'occupied'), [tables]);
   const topMenuItems = useMemo(() => filteredMenu.slice(0, 8), [filteredMenu]);
   const pendingNotifications = notifications.slice(0, 5);
-  const selectedTableLabel = tables.find((table) => String(table.id) === String(selectedTableId))?.table_code;
+  const selectedTable = useMemo(
+    () => tables.find((table) => String(table.id) === String(selectedTableId)),
+    [tables, selectedTableId]
+  );
+  const selectedTableLabel = selectedTable?.table_code;
 
   const navItems = [
     { id: 'home', label: 'Overview', icon: Grid2x2 },
@@ -530,11 +557,26 @@ function WaiterDashboard({ userData, handleLogout }) {
                       <div style={styles.orderCardTop}>
                         <div>
                           <strong style={styles.orderId}>ORD-{order.id}</strong>
+                          {order.session_id && (
+                            <span style={{ fontSize: '11px', color: '#0284c7', fontWeight: 700, marginLeft: '6px' }}>
+                              Session #{order.session_id}
+                            </span>
+                          )}
                           <div style={styles.smallMuted}>Table {order.table_code}</div>
                         </div>
                         <div style={styles.badgeRow}>
                           <span style={statusBadge(order.status)}>{order.status}</span>
                           <span style={paymentBadge(order.payment_status)}>{order.payment_status || 'pending'}</span>
+                          {order.bill_prepared_at && (
+                            <span style={{ fontSize: '11px', fontWeight: 700, padding: '3px 8px', borderRadius: '999px', background: '#dbeafe', color: '#1d4ed8' }}>
+                              Bill Prepared
+                            </span>
+                          )}
+                          {order.has_pending_handover && (
+                            <span style={{ fontSize: '11px', fontWeight: 700, padding: '3px 8px', borderRadius: '999px', background: '#fef3c7', color: '#b45309' }}>
+                              Handover Pending
+                            </span>
+                          )}
                         </div>
                       </div>
 
@@ -549,7 +591,14 @@ function WaiterDashboard({ userData, handleLogout }) {
                           <button style={styles.smallPrimary} onClick={() => markServed(order.id)}>Mark Served</button>
                         ) : null}
                         {order.status === 'served' && order.payment_status !== 'paid' ? (
-                          <button style={styles.smallSuccess} onClick={() => openCheckout(order)}>Open Checkout</button>
+                          <button style={styles.smallPrimary} onClick={() => requestBill(order.id)} disabled={isBusy}>
+                            Request Bill
+                          </button>
+                        ) : null}
+                        {(order.status === 'served' || order.status === 'bill_requested') && order.payment_status !== 'paid' ? (
+                          <button style={styles.smallSuccess} onClick={() => openCheckout(order)}>
+                            Open Checkout
+                          </button>
                         ) : null}
                         <button style={styles.smallGhost} onClick={() => setDetailsOrder(order)}>Details</button>
                       </div>
@@ -655,27 +704,56 @@ function WaiterDashboard({ userData, handleLogout }) {
                 <div style={styles.panelHeader}>
                   <div>
                     <div style={styles.panelTitle}>Order Cart</div>
-                    <div style={styles.panelSub}>Selected table: {selectedTableLabel || 'Not selected'}</div>
+                    <div style={styles.panelSub}>
+                      Selected table: {selectedTableLabel || 'Not selected'}
+                      {selectedTable?.status === 'occupied' && (
+                        <span style={{ color: '#0284c7', fontWeight: 700, marginLeft: '6px' }}>
+                          (Active Session — Adding Round)
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
 
                 <div style={styles.cartItems}>
                   {cart.length ? cart.map((item) => (
-                    <div key={item.id} style={styles.cartItem}>
-                      <div>
-                        <strong>{item.name}</strong>
-                        {item.is_available === false && (
-                          <span style={{ color: '#ef4444', fontSize: '11px', fontWeight: 700, marginLeft: '6px' }}>
-                            (Unavailable)
-                          </span>
-                        )}
-                        <div style={styles.smallMuted}>ETB {Number(item.price || 0).toFixed(2)} each</div>
+                    <div key={item.id} style={{ ...styles.cartItem, flexDirection: 'column', alignItems: 'stretch' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', width: '100%' }}>
+                        <div>
+                          <strong>{item.name}</strong>
+                          {item.is_available === false && (
+                            <span style={{ color: '#ef4444', fontSize: '11px', fontWeight: 700, marginLeft: '6px' }}>
+                              (Unavailable)
+                            </span>
+                          )}
+                          <div style={styles.smallMuted}>ETB {Number(item.price || 0).toFixed(2)} each</div>
+                        </div>
+                        <div style={styles.cartControls}>
+                          <button style={styles.iconButton} onClick={() => updateQty(item.id, -1)}><Minus size={14} /></button>
+                          <span style={styles.qtyValue}>{item.quantity}</span>
+                          <button style={styles.iconButton} onClick={() => updateQty(item.id, 1)} disabled={item.is_available === false}><Plus size={14} /></button>
+                          <button style={styles.iconButton} onClick={() => updateQty(item.id, -item.quantity)}><Trash2 size={14} /></button>
+                        </div>
                       </div>
-                      <div style={styles.cartControls}>
-                        <button style={styles.iconButton} onClick={() => updateQty(item.id, -1)}><Minus size={14} /></button>
-                        <span style={styles.qtyValue}>{item.quantity}</span>
-                        <button style={styles.iconButton} onClick={() => updateQty(item.id, 1)} disabled={item.is_available === false}><Plus size={14} /></button>
-                        <button style={styles.iconButton} onClick={() => updateQty(item.id, -item.quantity)}><Trash2 size={14} /></button>
+                      <div style={{ marginTop: '8px', width: '100%' }}>
+                        <input
+                          type="text"
+                          placeholder="Prep notes (e.g. no onions, medium rare)..."
+                          maxLength={255}
+                          value={item.notes || ''}
+                          onChange={(e) => updateItemNotes(item.id, e.target.value)}
+                          style={{
+                            width: '100%',
+                            boxSizing: 'border-box',
+                            padding: '6px 10px',
+                            borderRadius: '6px',
+                            border: '1px solid #cbd5e1',
+                            fontSize: '12px',
+                            backgroundColor: '#f8fafc',
+                            color: '#1e293b',
+                            outline: 'none',
+                          }}
+                        />
                       </div>
                     </div>
                   )) : <div style={styles.emptyCard}>Your cart is empty.</div>}
@@ -683,16 +761,18 @@ function WaiterDashboard({ userData, handleLogout }) {
 
                 <select value={selectedTableId} onChange={(e) => setSelectedTableId(e.target.value)} style={styles.select}>
                   <option value="">Choose table...</option>
-                  {availableTables.map((table) => (
-                    <option key={table.id} value={table.id}>
-                      {table.table_code}
-                    </option>
-                  ))}
+                  <optgroup label="Available tables">
+                    {availableTables.map((table) => (
+                      <option key={table.id} value={table.id}>
+                        {table.table_code}
+                      </option>
+                    ))}
+                  </optgroup>
                   {occupiedTables.length ? (
-                    <optgroup label="Occupied tables">
+                    <optgroup label="Occupied tables (Add Round)">
                       {occupiedTables.map((table) => (
-                        <option key={`busy-${table.id}`} value={table.id} disabled>
-                          {table.table_code} (occupied)
+                        <option key={`busy-${table.id}`} value={table.id}>
+                          {table.table_code} (Occupied — Add Round)
                         </option>
                       ))}
                     </optgroup>
@@ -778,7 +858,14 @@ function WaiterDashboard({ userData, handleLogout }) {
           <div style={styles.stack}>
             {(detailsOrder.items || []).map((item) => (
               <div key={`${detailsOrder.id}-${item.id}`} style={styles.detailRow}>
-                <span>{item.menu_item_name} x{item.quantity}</span>
+                <div>
+                  <span>{item.menu_item_name} x{item.quantity}</span>
+                  {item.notes ? (
+                    <div style={{ fontSize: '12px', color: '#64748b', fontStyle: 'italic', marginTop: '2px' }}>
+                      📝 Note: {item.notes}
+                    </div>
+                  ) : null}
+                </div>
                 <strong>ETB {(item.quantity * item.price_at_order).toFixed(2)}</strong>
               </div>
             ))}
@@ -828,11 +915,32 @@ function WaiterDashboard({ userData, handleLogout }) {
                 </button>
               </div>
 
+              {checkoutSummary?.bill_prepared_at ? (
+                <div style={{ fontSize: '12px', color: '#166534', background: '#dcfce7', padding: '8px 12px', borderRadius: '6px', fontWeight: 600 }}>
+                  ✓ Official Bill prepared by Cashier
+                </div>
+              ) : (
+                <div style={{ fontSize: '12px', color: '#854d0e', background: '#fef9c3', padding: '8px 12px', borderRadius: '6px' }}>
+                  ⏳ Awaiting cashier bill preparation, or proceed with customer bill collection.
+                </div>
+              )}
+              {checkoutSummary?.has_pending_handover && (
+                <div style={{ fontSize: '12px', color: '#b45309', background: '#fef3c7', padding: '8px 12px', borderRadius: '6px', fontWeight: 600 }}>
+                  ⏳ Cash handover is pending cashier confirmation.
+                </div>
+              )}
+
               {paymentChoice === 'Cash' ? (
-                <button style={styles.primaryButton} onClick={confirmCashPayment} disabled={isBusy}>
-                  {isBusy ? <LoaderCircle size={16} /> : <Wallet size={16} />}
-                  {isBusy ? 'Recording...' : 'Confirm Cash Payment'}
-                </button>
+                <div style={styles.stack}>
+                  <div style={{ fontSize: '12px', color: '#475569', background: '#f8fafc', padding: '10px', borderRadius: '8px', border: '1px solid #e2e8f0', lineHeight: '1.4' }}>
+                    💵 <strong>Cash Collection & Handover</strong><br/>
+                    Collect cash from the customer, then submit handover request to the cashier. The cashier verifies funds to finalize settlement.
+                  </div>
+                  <button style={styles.primaryButton} onClick={confirmCashPayment} disabled={isBusy}>
+                    {isBusy ? <LoaderCircle size={16} /> : <Wallet size={16} />}
+                    {isBusy ? 'Submitting Handover...' : 'Record Cash & Submit Handover'}
+                  </button>
+                </div>
               ) : paymentChoice === 'Digital' ? (
                 <div style={styles.stack}>
                   {!digitalSession ? (

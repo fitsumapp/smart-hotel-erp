@@ -179,7 +179,7 @@ const Sidebar = ({ activeTab, setActiveTab, handleLogout, isOpen, setIsOpen }) =
       const visibleChildren = item.children.filter(isChildVisible);
       if (visibleChildren.length === 0) return false;
     }
-    if (userRole === 'finance' && !['dashboard', 'finance', 'inventory'].includes(item.id)) return false;
+    if (userRole === 'finance' && !['dashboard', 'finance', 'inventory', 'all_reports'].includes(item.id)) return false;
     return true;
   };
 

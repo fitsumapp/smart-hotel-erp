@@ -17,6 +17,7 @@ urlpatterns = [
     path("health/ready", ready, name="health-ready"),
     path("api/v1/ops/metrics/", MetricsView.as_view(), name="ops-metrics"),
     path("admin/", admin.site.urls),
+    path("api/admin/", admin.site.urls),
     path("api/users/", include("users.urls")),
     path(
         "api/v1/schema/",

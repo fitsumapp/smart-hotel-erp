@@ -168,6 +168,7 @@ class Reservation(models.Model):
         ("checked_in", "Checked In"),
         ("checked_out", "Checked Out"),
         ("cancelled", "Cancelled"),
+        ("no_show", "No-Show"),
     ]
     SOURCE_CHOICES = [
         ("public", "Public Booking Engine"),
@@ -202,6 +203,7 @@ class Reservation(models.Model):
     paid_at = models.DateTimeField(blank=True, null=True)
     checked_in_at = models.DateTimeField(blank=True, null=True)
     checked_out_at = models.DateTimeField(blank=True, null=True)
+    no_show_at = models.DateTimeField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -235,10 +237,11 @@ class Reservation(models.Model):
             previous = type(self).objects.filter(pk=self.pk).values_list("status", flat=True).first()
             allowed = {
                 "pending": {"confirmed", "cancelled"},
-                "confirmed": {"checked_in", "cancelled"},
+                "confirmed": {"checked_in", "cancelled", "no_show"},
                 "checked_in": {"checked_out"},
                 "checked_out": set(),
                 "cancelled": set(),
+                "no_show": set(),
             }
             if previous and self.status != previous and self.status not in allowed.get(previous, set()):
                 raise ValidationError(f"Cannot transition reservation from {previous} to {self.status}.")
@@ -272,6 +275,38 @@ class RestaurantTable(models.Model):
         return f"{self.label_name} ({self.table_code})"
 
 
+# ── 4b. Dining Session ────────────────────────────────────────────────────────
+
+class DiningSession(models.Model):
+    SESSION_STATUS = [
+        ("active", "Active"),
+        ("closed", "Closed"),
+    ]
+    table = models.ForeignKey(RestaurantTable, on_delete=models.CASCADE, related_name="dining_sessions")
+    status = models.CharField(max_length=20, choices=SESSION_STATUS, default="active")
+    opened_by_id_ref = models.IntegerField(null=True, blank=True, help_text="ID of the waiter who opened the session")
+    opened_by_username = models.CharField(max_length=150, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    closed_at = models.DateTimeField(null=True, blank=True)
+    closed_by_id_ref = models.IntegerField(null=True, blank=True, help_text="ID of the cashier who closed the session")
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["table", "status"], name="session_tbl_status_idx"),
+            models.Index(fields=["status", "created_at"], name="session_stat_created_idx"),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["table"],
+                condition=models.Q(status="active"),
+                name="unique_active_session_per_table",
+            )
+        ]
+
+    def __str__(self):
+        return f"Session #{self.id} — Table {self.table.table_code} ({self.status})"
+
+
 # ── 5. Order ──────────────────────────────────────────────────────────────────
 
 class Order(models.Model):
@@ -288,6 +323,14 @@ class Order(models.Model):
     PAYMENT_METHOD_CHOICES = [("Cash", "Cash"), ("Chapa", "Chapa"), ("Telebirr", "Telebirr"), ("Card", "Card")]
 
     table = models.ForeignKey(RestaurantTable, on_delete=models.CASCADE, related_name="orders")
+    session = models.ForeignKey(
+        DiningSession,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="orders",
+        help_text="Dining session this order round belongs to.",
+    )
 
     # Cross-schema reference: User lives in public schema, Order lives in tenant schema
     # Store user IDs as integers to avoid cross-schema FK constraint issues
@@ -317,6 +360,8 @@ class Order(models.Model):
     service_charge_rate_snapshot = models.DecimalField(max_digits=6, decimal_places=3, default=0)
     vat_rate_snapshot = models.DecimalField(max_digits=6, decimal_places=3, default=0)
     financials_finalized_at = models.DateTimeField(null=True, blank=True, editable=False)
+    bill_prepared_at = models.DateTimeField(null=True, blank=True)
+    bill_prepared_by_id_ref = models.IntegerField(null=True, blank=True, help_text="ID of the cashier who prepared/issued the bill")
 
     class Meta:
         indexes = [
@@ -332,6 +377,7 @@ class Order(models.Model):
             models.Index(fields=["waiter_id_ref"], name="ord_waiter_idx"),
             models.Index(fields=["payment_status", "updated_at"], name="ord_pay_updated_idx"),
             models.Index(fields=["waiter_id_ref", "payment_status", "updated_at"], name="ord_wait_pay_upd_idx"),
+            models.Index(fields=["session"], name="ord_session_idx"),
         ]
 
     def __str__(self):
@@ -344,8 +390,8 @@ class Order(models.Model):
                 "pending": {"preparing", "paid", "cancelled"},
                 "preparing": {"ready", "paid", "cancelled"},
                 "ready": {"served", "paid", "cancelled"},
-                "served": {"bill_requested", "paid"},
-                "bill_requested": {"paid"},
+                "served": {"bill_requested", "paid", "cancelled"},
+                "bill_requested": {"paid", "cancelled"},
                 "paid": set(), "cancelled": set(),
             }
             if original and self.status != original.status and self.status not in allowed.get(original.status, set()):
@@ -364,6 +410,43 @@ class Order(models.Model):
         if not self.payment_page_token:
             self.payment_page_token = uuid4().hex
         return self.payment_page_token
+
+
+# ── 5b. Cash Handover ─────────────────────────────────────────────────────────
+
+class CashHandover(models.Model):
+    """
+    Auditable cash handover record tracking money collected by a waiter from a guest
+    and physically received/verified by a cashier prior to settlement.
+    """
+    STATUS_CHOICES = [
+        ("pending", "Pending Handover"),
+        ("confirmed", "Confirmed"),
+        ("rejected", "Rejected"),
+    ]
+    order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name="cash_handovers")
+    session = models.ForeignKey(DiningSession, on_delete=models.SET_NULL, null=True, blank=True, related_name="cash_handovers")
+    waiter_id_ref = models.IntegerField(help_text="ID of the waiter who collected cash")
+    waiter_username = models.CharField(max_length=150, blank=True)
+    cashier_id_ref = models.IntegerField(null=True, blank=True, help_text="ID of the cashier who verified and received cash")
+    cashier_username = models.CharField(max_length=150, blank=True)
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    tip_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="pending")
+    payment_reference = models.CharField(max_length=100, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    confirmed_at = models.DateTimeField(null=True, blank=True)
+    notes = models.CharField(max_length=255, blank=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["order", "status"], name="handover_ord_stat_idx"),
+            models.Index(fields=["status", "created_at"], name="handover_stat_time_idx"),
+            models.Index(fields=["waiter_id_ref", "status"], name="handover_waiter_stat_idx"),
+        ]
+
+    def __str__(self):
+        return f"CashHandover #{self.id} — Order #{self.order_id} ({self.status}) ETB {self.amount}"
 
 
 # ── 6. Order Item ─────────────────────────────────────────────────────────────
@@ -453,10 +536,31 @@ class PaymentWebhookEvent(models.Model):
 
 
 class OrderItem(models.Model):
+    ITEM_STATUS = [
+        ("pending", "Pending"),
+        ("preparing", "Preparing"),
+        ("ready", "Ready"),
+    ]
     order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name="items")
     menu_item = models.ForeignKey(MenuItem, on_delete=models.CASCADE)
     quantity = models.IntegerField(default=1)
     price_at_order = models.DecimalField(max_digits=10, decimal_places=2)
+    status = models.CharField(max_length=20, choices=ITEM_STATUS, default="pending")
+    notes = models.CharField(max_length=255, blank=True, default="")
+
+    def get_station(self):
+        if self.menu_item:
+            if self.menu_item.category:
+                st = (self.menu_item.category.station or "").strip()
+                if st:
+                    return st
+                cat_name = (self.menu_item.category.name or "").lower()
+                if any(k in cat_name for k in ["drink", "beverage", "juice", "beer", "wine", "bar", "cocktail", "soda", "coffee", "tea", "መጠጥ", "ቢራ", "ጭማቂ", "አረቄ"]):
+                    return "Bar"
+            item_name = (self.menu_item.name or "").lower()
+            if any(k in item_name for k in ["drink", "beverage", "juice", "beer", "wine", "bar", "cocktail", "soda", "coffee", "tea", "መጠጥ", "ቢራ", "ጭማቂ", "አረቄ"]):
+                return "Bar"
+        return "Kitchen"
 
     def __str__(self):
         return f"{self.quantity} × {self.menu_item.name}"
@@ -523,6 +627,14 @@ class SystemSettings(models.Model):
         ("80mm", "80mm"),
     ]
     printer_paper_size = models.CharField(max_length=10, choices=PRINTER_PAPER_SIZE_CHOICES, default="80mm")
+
+    # Inventory Waste Controls
+    waste_approval_threshold = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=Decimal("1000.00"),
+        help_text="Loss threshold in ETB above which inventory waste requires manager approval."
+    )
 
     def __str__(self):
         return f"Settings — {self.hotel_name}"
@@ -753,6 +865,10 @@ class InventoryItem(models.Model):
     )
     
     last_supplier = models.ForeignKey(Supplier, on_delete=models.SET_NULL, null=True, blank=True, related_name="supplied_items")
+    units_per_pack = models.DecimalField(
+        max_digits=10, decimal_places=2, default=1.00,
+        help_text="Units per pack/crate (e.g. 24 bottles per pack)"
+    )
     last_stocked_at = models.DateTimeField(auto_now=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -778,6 +894,7 @@ class StockTransaction(models.Model):
         ("issuance", "Issuance (Stock-Out)"),
         ("adjustment", "Adjustment (Audit/Damage)"),
         ("sale_deduction", "Auto-Deduct (Sales)"),
+        ("loss", "Waste & Loss (Stock-Out)"),
     ]
 
     item = models.ForeignKey(InventoryItem, on_delete=models.CASCADE, related_name="transactions")
@@ -978,6 +1095,94 @@ class JournalEntryItem(models.Model):
 
     def delete(self, *args, **kwargs):
         raise ValidationError("Posted journal lines are immutable; create a reversal instead.")
+
+
+# ── 21b. Inventory Waste Record ───────────────────────────────────────────────
+
+class InventoryWasteRecord(models.Model):
+    WASTE_CATEGORIES = [
+        ("food_spoilage_or_expiry", "Food Spoilage or Expiry"),
+        ("unissued_prep_loss", "Preparation / Trimming Loss (Unissued Stock)"),
+        ("breakage_or_damage", "Breakage or Accidental Damage"),
+        ("spillage", "Spillage"),
+        ("other", "Other Confirmed Loss"),
+    ]
+
+    WASTE_SOURCES = [
+        ("direct_loss", "Direct Stock Loss (Deducts Store Stock)"),
+        ("kitchen_prep_waste", "Kitchen Preparation Waste (Already Issued Stock)"),
+    ]
+
+    idempotency_key = models.CharField(max_length=120, unique=True, db_index=True)
+    payload_hash = models.CharField(max_length=64)
+    item = models.ForeignKey(InventoryItem, on_delete=models.PROTECT, related_name="waste_records")
+    entered_quantity = models.DecimalField(max_digits=10, decimal_places=3)
+    entered_unit = models.CharField(max_length=20, choices=InventoryItem.UNIT_CHOICES)
+    base_quantity = models.DecimalField(max_digits=10, decimal_places=2, help_text="Normalized to InventoryItem.unit")
+
+    waste_category = models.CharField(max_length=40, choices=WASTE_CATEGORIES)
+    waste_source = models.CharField(max_length=30, choices=WASTE_SOURCES)
+
+    unit_cost_snapshot = models.DecimalField(max_digits=10, decimal_places=2)
+    total_cost_loss = models.DecimalField(max_digits=12, decimal_places=2)
+
+    stock_deducted = models.BooleanField(default=False)
+    stock_transaction = models.OneToOneField(
+        StockTransaction, on_delete=models.SET_NULL, null=True, blank=True, related_name="waste_record"
+    )
+    source_dispatch = models.ForeignKey(
+        StockTransaction, on_delete=models.PROTECT, null=True, blank=True, related_name="child_prep_wastes",
+        help_text="Reference to the parent kitchen issuance for kitchen_prep_waste"
+    )
+    journal_entry = models.ForeignKey(
+        JournalEntry, on_delete=models.SET_NULL, null=True, blank=True, related_name="waste_records"
+    )
+
+    notes = models.TextField(blank=True, default="")
+    storage_area = models.CharField(max_length=100, blank=True, default="")
+    reported_by_username = models.CharField(max_length=150, blank=True)
+    recorded_at = models.DateTimeField(default=timezone.now)
+
+    is_reversed = models.BooleanField(default=False)
+    reversal_of = models.OneToOneField(
+        "self", on_delete=models.PROTECT, null=True, blank=True, related_name="reversed_by"
+    )
+    reversal_reason = models.TextField(blank=True, default="")
+    reversed_at = models.DateTimeField(null=True, blank=True)
+    reversed_by_username = models.CharField(max_length=150, blank=True)
+
+    # Workflow & Approval Controls
+    STATUS_CHOICES = [
+        ("approved", "Approved"),
+        ("pending_review", "Pending Review"),
+        ("rejected", "Rejected"),
+    ]
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="pending_review", db_index=True)
+    reviewed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="reviewed_waste_records"
+    )
+    reviewed_by_username = models.CharField(max_length=150, blank=True)
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    rejection_reason = models.TextField(blank=True, default="")
+    is_self_reviewed = models.BooleanField(default=False, help_text="True if superuser exercised self-review exception")
+    self_review_justification = models.TextField(blank=True, default="", help_text="Justification provided when superuser self-reviews")
+
+    class Meta:
+        ordering = ["-recorded_at"]
+        indexes = [
+            models.Index(fields=["waste_category", "recorded_at"], name="waste_cat_time_idx"),
+            models.Index(fields=["source_dispatch"], name="waste_dispatch_idx"),
+            models.Index(fields=["item", "waste_source"], name="waste_item_src_idx"),
+            models.Index(fields=["status", "recorded_at"], name="waste_status_time_idx"),
+        ]
+        constraints = [
+            models.CheckConstraint(condition=models.Q(entered_quantity__gt=0), name="waste_entered_qty_positive"),
+            models.CheckConstraint(condition=models.Q(base_quantity__gt=0), name="waste_base_qty_positive"),
+            models.CheckConstraint(condition=models.Q(total_cost_loss__gte=0), name="waste_cost_nonnegative"),
+        ]
+
+    def __str__(self):
+        return f"WASTE #{self.id} — {self.base_quantity} {self.item.unit} of {self.item.name} ({self.waste_category})"
 
 
 # ── 22. Expense Transaction ─────────────────────────────────────────────────────

@@ -1,3 +1,3 @@
-from hotel.models import Category, MenuItem, Notification, Order, OrderItem, RestaurantTable, SystemSettings
+from hotel.models import Category, DiningSession, MenuItem, Notification, Order, OrderItem, RestaurantTable, SystemSettings
 
-__all__ = ["Category", "MenuItem", "Notification", "Order", "OrderItem", "RestaurantTable", "SystemSettings"]
+__all__ = ["Category", "DiningSession", "MenuItem", "Notification", "Order", "OrderItem", "RestaurantTable", "SystemSettings"]

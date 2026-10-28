@@ -1,10 +1,9 @@
 {
-  "venvPath": "c:\\Users\\BAB AL SAFA\\Desktop\\Smart Hotel ERP",
-  "venv": "venv",
+  "venvPath": ".",
+  "venv": ".venv",
   "pythonPlatform": "Windows",
   "extraPaths": [
-    "c:\\Users\\BAB AL SAFA\\Desktop\\Smart Hotel ERP\\venv\\Lib\\site-packages",
-    "c:\\Users\\BAB AL SAFA\\Desktop\\Smart Hotel ERP"
+    "."
   ],
   "reportMissingTypeStubs": false,
   "reportAttributeAccessIssue": "none",

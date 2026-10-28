@@ -93,6 +93,7 @@ class ReservationAdmin(ModelAdmin):
         "checked_out": "secondary",
         "cancelled": "danger",
         "pending": "warning",
+        "no_show": "danger",
     })
     def display_status(self, obj):
         return obj.status

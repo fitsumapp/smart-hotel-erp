@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { API_BASE_URL } from '../apiConfig';
+import { apiErrorMessage } from '../apiClient';
 import {
   TrendingUp, DollarSign, ShoppingBag, Bed, ReceiptText,
   ArrowDownCircle, Wallet, AlertCircle, Loader2, RefreshCw, Calendar,
@@ -705,24 +706,48 @@ const ExpensesTab = () => {
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
-      const [eRes, aRes, sRes] = await Promise.all([
+      const [eRes, aRes, sRes] = await Promise.allSettled([
         axios.get(`${API_BASE_URL}/users/finance/expenses/`, { headers: authHeaders() }),
         axios.get(`${API_BASE_URL}/users/finance/accounts/`, { headers: authHeaders() }),
         axios.get(`${API_BASE_URL}/users/suppliers/`, { headers: authHeaders() }),
       ]);
-      setExpenses(eRes.data);
-      setAccounts(aRes.data);
-      setSuppliers(sRes.data);
+
+      if (eRes.status === 'fulfilled') {
+        setExpenses(Array.isArray(eRes.value?.data) ? eRes.value.data : []);
+      } else {
+        const errorMsg = eRes.reason?.response?.data?.error || 'Failed to load expenses.';
+        setError(errorMsg);
+      }
+
+      if (aRes.status === 'fulfilled') {
+        setAccounts(Array.isArray(aRes.value?.data) ? aRes.value.data : []);
+      } else {
+        console.error('Failed to load accounts:', aRes.reason);
+      }
+
+      if (sRes.status === 'fulfilled') {
+        setSuppliers(Array.isArray(sRes.value?.data) ? sRes.value.data : []);
+      } else {
+        console.warn('Failed to load suppliers:', sRes.reason);
+        setSuppliers([]);
+      }
     } catch (err) {
       setError('Failed to load expenses.');
-    } finally { setLoading(false); }
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
-  const expenseAccounts = accounts.filter(a => a.account_type === 'expense');
-  const paymentAccounts = accounts.filter(a => ['asset', 'liability'].includes(a.account_type));
+  const expenseAccounts = Array.isArray(accounts)
+    ? accounts.filter(a => a?.account_type === 'expense')
+    : [];
+  const paymentAccounts = Array.isArray(accounts)
+    ? accounts.filter(a => ['asset', 'liability'].includes(a?.account_type))
+    : [];
 
   const handleCreate = async () => {
     if (!form.description || !form.amount || !form.expense_account || !form.payment_account) {
@@ -797,21 +822,53 @@ const ExpensesTab = () => {
           <FormRow label="Date *"><Input type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} /></FormRow>
         </div>
         <FormRow label="Expense Account (Category) *">
-          <Select value={form.expense_account} onChange={e => setForm(f => ({ ...f, expense_account: e.target.value }))}>
-            <option value="">— Select Expense Account —</option>
-            {expenseAccounts.map(a => <option key={a.id} value={a.id}>{a.code} — {a.name}</option>)}
+          <Select
+            value={form.expense_account}
+            onChange={e => setForm(f => ({ ...f, expense_account: e.target.value }))}
+            disabled={loading || expenseAccounts.length === 0}
+          >
+            {loading ? (
+              <option value="">Loading expense accounts…</option>
+            ) : expenseAccounts.length === 0 ? (
+              <option value="">No expense accounts available</option>
+            ) : (
+              <>
+                <option value="">— Select Expense Account —</option>
+                {expenseAccounts.map(a => <option key={a.id} value={a.id}>{a.code} — {a.name}</option>)}
+              </>
+            )}
           </Select>
         </FormRow>
         <FormRow label="Payment Account (Paid From) *">
-          <Select value={form.payment_account} onChange={e => setForm(f => ({ ...f, payment_account: e.target.value }))}>
-            <option value="">— Select Payment Account —</option>
-            {paymentAccounts.map(a => <option key={a.id} value={a.id}>{a.code} — {a.name}</option>)}
+          <Select
+            value={form.payment_account}
+            onChange={e => setForm(f => ({ ...f, payment_account: e.target.value }))}
+            disabled={loading || paymentAccounts.length === 0}
+          >
+            {loading ? (
+              <option value="">Loading payment accounts…</option>
+            ) : paymentAccounts.length === 0 ? (
+              <option value="">No payment accounts available</option>
+            ) : (
+              <>
+                <option value="">— Select Payment Account —</option>
+                {paymentAccounts.map(a => (
+                  <option key={a.id} value={a.id}>
+                    {a.code} — {a.name} ({a.account_type?.toUpperCase()})
+                  </option>
+                ))}
+              </>
+            )}
           </Select>
         </FormRow>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
           <FormRow label="Supplier (optional)">
-            <Select value={form.supplier} onChange={e => setForm(f => ({ ...f, supplier: e.target.value }))}>
-              <option value="">— No Supplier —</option>
+            <Select
+              value={form.supplier}
+              onChange={e => setForm(f => ({ ...f, supplier: e.target.value }))}
+              disabled={loading}
+            >
+              <option value="">— No Supplier (Direct Expense) —</option>
               {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
             </Select>
           </FormRow>
@@ -1059,6 +1116,11 @@ const TaxReportTab = () => {
   const [endDate, setEndDate] = useState(today());
 
   const fetchData = useCallback(async () => {
+    if (startDate && endDate && startDate > endDate) {
+      setError('Start date cannot be after end date.');
+      return;
+    }
+    setError(null);
     setLoading(true);
     try {
       const res = await axios.get(`${API_BASE_URL}/users/finance/tax-report/`, {
@@ -1066,8 +1128,12 @@ const TaxReportTab = () => {
         params: { start_date: startDate, end_date: endDate }
       });
       setData(res.data);
-    } catch (err) { setError('Failed to load tax report.'); }
-    finally { setLoading(false); }
+    } catch (err) {
+      const serverMsg = err.response?.data?.error || err.message;
+      setError(serverMsg || 'Failed to load tax report.');
+    } finally {
+      setLoading(false);
+    }
   }, [startDate, endDate]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
@@ -1198,6 +1264,20 @@ const calcPayroll = (f) => {
   return { gross, net: gross - deductions };
 };
 
+const PayrollInputField = ({ label, name, type = 'text', value, onChange, ...rest }) => (
+  <div>
+    <label style={styles.formLabel}>{label}</label>
+    <input
+      type={type}
+      name={name}
+      value={value ?? ''}
+      style={styles.formInput}
+      onChange={onChange}
+      {...rest}
+    />
+  </div>
+);
+
 const PayrollTab = () => {
   const nowDate  = new Date();
   const [year,  setYear]  = useState(nowDate.getFullYear());
@@ -1271,7 +1351,7 @@ const PayrollTab = () => {
       setShowModal(false);
       fetchAll();
     } catch (e) {
-      setSaveErr(e.response?.data ? JSON.stringify(e.response.data) : 'Save failed.');
+      setSaveErr(apiErrorMessage(e, 'Save failed.'));
     } finally { setSaving(false); }
   };
 
@@ -1291,15 +1371,47 @@ const PayrollTab = () => {
     (e.employee_id || '').toLowerCase().includes(search.toLowerCase())
   );
 
-  const InputField = ({ label, name, type = 'text', ...rest }) => (
-    <div>
-      <label style={styles.formLabel}>{label}</label>
-      <input
-        type={type} value={form[name] ?? ''} style={styles.formInput}
-        onChange={e => setForm(f => ({ ...f, [name]: e.target.value }))} {...rest}
-      />
-    </div>
-  );
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    setForm(f => ({ ...f, [name]: value }));
+  };
+
+  const autoCalculateTaxAndPension = () => {
+    const salary = parseFloat(form.basic_salary) || 0;
+    const allowances = parseFloat(form.allowances) || 0;
+    const overtime = parseFloat(form.overtime_pay) || 0;
+    const bonus = parseFloat(form.bonus) || 0;
+    const gross = salary + allowances + overtime + bonus;
+
+    const empPension = salary * 0.07;
+    const erPension = salary * 0.11;
+
+    // Ethiopian tax brackets (employee pension is exempt)
+    const taxable = Math.max(0, gross - empPension);
+    let tax = 0;
+    if (taxable <= 600) {
+      tax = 0;
+    } else if (taxable <= 1650) {
+      tax = taxable * 0.10 - 60;
+    } else if (taxable <= 3200) {
+      tax = taxable * 0.15 - 142.50;
+    } else if (taxable <= 5250) {
+      tax = taxable * 0.20 - 302.50;
+    } else if (taxable <= 7800) {
+      tax = taxable * 0.25 - 565;
+    } else if (taxable <= 10900) {
+      tax = taxable * 0.30 - 955;
+    } else {
+      tax = taxable * 0.35 - 1500;
+    }
+
+    setForm(f => ({
+      ...f,
+      income_tax: Math.max(0, tax).toFixed(2),
+      pension_employee: empPension.toFixed(2),
+      pension_employer: erPension.toFixed(2),
+    }));
+  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -1460,15 +1572,15 @@ const PayrollTab = () => {
                 <div style={{ padding: '12px 16px', borderRadius: '12px', backgroundColor: '#f8fafc', border: '1px solid rgba(148,163,184,0.15)' }}>
                   <p style={{ margin: '0 0 12px', fontSize: '10px', fontWeight: '800', letterSpacing: '0.5px', textTransform: 'uppercase', color: '#64748b' }}>Employee Information</p>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                    <InputField label="Employee Name *" name="employee_name" placeholder="e.g. Alem Girma" />
-                    <InputField label="Employee ID" name="employee_id" placeholder="e.g. EMP-001" />
+                    <PayrollInputField label="Employee Name *" name="employee_name" value={form.employee_name} onChange={handleInputChange} placeholder="e.g. Alem Girma" />
+                    <PayrollInputField label="Employee ID" name="employee_id" value={form.employee_id} onChange={handleInputChange} placeholder="e.g. EMP-001" />
                     <div>
                       <label style={styles.formLabel}>Department *</label>
                       <select value={form.department} onChange={e => setForm(f => ({ ...f, department: e.target.value }))} style={styles.formInput}>
                         {DEPARTMENTS.map(d => <option key={d.value} value={d.value}>{d.label}</option>)}
                       </select>
                     </div>
-                    <InputField label="Position / Job Title" name="position" placeholder="e.g. Senior Chef" />
+                    <PayrollInputField label="Position / Job Title" name="position" value={form.position} onChange={handleInputChange} placeholder="e.g. Senior Chef" />
                   </div>
                 </div>
 
@@ -1476,9 +1588,9 @@ const PayrollTab = () => {
                 <div style={{ padding: '12px 16px', borderRadius: '12px', backgroundColor: '#f8fafc', border: '1px solid rgba(148,163,184,0.15)' }}>
                   <p style={{ margin: '0 0 12px', fontSize: '10px', fontWeight: '800', letterSpacing: '0.5px', textTransform: 'uppercase', color: '#64748b' }}>Pay Period</p>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
-                    <InputField label="Period Start" name="pay_period_start" type="date" />
-                    <InputField label="Period End" name="pay_period_end" type="date" />
-                    <InputField label="Payment Date" name="payment_date" type="date" />
+                    <PayrollInputField label="Period Start" name="pay_period_start" type="date" value={form.pay_period_start} onChange={handleInputChange} />
+                    <PayrollInputField label="Period End" name="pay_period_end" type="date" value={form.pay_period_end} onChange={handleInputChange} />
+                    <PayrollInputField label="Payment Date" name="payment_date" type="date" value={form.payment_date} onChange={handleInputChange} />
                   </div>
                 </div>
 
@@ -1486,21 +1598,33 @@ const PayrollTab = () => {
                 <div style={{ padding: '12px 16px', borderRadius: '12px', backgroundColor: 'rgba(16,185,129,0.04)', border: '1px solid rgba(16,185,129,0.15)' }}>
                   <p style={{ margin: '0 0 12px', fontSize: '10px', fontWeight: '800', letterSpacing: '0.5px', textTransform: 'uppercase', color: '#059669' }}>Earnings (ETB)</p>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '12px' }}>
-                    <InputField label="Basic Salary *" name="basic_salary" type="number" min="0" placeholder="0.00" />
-                    <InputField label="Overtime Pay" name="overtime_pay" type="number" min="0" placeholder="0.00" />
-                    <InputField label="Bonus" name="bonus" type="number" min="0" placeholder="0.00" />
-                    <InputField label="Allowances" name="allowances" type="number" min="0" placeholder="0.00" />
+                    <PayrollInputField label="Basic Salary *" name="basic_salary" type="number" min="0" placeholder="0.00" value={form.basic_salary} onChange={handleInputChange} />
+                    <PayrollInputField label="Overtime Pay" name="overtime_pay" type="number" min="0" placeholder="0.00" value={form.overtime_pay} onChange={handleInputChange} />
+                    <PayrollInputField label="Bonus" name="bonus" type="number" min="0" placeholder="0.00" value={form.bonus} onChange={handleInputChange} />
+                    <PayrollInputField label="Allowances" name="allowances" type="number" min="0" placeholder="0.00" value={form.allowances} onChange={handleInputChange} />
                   </div>
                 </div>
 
                 {/* Deductions */}
                 <div style={{ padding: '12px 16px', borderRadius: '12px', backgroundColor: 'rgba(239,68,68,0.04)', border: '1px solid rgba(239,68,68,0.15)' }}>
-                  <p style={{ margin: '0 0 12px', fontSize: '10px', fontWeight: '800', letterSpacing: '0.5px', textTransform: 'uppercase', color: '#dc2626' }}>Deductions (ETB)</p>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                    <p style={{ margin: 0, fontSize: '10px', fontWeight: '800', letterSpacing: '0.5px', textTransform: 'uppercase', color: '#dc2626' }}>Deductions (ETB)</p>
+                    <button
+                      type="button"
+                      onClick={autoCalculateTaxAndPension}
+                      style={{
+                        padding: '4px 10px', fontSize: '11px', fontWeight: '700', borderRadius: '6px',
+                        backgroundColor: '#fee2e2', color: '#991b1b', border: '1px solid #fecaca', cursor: 'pointer'
+                      }}
+                    >
+                      ⚡ Auto-calc (Tax & Pension)
+                    </button>
+                  </div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '12px' }}>
-                    <InputField label="Income Tax (PAYE)" name="income_tax" type="number" min="0" placeholder="0.00" />
-                    <InputField label="Pension (Employee 7%)" name="pension_employee" type="number" min="0" placeholder="0.00" />
-                    <InputField label="Pension (Employer 11%)" name="pension_employer" type="number" min="0" placeholder="0.00" />
-                    <InputField label="Other Deductions" name="other_deductions" type="number" min="0" placeholder="0.00" />
+                    <PayrollInputField label="Income Tax (PAYE)" name="income_tax" type="number" min="0" placeholder="0.00" value={form.income_tax} onChange={handleInputChange} />
+                    <PayrollInputField label="Pension (Employee 7%)" name="pension_employee" type="number" min="0" placeholder="0.00" value={form.pension_employee} onChange={handleInputChange} />
+                    <PayrollInputField label="Pension (Employer 11%)" name="pension_employer" type="number" min="0" placeholder="0.00" value={form.pension_employer} onChange={handleInputChange} />
+                    <PayrollInputField label="Other Deductions" name="other_deductions" type="number" min="0" placeholder="0.00" value={form.other_deductions} onChange={handleInputChange} />
                   </div>
                 </div>
 

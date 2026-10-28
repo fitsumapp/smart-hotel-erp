@@ -90,4 +90,10 @@ class LostAndFoundItemSerializer(serializers.ModelSerializer):
         fields = "__all__"
         read_only_fields = ["created_at", "updated_at"]
 
+    def to_representation(self, instance):
+        from datetime import datetime as dt
+        if hasattr(instance, "found_date") and isinstance(instance.found_date, dt):
+            instance.found_date = instance.found_date.date()
+        return super().to_representation(instance)
+
 

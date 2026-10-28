@@ -1,3 +1,3 @@
-from hotel.models import InventoryCategory, InventoryItem, RecipeBOM, StockTransaction, Supplier
+from hotel.models import InventoryCategory, InventoryItem, InventoryWasteRecord, RecipeBOM, StockTransaction, Supplier
 
-__all__ = ["InventoryCategory", "InventoryItem", "RecipeBOM", "StockTransaction", "Supplier"]
+__all__ = ["InventoryCategory", "InventoryItem", "InventoryWasteRecord", "RecipeBOM", "StockTransaction", "Supplier"]

@@ -53,6 +53,7 @@ const CashierDashboard = ({ userData, handleLogout }) => {
   const [showReceipt, setShowReceipt] = useState(false);
   const [fiscalData, setFiscalData] = useState(null);
   const [isPrinting, setIsPrinting] = useState(false);
+  const [isBusy, setIsBusy] = useState(false);
   const receiptRef = useRef(null);
   const knownNotificationIdsRef = useRef(new Set());
   const notificationsInitializedRef = useRef(false);
@@ -77,12 +78,20 @@ const CashierDashboard = ({ userData, handleLogout }) => {
     if (autoPrintOrderId) {
       const orderToPrint = completedBills.find(b => b.id === autoPrintOrderId) || pendingBills.find(b => b.id === autoPrintOrderId);
       if (orderToPrint) {
-        const subTotal = orderToPrint.items?.reduce((sum, item) => sum + (item.quantity * item.price_at_order), 0) || 0;
-        const discount = parseFloat(discountValue || 0);
-        const afterDiscount = subTotal - discount;
-        const serviceCharge = afterDiscount * (serviceRate / 100);
-        const vat = afterDiscount * (vatRate / 100);
-        const grandTotal = afterDiscount + serviceCharge + vat;
+        let subTotal, serviceCharge, vat, grandTotal;
+        if (orderToPrint.is_session) {
+          subTotal = parseFloat(orderToPrint.sub_total || 0);
+          serviceCharge = parseFloat(orderToPrint.service_charge_amount || 0);
+          vat = parseFloat(orderToPrint.vat_amount || 0);
+          grandTotal = parseFloat(orderToPrint.total_amount || 0);
+        } else {
+          subTotal = orderToPrint.items?.reduce((sum, item) => sum + (item.quantity * item.price_at_order), 0) || 0;
+          const discount = parseFloat(discountValue || 0);
+          const afterDiscount = subTotal - discount;
+          serviceCharge = afterDiscount * (serviceRate / 100);
+          vat = afterDiscount * (vatRate / 100);
+          grandTotal = afterDiscount + serviceCharge + vat;
+        }
 
         setFiscalData({
           ...orderToPrint,
@@ -248,6 +257,15 @@ const CashierDashboard = ({ userData, handleLogout }) => {
 
   const calculateFinalTotal = (order) => {
     if (!order) return { subTotal: 0, serviceCharge: 0, vat: 0, grandTotal: 0 };
+    if (order.is_session && order.total_amount !== undefined) {
+      return {
+        subTotal: parseFloat(order.sub_total || 0),
+        discount: 0,
+        serviceCharge: parseFloat(order.service_charge_amount || 0),
+        vat: parseFloat(order.vat_amount || 0),
+        grandTotal: parseFloat(order.total_amount || 0),
+      };
+    }
     const subTotal = order.items?.reduce((sum, item) => sum + (item.quantity * item.price_at_order), 0) || 0;
     const discount = parseFloat(discountValue || 0);
     const afterDiscount = subTotal - discount;
@@ -334,7 +352,78 @@ const CashierDashboard = ({ userData, handleLogout }) => {
     fetchDataUpdate();
   };
 
-  // handleProcessPayment removed — Cashier no longer confirms payment
+  const handlePrepareBill = async (order) => {
+    if (!order) return;
+    setIsBusy(true);
+    try {
+      const token = localStorage.getItem('access_token');
+      const headers = { Authorization: `Bearer ${token}` };
+      const orderId = order.is_session ? (order.orders?.[0]?.id || order.id) : order.id;
+      const res = await axios.post(`${API_BASE}orders/${orderId}/prepare-bill/`, {}, { headers });
+      alert(res.data?.message || 'Bill prepared and waiter notified.');
+      await fetchDataUpdate();
+      setAutoPrintOrderId(order.id);
+    } catch (err) {
+      alert(err.response?.data?.error || err.response?.data?.detail || 'Failed to prepare bill.');
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
+  const handleConfirmHandover = async (order) => {
+    if (!order) return;
+    setIsBusy(true);
+    try {
+      const token = localStorage.getItem('access_token');
+      const headers = { Authorization: `Bearer ${token}` };
+      const orderId = order.is_session ? (order.orders?.[0]?.id || order.id) : order.id;
+      const res = await axios.post(
+        `${API_BASE}orders/${orderId}/confirm-handover/`,
+        {
+          tip_amount: order.handover_tip || order.tip_amount || 0,
+          settle_session: Boolean(order.is_session),
+        },
+        { headers }
+      );
+      alert(res.data?.message || 'Cash handover confirmed and payment settled.');
+      setSelectedOrder(null);
+      await fetchDataUpdate();
+    } catch (err) {
+      alert(err.response?.data?.error || err.response?.data?.detail || 'Failed to confirm cash handover.');
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
+  const handleDirectComplete = async (order) => {
+    if (!order) return;
+    setIsBusy(true);
+    try {
+      const token = localStorage.getItem('access_token');
+      const headers = { Authorization: `Bearer ${token}` };
+      if (order.is_session && order.session_id) {
+        const res = await axios.post(
+          `${API_BASE}sessions/${order.session_id}/settle/`,
+          { payment_method: 'Cash' },
+          { headers }
+        );
+        alert(res.data?.message || 'Session settled successfully.');
+      } else {
+        const res = await axios.post(
+          `${API_BASE}orders/${order.id}/complete/`,
+          { payment_method: 'Cash' },
+          { headers }
+        );
+        alert(res.data?.message || 'Order completed successfully.');
+      }
+      setSelectedOrder(null);
+      await fetchDataUpdate();
+    } catch (err) {
+      alert(err.response?.data?.error || err.response?.data?.detail || 'Payment completion failed.');
+    } finally {
+      setIsBusy(false);
+    }
+  };
 
   const handlePrintNow = async () => {
     if (!fiscalData?.id) return;
@@ -382,7 +471,7 @@ const CashierDashboard = ({ userData, handleLogout }) => {
   const filteredCompletedOrders = completedBills.filter(b =>
     b.table_code?.toLowerCase().includes(searchQuery.toLowerCase()) || String(b.id).includes(searchQuery)
   );
-  const isCompletedOrder = selectedOrder?.status === 'completed' || selectedOrder?.status === 'paid';
+  const isCompletedOrder = selectedOrder?.status === 'completed' || selectedOrder?.status === 'paid' || selectedOrder?.payment_status === 'paid';
 
   return (
     <div style={styles.page}>
@@ -561,11 +650,35 @@ const CashierDashboard = ({ userData, handleLogout }) => {
                             <div key={bill.id} onClick={() => setSelectedOrder(bill)}
                               style={{ ...styles.orderCard, borderLeft: selectedOrder?.id === bill.id ? '4px solid #10b981' : 'none', background: selectedOrder?.id === bill.id ? '#f0fdf4' : '#fff', cursor: 'pointer' }}>
                               <div style={styles.orderCardTop}>
-                                <strong style={styles.orderId}>ORD-{bill.id}</strong>
+                                <div>
+                                  <strong style={styles.orderId}>
+                                    {bill.is_session ? `SESS-${bill.session_id}` : `ORD-${bill.id}`}
+                                  </strong>
+                                  <div style={{ display: 'flex', gap: '4px', marginTop: '4px', flexWrap: 'wrap' }}>
+                                    {bill.status === 'bill_requested' && (
+                                      <span style={{ fontSize: '10px', fontWeight: 700, padding: '2px 6px', borderRadius: '4px', background: '#fef3c7', color: '#b45309' }}>
+                                        Bill Requested
+                                      </span>
+                                    )}
+                                    {bill.is_bill_prepared && (
+                                      <span style={{ fontSize: '10px', fontWeight: 700, padding: '2px 6px', borderRadius: '4px', background: '#dbeafe', color: '#1d4ed8' }}>
+                                        Bill Prepared
+                                      </span>
+                                    )}
+                                    {bill.has_pending_handover && (
+                                      <span style={{ fontSize: '10px', fontWeight: 700, padding: '2px 6px', borderRadius: '4px', background: '#dcfce7', color: '#15803d' }}>
+                                        Handover Pending
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
                                 <span style={styles.pricePill}>{settings?.currency_symbol || 'ETB'} {bill.total_amount}</span>
                               </div>
                               <div style={styles.orderStatsLine}>
                                 <span>Table {bill.table_code}</span> • <span>{bill.waiter_name}</span>
+                                {bill.is_session && bill.rounds_count > 1 && (
+                                  <span style={{ color: '#0284c7', fontWeight: 700 }}> • {bill.rounds_count} rounds</span>
+                                )}
                               </div>
                             </div>
                           ))}
@@ -617,7 +730,9 @@ const CashierDashboard = ({ userData, handleLogout }) => {
                       <motion.div initial={{ x: 20 }} animate={{ x: 0 }}>
                         <div style={styles.cartHeader}>
                           <div>
-                            <div style={{ fontSize: '13px', color: '#64748b', fontWeight: '600' }}>Table Checkout</div>
+                            <div style={{ fontSize: '13px', color: '#64748b', fontWeight: '600' }}>
+                              {selectedOrder.is_session ? `Dining Session #${selectedOrder.session_id} (${selectedOrder.rounds_count || 1} rounds)` : 'Table Checkout'}
+                            </div>
                             <div style={{ fontSize: '20px', fontWeight: '800', color: '#0f172a' }}>{selectedOrder.table_code}</div>
                           </div>
                           <button onClick={() => setSelectedOrder(null)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X size={20} color="#94a3b8" /></button>
@@ -643,9 +758,55 @@ const CashierDashboard = ({ userData, handleLogout }) => {
                         </div>
 
                         {!isCompletedOrder ? (
-                          <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', background: '#f8fafc', borderTop: '1px solid #e2e8f0' }}>
-                            <div style={{ color: '#0f766e', fontSize: '13px', fontWeight: '700', background: 'rgba(16,185,129,0.1)', padding: '8px 16px', borderRadius: '8px' }}>Awaiting Payment from Waiter</div>
-                            <button onClick={() => setAutoPrintOrderId(selectedOrder?.id)} style={{ padding: '12px 20px', background: '#0f172a', color: '#fff', borderRadius: '8px', border: 'none', cursor: 'pointer', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px' }}><Printer size={16} /> Print Receipt Now</button>
+                          <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '10px', background: '#f8fafc', borderTop: '1px solid #e2e8f0' }}>
+                            {selectedOrder.has_pending_handover && (
+                              <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '8px', padding: '12px', width: '100%', boxSizing: 'border-box' }}>
+                                <div style={{ fontSize: '13px', fontWeight: 'bold', color: '#166534', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                  <DollarSign size={16} /> Cash Handover Awaiting Confirmation
+                                </div>
+                                <div style={{ fontSize: '12px', color: '#15803d', marginTop: '4px' }}>
+                                  Waiter <strong>{selectedOrder.handover_waiter || selectedOrder.waiter_name}</strong> handed over <strong>{settings?.currency_symbol || 'ETB'} {Number(selectedOrder.handover_amount || selectedOrder.total_amount).toFixed(2)}</strong>
+                                </div>
+                                <button
+                                  onClick={() => handleConfirmHandover(selectedOrder)}
+                                  disabled={isBusy}
+                                  style={{ marginTop: '10px', width: '100%', padding: '10px 16px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+                                >
+                                  <CheckCircle size={16} /> Confirm Handover & Settle
+                                </button>
+                              </div>
+                            )}
+
+                            {!selectedOrder.is_bill_prepared ? (
+                              <button
+                                onClick={() => handlePrepareBill(selectedOrder)}
+                                disabled={isBusy}
+                                style={{ width: '100%', padding: '10px 16px', background: '#0284c7', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+                              >
+                                <Receipt size={16} /> Prepare Bill & Notify Waiter
+                              </button>
+                            ) : (
+                              <div style={{ fontSize: '12px', color: '#0369a1', background: '#e0f2fe', padding: '6px 12px', borderRadius: '6px', width: '100%', textAlign: 'center', fontWeight: '600', boxSizing: 'border-box' }}>
+                                ✓ Bill Prepared & Issued to Waiter
+                              </div>
+                            )}
+
+                            <button
+                              onClick={() => setAutoPrintOrderId(selectedOrder?.id)}
+                              style={{ width: '100%', padding: '10px 16px', background: '#0f172a', color: '#fff', borderRadius: '6px', border: 'none', cursor: 'pointer', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+                            >
+                              <Printer size={16} /> Print Receipt / Bill
+                            </button>
+
+                            {!selectedOrder.has_pending_handover && (
+                              <button
+                                onClick={() => handleDirectComplete(selectedOrder)}
+                                disabled={isBusy}
+                                style={{ width: '100%', padding: '8px 14px', background: '#fff', color: '#475569', border: '1px solid #cbd5e1', borderRadius: '6px', fontWeight: '600', fontSize: '12px', cursor: 'pointer' }}
+                              >
+                                Direct Cash Settlement (Counter)
+                              </button>
+                            )}
                           </div>
                         ) : (
                           <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px', background: '#f8fafc' }}>

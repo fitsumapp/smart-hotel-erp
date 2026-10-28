@@ -7,13 +7,59 @@ let sessionGeneration = 0;
 
 export const apiErrorMessage = (error, fallback = 'Request failed. Please try again.') => {
   const data = error?.response?.data;
-  const detail = data?.error?.message || data?.detail || data?.error;
-  if (typeof detail === 'string') return detail;
+  if (!data) return error?.message || fallback;
+
+  // 1. Check for nested validation details (standard API envelope)
+  const details = data?.error?.details || data?.error_details?.details || data?.details;
+  if (details && typeof details === 'object') {
+    const messages = [];
+    const collect = (val, prefix = '') => {
+      if (!val) return;
+      if (Array.isArray(val)) {
+        val.forEach(item => collect(item, prefix));
+      } else if (typeof val === 'object') {
+        Object.entries(val).forEach(([k, v]) => {
+          const nextPrefix = k === 'non_field_errors' || k === 'detail' ? '' : `${k.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}: `;
+          collect(v, nextPrefix);
+        });
+      } else {
+        const strVal = String(val);
+        const capitalized = strVal.charAt(0).toUpperCase() + strVal.slice(1);
+        messages.push(prefix ? `${prefix}${capitalized}` : capitalized);
+      }
+    };
+    collect(details);
+    if (messages.length > 0) return messages.join('\n');
+  }
+
+  // 2. Direct field validation dict: { name: ["..."] }
+  if (typeof data === 'object' && !Array.isArray(data)) {
+    const messages = [];
+    Object.entries(data).forEach(([k, val]) => {
+      if (['code', 'error', 'error_details'].includes(k)) return;
+      const prefix = k === 'non_field_errors' || k === 'detail' ? '' : `${k.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}: `;
+      if (Array.isArray(val)) {
+        val.forEach(v => {
+          const strVal = String(v);
+          const capitalized = strVal.charAt(0).toUpperCase() + strVal.slice(1);
+          messages.push(`${prefix}${capitalized}`);
+        });
+      } else if (typeof val === 'string') {
+        const capitalized = val.charAt(0).toUpperCase() + val.slice(1);
+        messages.push(`${prefix}${capitalized}`);
+      }
+    });
+    if (messages.length > 0) return messages.join('\n');
+  }
+
+  // 3. Fallback to detail / message strings
+  const detail = data?.error?.message || data?.detail || (typeof data?.error === 'string' ? data.error : null);
+  if (typeof detail === 'string' && detail !== 'Request could not be completed.') return detail;
   if (data && typeof data === 'object') {
     const messages = Object.values(data).flat().filter(value => typeof value === 'string');
     if (messages.length) return messages.join(' ');
   }
-  return fallback;
+  return typeof detail === 'string' ? detail : fallback;
 };
 
 export const clearSession = () => {

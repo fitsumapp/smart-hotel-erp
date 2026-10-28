@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import axios from 'axios';
-import { 
-  QrCode, Search, User, Calendar, Bed, CheckCircle, 
+import {
+  QrCode, Search, User, Calendar, Bed, CheckCircle,
   ArrowRight, X, Phone, Clock,
-  AlertCircle, ShieldAlert, Check, RefreshCcw, LayoutGrid, 
-  ListOrdered, Plus, Filter, Trash2, ShieldCheck, 
+  AlertCircle, ShieldAlert, Check, RefreshCcw, LayoutGrid,
+  ListOrdered, Plus, Filter, Trash2, ShieldCheck,
   UserCheck, LogOut, TrendingUp, Building2, Banknote, Loader2,
   Eye, Wifi, Wind, Tv, Coffee, Dumbbell, Car, Star
 } from 'lucide-react';
@@ -22,14 +22,14 @@ const ReceptionDashboard = ({ userData, handleLogout }) => {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState({ text: '', type: '' }); // type: 'success' | 'error'
-  
+
   // Selection / Modal States
   const [selectedRoom, setSelectedRoom] = useState(null);
   const [showBookingModal, setShowBookingModal] = useState(false);
   const [bookingRoom, setBookingRoom] = useState(null);
   const [checkinCode, setCheckinCode] = useState('');
   const [verifiedReservation, setVerifiedReservation] = useState(null);
-  
+
   // Folio States
   const [activeReservation, setActiveReservation] = useState(null);
   const [folioCharges, setFolioCharges] = useState([]);
@@ -89,7 +89,7 @@ const ReceptionDashboard = ({ userData, handleLogout }) => {
     try {
       const token = localStorage.getItem('access_token');
       const config = { headers: { Authorization: `Bearer ${token}` } };
-      
+
       const [roomsRes, resRes] = await Promise.all([
         axios.get(ROOMS_API, config),
         axios.get(RESERVATIONS_API, config)
@@ -110,19 +110,19 @@ const ReceptionDashboard = ({ userData, handleLogout }) => {
     try {
       const token = localStorage.getItem('access_token');
       const config = { headers: { Authorization: `Bearer ${token}` } };
-      
+
       const res = await axios.post(
         `${API_BASE_URL}/users/reservations/${resId}/verify-checkout-payment/`,
         {},
         config
       );
-      
+
       if (res.data?.status === 'success') {
         const [roomsRes, resRes] = await Promise.all([
           axios.get(ROOMS_API, config),
           axios.get(RESERVATIONS_API, config)
         ]);
-        
+
         const allRooms = Array.isArray(roomsRes.data) ? roomsRes.data : [];
         const allReservations = Array.isArray(resRes.data) ? resRes.data : [];
         setRooms(allRooms);
@@ -181,7 +181,7 @@ const ReceptionDashboard = ({ userData, handleLogout }) => {
 
   useEffect(() => {
     fetchData();
-    
+
     // Check if redirected back from Chapa checkout payment
     const params = new URLSearchParams(window.location.search);
     if (params.get('payment') === 'returned') {
@@ -203,7 +203,7 @@ const ReceptionDashboard = ({ userData, handleLogout }) => {
   // Automatic Polling for Checkout Digital Payment completion
   useEffect(() => {
     let intervalId = null;
-    
+
     if (showCheckoutModal && chapaSession && !checkoutSuccess && !verifyingPayment) {
       intervalId = setInterval(async () => {
         try {
@@ -227,7 +227,7 @@ const ReceptionDashboard = ({ userData, handleLogout }) => {
         }
       }, 4000);
     }
-    
+
     return () => {
       if (intervalId) clearInterval(intervalId);
     };
@@ -293,7 +293,7 @@ const ReceptionDashboard = ({ userData, handleLogout }) => {
     try {
       const token = localStorage.getItem('access_token');
       const config = { headers: { Authorization: `Bearer ${token}` } };
-      
+
       const res = await axios.get(`${API_BASE_URL}/users/reservations/${reservationId}/folio/`, config);
       setFolioCharges(Array.isArray(res.data) ? res.data : []);
     } catch (err) {
@@ -311,7 +311,7 @@ const ReceptionDashboard = ({ userData, handleLogout }) => {
     try {
       const token = localStorage.getItem('access_token');
       const config = { headers: { Authorization: `Bearer ${token}` } };
-      
+
       await axios.post(`${API_BASE_URL}/users/reservations/${activeReservation.id}/folio/`, {
         description: newCharge.description,
         amount: Number(newCharge.amount)
@@ -330,12 +330,12 @@ const ReceptionDashboard = ({ userData, handleLogout }) => {
 
   const handleDeleteFolioCharge = async (chargeId) => {
     if (!window.confirm("Remove this charge from the folio?")) return;
-    
+
     setSubmitting(true);
     try {
       const token = localStorage.getItem('access_token');
       const config = { headers: { Authorization: `Bearer ${token}` } };
-      
+
       await axios.delete(`${API_BASE_URL}/users/folio/${chargeId}/`, config);
       showNotification("Charge removed.");
       if (activeReservation) {
@@ -352,13 +352,13 @@ const ReceptionDashboard = ({ userData, handleLogout }) => {
   const folioTotal = useMemo(() => {
     const extras = folioCharges.reduce((sum, c) => sum + Number(c.amount || 0), 0);
     if (!activeReservation || !selectedRoom) return { roomCost: 0, nights: 1, extras, grandTotal: extras };
-    
+
     // Calculate nights
     const inDate = new Date(activeReservation.check_in_date);
     const outDate = new Date(activeReservation.check_out_date);
     const nights = Math.max(Math.round((outDate - inDate) / (1000 * 60 * 60 * 24)), 1);
     const roomCost = Number(selectedRoom.base_price || 0) * nights;
-    
+
     return { roomCost, nights, extras, grandTotal: roomCost + extras };
   }, [folioCharges, activeReservation, selectedRoom]);
 
@@ -404,7 +404,7 @@ const ReceptionDashboard = ({ userData, handleLogout }) => {
     const cleaning = rooms.filter(r => r.status === 'Cleaning').length;
     const maintenance = rooms.filter(r => r.status === 'Maintenance').length;
     const reserved = rooms.filter(r => r.status === 'Reserved').length;
-    
+
     // Today's arrivals / departures
     const todayStr = new Date().toISOString().split('T')[0];
     const arrivals = reservations.filter(r => r.check_in_date === todayStr && r.status === 'confirmed').length;
@@ -434,23 +434,101 @@ const ReceptionDashboard = ({ userData, handleLogout }) => {
     }
   };
 
-  // Perform check-in by code/token search
+  // Cancel reservation from front desk
+  const handleCancelReservation = async (roomId) => {
+    const activeRes = reservations.find(r => Number(r.room) === Number(roomId) && ['confirmed', 'pending'].includes(r.status));
+    if (!window.confirm("Are you sure you want to cancel this reservation and release the room?")) return;
+    setSubmitting(true);
+    try {
+      const token = localStorage.getItem('access_token');
+      if (activeRes) {
+        await axios.post(
+          `${API_BASE_URL}/users/reservations/${activeRes.id}/cancel/`,
+          {},
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+      } else {
+        await axios.patch(`${API_BASE_URL}/users/rooms/${roomId}/front-desk-status/`, {
+          action: 'cancel'
+        }, { headers: { Authorization: `Bearer ${token}` } });
+      }
+      showNotification("Reservation cancelled and room released.");
+      setSelectedRoom(null);
+      fetchData();
+    } catch (err) {
+      console.error(err);
+      showNotification(err.response?.data?.error || "Failed to cancel reservation.", "error");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // Mark reservation as no-show from front desk
+  const handleMarkNoShow = async (roomId) => {
+    const activeRes = reservations.find(r => Number(r.room) === Number(roomId) && r.status === 'confirmed');
+    if (!activeRes) {
+      showNotification("No confirmed reservation found for this room to mark as no-show.", "error");
+      return;
+    }
+    if (!window.confirm(`Mark reservation for ${activeRes.guest_name} as No-Show and release Room?`)) return;
+    setSubmitting(true);
+    try {
+      const token = localStorage.getItem('access_token');
+      await axios.post(
+        `${API_BASE_URL}/users/reservations/${activeRes.id}/no-show/`,
+        {},
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      showNotification("Reservation marked as No-Show. Room released.");
+      setSelectedRoom(null);
+      fetchData();
+    } catch (err) {
+      console.error(err);
+      showNotification(err.response?.data?.error || "Failed to mark no-show.", "error");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // Perform check-in search by code/token without prematurely modifying stay status
   const handleVerifyCheckInCode = async (e) => {
     if (e) e.preventDefault();
-    if (!checkinCode) return;
+    const code = checkinCode.trim();
+    if (!code) return;
 
     setSubmitting(true);
     setVerifiedReservation(null);
     try {
+      // 1. Try finding in loaded reservations
+      const matched = reservations.find(r =>
+        r.confirmation_code?.toLowerCase() === code.toLowerCase() ||
+        r.qr_token === code ||
+        r.guest_phone === code
+      );
+      if (matched) {
+        setVerifiedReservation(matched);
+        showNotification("Reservation verified! Details loaded.");
+        return;
+      }
+
+      // 2. Query reservations API
       const token = localStorage.getItem('access_token');
-      const res = await axios.post(`${API_BASE_URL}/users/reservations/qr-checkin/`, {
-        qr_token: checkinCode
-      }, {
+      const res = await axios.get(`${RESERVATIONS_API}?search=${encodeURIComponent(code)}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
+      const results = Array.isArray(res.data) ? res.data : (res.data?.results || []);
+      const found = results.find(r =>
+        r.confirmation_code?.toLowerCase() === code.toLowerCase() ||
+        r.qr_token === code ||
+        r.guest_phone === code
+      ) || results[0];
 
-      setVerifiedReservation(res.data.reservation);
-      showNotification("Reservation verified! Details loaded.");
+      if (found) {
+        setVerifiedReservation(found);
+        showNotification("Reservation verified! Details loaded.");
+      } else {
+        showNotification("No reservation found matching this code.", "error");
+      }
     } catch (err) {
       console.error(err);
       showNotification(err.response?.data?.error || "Invalid code or reservation not found.", "error");
@@ -573,11 +651,12 @@ const ReceptionDashboard = ({ userData, handleLogout }) => {
       });
       const folioList = Array.isArray(res.data) ? res.data : [];
       setCheckoutFolio(folioList);
-      
+
       const extras = folioList.reduce((sum, item) => sum + Number(item.amount || 0), 0);
-      if (extras === 0) {
+      const isRoomPaid = reservation.payment_status === 'paid';
+      if (isRoomPaid && extras === 0) {
         setSubmitting(false);
-        if (window.confirm(`Guest has no extra charges. Proceed with direct check-out for Room ${room.room_number}?`)) {
+        if (window.confirm(`Guest has no outstanding balance. Proceed with direct check-out for Room ${room.room_number}?`)) {
           setSubmitting(true);
           const payload = {
             payment_method: 'None',
@@ -623,7 +702,7 @@ const ReceptionDashboard = ({ userData, handleLogout }) => {
       const bill = res.data?.final_bill || {};
       setCheckoutSuccess({
         message: `Checkout complete!`,
-        grand_total: bill.extras_total || 0,
+        grand_total: bill.balance_due ?? bill.checkout_revenue ?? bill.extras_total ?? 0,
         method,
         reference,
       });
@@ -643,7 +722,7 @@ const ReceptionDashboard = ({ userData, handleLogout }) => {
       const token = localStorage.getItem('access_token');
       const res = await axios.post(
         `${API_BASE_URL}/users/reservations/${checkoutReservation.id}/checkout-payment-session/`,
-        {},
+        { payment_type: 'checkout' },
         { headers: { Authorization: `Bearer ${token}` } }
       );
       setChapaSession(res.data);
@@ -685,13 +764,16 @@ const ReceptionDashboard = ({ userData, handleLogout }) => {
 
   // Compute checkout bill totals
   const checkoutBill = useMemo(() => {
-    if (!checkoutReservation || !checkoutRoom) return { nights: 1, roomCost: 0, extras: 0, grandTotal: 0 };
+    if (!checkoutReservation || !checkoutRoom) return { nights: 1, roomCost: 0, extras: 0, grandTotal: 0, isRoomPaid: true, balanceDue: 0, deposit: 0 };
     const inDate = new Date(checkoutReservation.check_in_date);
     const outDate = new Date(checkoutReservation.check_out_date);
     const nights = Math.max(Math.round((outDate - inDate) / 86400000), 1);
     const roomCost = Number(checkoutRoom.base_price || 0) * nights;
     const extras = checkoutFolio.reduce((s, c) => s + Number(c.amount || 0), 0);
-    return { nights, roomCost, extras, grandTotal: roomCost + extras };
+    const isRoomPaid = checkoutReservation.payment_status === 'paid';
+    const deposit = Number(checkoutReservation.deposit_amount || 0);
+    const balanceDue = isRoomPaid ? extras : Math.max(roomCost + extras - deposit, 0);
+    return { nights, roomCost, extras, grandTotal: roomCost + extras, isRoomPaid, deposit, balanceDue };
   }, [checkoutReservation, checkoutRoom, checkoutFolio]);
 
   // Submit Walk-in Booking
@@ -745,7 +827,7 @@ const ReceptionDashboard = ({ userData, handleLogout }) => {
     try {
       const token = localStorage.getItem('access_token');
       const config = { headers: { Authorization: `Bearer ${token}` } };
-      
+
       // 1. Create Reservation
       const res = await axios.post(`${API_BASE_URL}/users/rooms/${bookingRoom.id}/reserve-now/`, {
         guest_name: bookingForm.guest_name,
@@ -828,26 +910,26 @@ const ReceptionDashboard = ({ userData, handleLogout }) => {
 
         {/* Navigation Tabs */}
         <div style={styles.tabGroup} className="reception-tab-group">
-          <button 
-            style={activeTab === 'grid' ? styles.activeTabBtn : styles.tabBtn} 
+          <button
+            style={activeTab === 'grid' ? styles.activeTabBtn : styles.tabBtn}
             onClick={() => setActiveTab('grid')}
           >
             <LayoutGrid size={16} /> Room Map
           </button>
-          <button 
-            style={activeTab === 'reservations' ? styles.activeTabBtn : styles.tabBtn} 
+          <button
+            style={activeTab === 'reservations' ? styles.activeTabBtn : styles.tabBtn}
             onClick={() => setActiveTab('reservations')}
           >
             <ListOrdered size={16} /> Arrivals & Bookings
           </button>
-          <button 
-            style={activeTab === 'checkin' ? styles.activeTabBtn : styles.tabBtn} 
+          <button
+            style={activeTab === 'checkin' ? styles.activeTabBtn : styles.tabBtn}
             onClick={() => setActiveTab('checkin')}
           >
             <QrCode size={16} /> Verification & QR
           </button>
-          <button 
-            style={activeTab === 'reports' ? styles.activeTabBtn : styles.tabBtn} 
+          <button
+            style={activeTab === 'reports' ? styles.activeTabBtn : styles.tabBtn}
             onClick={() => setActiveTab('reports')}
           >
             <TrendingUp size={16} /> Reports
@@ -867,12 +949,12 @@ const ReceptionDashboard = ({ userData, handleLogout }) => {
       {/* Floating Notifications */}
       <AnimatePresence>
         {message.text && (
-          <motion.div 
-            initial={{ opacity: 0, y: -50 }} 
-            animate={{ opacity: 1, y: 0 }} 
-            exit={{ opacity: 0, y: -50 }} 
+          <motion.div
+            initial={{ opacity: 0, y: -50 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -50 }}
             style={{
-              ...styles.notification, 
+              ...styles.notification,
               backgroundColor: message.type === 'error' ? 'rgba(239, 68, 68, 0.95)' : 'rgba(16, 185, 129, 0.95)',
               borderColor: message.type === 'error' ? '#ef4444' : '#10b981'
             }}
@@ -924,7 +1006,7 @@ const ReceptionDashboard = ({ userData, handleLogout }) => {
         <AnimatePresence mode="wait">
           {/* TAB 1: ROOM MAP / GRID */}
           {activeTab === 'grid' && (
-            <motion.div 
+            <motion.div
               key="grid-tab"
               initial={{ opacity: 0, y: 15 }}
               animate={{ opacity: 1, y: 0 }}
@@ -973,11 +1055,11 @@ const ReceptionDashboard = ({ userData, handleLogout }) => {
                     <h4 style={styles.floorTitle}>Floor {floor}</h4>
                     <div style={styles.roomsGrid}>
                       {groupedRooms[floor].map(room => (
-                        <motion.div 
+                        <motion.div
                           key={room.id}
                           whileHover={{ scale: 1.02 }}
                           style={{
-                            ...styles.roomCard, 
+                            ...styles.roomCard,
                             borderLeft: `5px solid ${getStatusColor(room.status)}`
                           }}
                           onClick={() => setSelectedRoom(room)}
@@ -1037,7 +1119,7 @@ const ReceptionDashboard = ({ userData, handleLogout }) => {
 
           {/* TAB 2: ARRIVALS & RESERVATIONS LIST */}
           {activeTab === 'reservations' && (
-            <motion.div 
+            <motion.div
               key="res-tab"
               initial={{ opacity: 0, y: 15 }}
               animate={{ opacity: 1, y: 0 }}
@@ -1132,7 +1214,7 @@ const ReceptionDashboard = ({ userData, handleLogout }) => {
 
           {/* TAB 3: QR CHECK-IN & VALIDATION */}
           {activeTab === 'checkin' && (
-            <motion.div 
+            <motion.div
               key="checkin-tab"
               initial={{ opacity: 0, y: 15 }}
               animate={{ opacity: 1, y: 0 }}
@@ -1143,11 +1225,11 @@ const ReceptionDashboard = ({ userData, handleLogout }) => {
                 <div style={styles.cardIcon}><QrCode size={32} color="#0f766e" /></div>
                 <h2 style={styles.cardTitle}>Verify & Check-In Guest</h2>
                 <p style={styles.cardSub}>Search by confirmation code or scan guest QR token</p>
-                
+
                 <form onSubmit={handleVerifyCheckInCode} style={styles.form}>
                   <div style={styles.inputWrapper}>
                     <Search style={styles.searchIcon} size={20} />
-                    <input 
+                    <input
                       value={checkinCode}
                       onChange={(e) => setCheckinCode(e.target.value.toUpperCase())}
                       placeholder="ENTER TOKEN OR CONFIRMATION CODE"
@@ -1164,7 +1246,7 @@ const ReceptionDashboard = ({ userData, handleLogout }) => {
               {/* Verified reservation info card */}
               <AnimatePresence>
                 {verifiedReservation && (
-                  <motion.div 
+                  <motion.div
                     initial={{ opacity: 0, scale: 0.95 }}
                     animate={{ opacity: 1, scale: 1 }}
                     exit={{ opacity: 0, scale: 0.95 }}
@@ -1194,10 +1276,10 @@ const ReceptionDashboard = ({ userData, handleLogout }) => {
 
                     <div style={styles.modalFooter}>
                       <button onClick={() => setVerifiedReservation(null)} style={styles.cancelLink}>Clear</button>
-                      
+
                       {verifiedReservation.status === 'confirmed' || verifiedReservation.status === 'pending' ? (
-                        <button 
-                          onClick={() => handleCheckInVerified(verifiedReservation.room_id || verifiedReservation.room, verifiedReservation.id)} 
+                        <button
+                          onClick={() => handleCheckInVerified(verifiedReservation.room_id || verifiedReservation.room, verifiedReservation.id)}
                           style={styles.doneBtn}
                           disabled={submitting}
                         >
@@ -1215,7 +1297,7 @@ const ReceptionDashboard = ({ userData, handleLogout }) => {
 
           {/* TAB 4: REPORTS CENTER */}
           {activeTab === 'reports' && (
-            <motion.div 
+            <motion.div
               key="reports-tab"
               initial={{ opacity: 0, y: 15 }}
               animate={{ opacity: 1, y: 0 }}
@@ -1232,12 +1314,12 @@ const ReceptionDashboard = ({ userData, handleLogout }) => {
       <AnimatePresence>
         {selectedRoom && (
           <div style={styles.overlay} onClick={() => setSelectedRoom(null)}>
-            <motion.div 
+            <motion.div
               initial={{ x: '100%' }}
               animate={{ x: 0 }}
               exit={{ x: '100%' }}
               transition={{ type: 'spring', damping: 25 }}
-              style={styles.drawer} 
+              style={styles.drawer}
               onClick={(e) => e.stopPropagation()}
             >
               {/* Header */}
@@ -1281,8 +1363,8 @@ const ReceptionDashboard = ({ userData, handleLogout }) => {
                     {/* AVAILABLE ROOM ACTIONS */}
                     {selectedRoom.status === 'Available' && (
                       <>
-                        <button 
-                          style={styles.primaryActionBtn} 
+                        <button
+                          style={styles.primaryActionBtn}
                           onClick={() => {
                             setBookingRoom(selectedRoom);
                             setShowBookingModal(true);
@@ -1291,14 +1373,14 @@ const ReceptionDashboard = ({ userData, handleLogout }) => {
                         >
                           <Plus size={16} /> Create Walk-In Booking
                         </button>
-                        <button 
-                          style={styles.secondaryActionBtn} 
+                        <button
+                          style={styles.secondaryActionBtn}
                           onClick={() => handleUpdateRoomStatus(selectedRoom.id, 'Cleaning')}
                         >
                           <RefreshCcw size={16} /> Mark for Cleaning / Service
                         </button>
-                        <button 
-                          style={{ ...styles.secondaryActionBtn, color: '#ef4444' }} 
+                        <button
+                          style={{ ...styles.secondaryActionBtn, color: '#ef4444' }}
                           onClick={() => handleUpdateRoomStatus(selectedRoom.id, 'Maintenance')}
                         >
                           <ShieldAlert size={16} /> Place in Maintenance
@@ -1309,8 +1391,8 @@ const ReceptionDashboard = ({ userData, handleLogout }) => {
                     {/* OCCUPIED ROOM ACTIONS */}
                     {selectedRoom.status === 'Occupied' && (
                       <>
-                        <button 
-                          style={{ ...styles.primaryActionBtn, backgroundColor: '#dc2626', color: '#fff', boxShadow: '0 4px 14px rgba(220,38,38,0.3)' }} 
+                        <button
+                          style={{ ...styles.primaryActionBtn, backgroundColor: '#dc2626', color: '#fff', boxShadow: '0 4px 14px rgba(220,38,38,0.3)' }}
                           onClick={() => {
                             const activeRes = reservations.find(r => Number(r.room) === Number(selectedRoom.id) && r.status === 'checked_in');
                             if (activeRes) {
@@ -1328,8 +1410,8 @@ const ReceptionDashboard = ({ userData, handleLogout }) => {
                     {/* RESERVED ROOM ACTIONS */}
                     {selectedRoom.status === 'Reserved' && (
                       <>
-                        <button 
-                          style={{ ...styles.primaryActionBtn, backgroundColor: '#10b981', color: '#fff' }} 
+                        <button
+                          style={{ ...styles.primaryActionBtn, backgroundColor: '#10b981', color: '#fff' }}
                           onClick={() => {
                             const activeRes = reservations.find(r => Number(r.room) === Number(selectedRoom.id) && r.status === 'confirmed');
                             if (activeRes) {
@@ -1342,11 +1424,17 @@ const ReceptionDashboard = ({ userData, handleLogout }) => {
                         >
                           <UserCheck size={16} /> Complete Guest Check-In
                         </button>
-                        <button 
-                          style={{ ...styles.secondaryActionBtn, color: '#ef4444' }} 
-                          onClick={() => handleUpdateRoomStatus(selectedRoom.id, 'Available')}
+                        <button
+                          style={{ ...styles.secondaryActionBtn, color: '#ef4444' }}
+                          onClick={() => handleCancelReservation(selectedRoom.id)}
                         >
                           <X size={16} /> Cancel Reservation
+                        </button>
+                        <button
+                          style={{ ...styles.secondaryActionBtn, color: '#f59e0b' }}
+                          onClick={() => handleMarkNoShow(selectedRoom.id)}
+                        >
+                          <AlertCircle size={16} /> Mark No-Show
                         </button>
                       </>
                     )}
@@ -1354,15 +1442,15 @@ const ReceptionDashboard = ({ userData, handleLogout }) => {
                     {/* CLEANING / MAINTENANCE ACTIONS */}
                     {(selectedRoom.status === 'Cleaning' || selectedRoom.status === 'Maintenance') && (
                       <>
-                        <button 
-                          style={{ ...styles.primaryActionBtn, backgroundColor: '#10b981', color: '#fff' }} 
+                        <button
+                          style={{ ...styles.primaryActionBtn, backgroundColor: '#10b981', color: '#fff' }}
                           onClick={() => handleUpdateRoomStatus(selectedRoom.id, 'Available')}
                         >
                           <Check size={16} /> Complete Service (Mark Available)
                         </button>
                         {selectedRoom.status === 'Cleaning' && (
-                          <button 
-                            style={{ ...styles.secondaryActionBtn, color: '#ef4444' }} 
+                          <button
+                            style={{ ...styles.secondaryActionBtn, color: '#ef4444' }}
                             onClick={() => handleUpdateRoomStatus(selectedRoom.id, 'Maintenance')}
                           >
                             <ShieldAlert size={16} /> Transfer to Maintenance
@@ -1377,7 +1465,7 @@ const ReceptionDashboard = ({ userData, handleLogout }) => {
                 {selectedRoom.status === 'Occupied' && activeReservation && (
                   <div style={styles.infoSection}>
                     <h4 style={styles.infoSectionTitle}>GUEST FOLIO & EXTRA SERVICES</h4>
-                    
+
                     <div style={styles.folioContainer}>
                       {/* Summary box */}
                       <div style={styles.folioSummary}>
@@ -1410,8 +1498,8 @@ const ReceptionDashboard = ({ userData, handleLogout }) => {
                               </div>
                               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                 <span style={styles.folioItemAmt}>ETB {Number(charge.amount).toFixed(0)}</span>
-                                <button 
-                                  onClick={() => handleDeleteFolioCharge(charge.id)} 
+                                <button
+                                  onClick={() => handleDeleteFolioCharge(charge.id)}
                                   style={styles.deleteChargeBtn}
                                   title="Remove Charge"
                                 >
@@ -1425,14 +1513,14 @@ const ReceptionDashboard = ({ userData, handleLogout }) => {
 
                       {/* Add Charge Form */}
                       <form onSubmit={handleAddFolioCharge} style={styles.addFolioForm}>
-                        <input 
+                        <input
                           required
                           value={newCharge.description}
                           onChange={e => setNewCharge({ ...newCharge, description: e.target.value })}
                           placeholder="Laundry, Bar, Spa..."
                           style={styles.addFolioInputDesc}
                         />
-                        <input 
+                        <input
                           required
                           type="number"
                           value={newCharge.amount}
@@ -1525,7 +1613,9 @@ const ReceptionDashboard = ({ userData, handleLogout }) => {
                       {/* Room cost row */}
                       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '14px' }}>
                         <span style={{ color: '#475569' }}>Room {checkoutRoom.room_number} × {checkoutBill.nights} night{checkoutBill.nights > 1 ? 's' : ''} @ ETB {Number(checkoutRoom.base_price).toLocaleString()}</span>
-                        <strong style={{ color: '#16a34a', fontSize: '12px' }}>Paid at Check-In</strong>
+                        <strong style={{ color: checkoutBill.isRoomPaid ? '#16a34a' : '#d97706', fontSize: '12px' }}>
+                          {checkoutBill.isRoomPaid ? 'Paid at Check-In' : `ETB ${checkoutBill.roomCost.toLocaleString()} (Unpaid)`}
+                        </strong>
                       </div>
                       {/* Extra folio charges */}
                       {checkoutFolio.map(c => (
@@ -1539,8 +1629,10 @@ const ReceptionDashboard = ({ userData, handleLogout }) => {
                       )}
                       {/* Grand total */}
                       <div style={{ borderTop: '2px dashed #cbd5e1', paddingTop: '12px', marginTop: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ color: '#0f766e', fontWeight: 800, fontSize: '15px' }}>AMOUNT DUE (EXTRAS ONLY)</span>
-                        <span style={{ color: '#0f766e', fontWeight: 900, fontSize: '22px' }}>ETB {Number(checkoutBill.extras).toLocaleString()}</span>
+                        <span style={{ color: '#0f766e', fontWeight: 800, fontSize: '15px' }}>
+                          {checkoutBill.isRoomPaid ? 'AMOUNT DUE (EXTRAS ONLY)' : 'TOTAL OUTSTANDING BALANCE DUE'}
+                        </span>
+                        <span style={{ color: '#0f766e', fontWeight: 900, fontSize: '22px' }}>ETB {Number(checkoutBill.balanceDue).toLocaleString()}</span>
                       </div>
                     </div>
 
@@ -1584,7 +1676,7 @@ const ReceptionDashboard = ({ userData, handleLogout }) => {
                         <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '14px', padding: '16px 18px', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
                           <Banknote size={22} color="#16a34a" />
                           <p style={{ margin: 0, color: '#15803d', fontSize: '13px', fontWeight: 600 }}>
-                            Collect ETB {Number(checkoutBill.extras).toLocaleString()} in cash from the guest and click below to complete checkout.
+                            Collect ETB {Number(checkoutBill.balanceDue).toLocaleString()} in cash from the guest and click below to complete checkout.
                           </p>
                         </div>
                         <button
@@ -1631,7 +1723,7 @@ const ReceptionDashboard = ({ userData, handleLogout }) => {
                             <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '14px', padding: '18px', marginBottom: '16px' }}>
                               <QrCode size={36} color="#0284c7" style={{ margin: '0 auto 10px', display: 'block' }} />
                               <p style={{ margin: 0, color: '#1e40af', fontSize: '13px', fontWeight: 600 }}>
-                                Generate a Chapa payment session. The guest will scan the QR code and pay ETB {Number(checkoutBill.extras).toLocaleString()} directly on their phone.
+                                Generate a Chapa payment session. The guest will scan the QR code and pay ETB {Number(checkoutBill.balanceDue).toLocaleString()} directly on their phone.
                               </p>
                             </div>
                             <button
@@ -1691,11 +1783,11 @@ const ReceptionDashboard = ({ userData, handleLogout }) => {
       <AnimatePresence>
         {showBookingModal && bookingRoom && (
           <div style={styles.overlay} onClick={() => { setShowBookingModal(false); setBookingRoom(null); }}>
-            <motion.div 
+            <motion.div
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
-              style={{ ...styles.modal, maxHeight: '92vh', overflowY: 'auto' }} 
+              style={{ ...styles.modal, maxHeight: '92vh', overflowY: 'auto' }}
               onClick={(e) => e.stopPropagation()}
             >
               <div style={styles.modalHeader}>
@@ -1710,7 +1802,7 @@ const ReceptionDashboard = ({ userData, handleLogout }) => {
                 <div style={styles.formGrid}>
                   <div style={styles.inputField}>
                     <label style={styles.fieldLabel}>Guest Full Name</label>
-                    <input 
+                    <input
                       required
                       placeholder="Enter guest full name"
                       value={bookingForm.guest_name}
@@ -1720,7 +1812,7 @@ const ReceptionDashboard = ({ userData, handleLogout }) => {
                   </div>
                   <div style={styles.inputField}>
                     <label style={styles.fieldLabel}>Phone Number</label>
-                    <input 
+                    <input
                       required
                       placeholder="e.g. +251..."
                       value={bookingForm.guest_phone}
@@ -1730,7 +1822,7 @@ const ReceptionDashboard = ({ userData, handleLogout }) => {
                   </div>
                   <div style={styles.inputField}>
                     <label style={styles.fieldLabel}>Email Address</label>
-                    <input 
+                    <input
                       placeholder="e.g. guest@example.com"
                       value={bookingForm.guest_email}
                       onChange={e => setBookingForm({ ...bookingForm, guest_email: e.target.value })}
@@ -1739,7 +1831,7 @@ const ReceptionDashboard = ({ userData, handleLogout }) => {
                   </div>
                   <div style={styles.inputField}>
                     <label style={styles.fieldLabel}>Check-In Date</label>
-                    <input 
+                    <input
                       type="date"
                       value={bookingForm.check_in_date}
                       onChange={e => setBookingForm({ ...bookingForm, check_in_date: e.target.value })}
@@ -1748,7 +1840,7 @@ const ReceptionDashboard = ({ userData, handleLogout }) => {
                   </div>
                   <div style={styles.inputField}>
                     <label style={styles.fieldLabel}>Check-Out Date</label>
-                    <input 
+                    <input
                       type="date"
                       value={bookingForm.check_out_date}
                       onChange={e => setBookingForm({ ...bookingForm, check_out_date: e.target.value })}
@@ -1757,7 +1849,7 @@ const ReceptionDashboard = ({ userData, handleLogout }) => {
                   </div>
                   <div style={styles.inputField}>
                     <label style={styles.fieldLabel}>Adults Count</label>
-                    <input 
+                    <input
                       type="number"
                       min="1"
                       value={bookingForm.adults}
@@ -1767,7 +1859,7 @@ const ReceptionDashboard = ({ userData, handleLogout }) => {
                   </div>
                   <div style={{ ...styles.inputField, gridColumn: 'span 2' }}>
                     <label style={styles.fieldLabel}>Special Notes / Folio instructions</label>
-                    <textarea 
+                    <textarea
                       placeholder="Enter stay requests, billing notes..."
                       value={bookingForm.notes}
                       onChange={e => setBookingForm({ ...bookingForm, notes: e.target.value })}
@@ -1777,11 +1869,11 @@ const ReceptionDashboard = ({ userData, handleLogout }) => {
                 </div>
 
                 <div style={styles.checkinSelector}>
-                  <input 
-                    type="checkbox" 
+                  <input
+                    type="checkbox"
                     id="checkin-now-checkbox"
-                    checked={bookingForm.check_in_now} 
-                    onChange={e => setBookingForm({ ...bookingForm, check_in_now: e.target.checked })} 
+                    checked={bookingForm.check_in_now}
+                    onChange={e => setBookingForm({ ...bookingForm, check_in_now: e.target.checked })}
                     style={styles.checkbox}
                   />
                   <label htmlFor="checkin-now-checkbox" style={styles.checkboxLabel}>
@@ -2277,7 +2369,7 @@ const styles = {
   logoutBtn: { backgroundColor: 'transparent', border: '1px solid #ef4444', color: '#ef4444', padding: '6px', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' },
   main: { padding: '30px', maxWidth: '1440px', margin: '0 auto' },
   notification: { position: 'fixed', top: '20px', left: '50%', transform: 'translateX(-50%)', zIndex: 1100, display: 'flex', alignItems: 'center', gap: '10px', padding: '12px 24px', borderRadius: '12px', border: '1px solid', color: '#fff', fontSize: '14px', fontWeight: '600', boxShadow: '0 10px 25px rgba(0,0,0,0.2)' },
-  
+
   // Stats row styles
   statsGrid: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '20px', marginBottom: '35px' },
   statCard: { backgroundColor: 'rgba(255, 255, 255, 0.86)', padding: '20px', borderRadius: '18px', border: '1px solid rgba(148,163,184,0.16)', display: 'flex', gap: '15px', alignItems: 'center', boxShadow: '0 12px 28px rgba(15,23,42,0.05)' },
@@ -2295,12 +2387,12 @@ const styles = {
   legend: { display: 'flex', gap: '15px' },
   legendItem: { display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: '#64748b', fontWeight: '600' },
   legendDot: { width: '8px', height: '8px', borderRadius: '50%' },
-  
+
   // Floors list
   floorSection: { display: 'flex', flexDirection: 'column', gap: '15px' },
   floorTitle: { margin: 0, fontSize: '14px', fontWeight: '800', color: '#0f766e', textTransform: 'uppercase', letterSpacing: '1px', borderBottom: '1px dashed #cbd5e1', paddingBottom: '8px' },
   roomsGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '15px' },
-  
+
   // Room Card
   roomCard: { backgroundColor: '#fff', borderRadius: '16px', border: '1px solid rgba(148,163,184,0.16)', padding: '18px', cursor: 'pointer', transition: 'all 0.2s', display: 'flex', flexDirection: 'column', gap: '12px', boxShadow: '0 10px 30px rgba(15,23,42,0.04)' },
   roomCardHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
@@ -2335,7 +2427,7 @@ const styles = {
   searchIcon: { position: 'absolute', left: '15px', top: '50%', transform: 'translateY(-50%)', color: '#64748b' },
   input: { width: '100%', boxSizing: 'border-box', backgroundColor: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: '12px', padding: '15px 15px 15px 45px', color: '#0f172a', fontSize: '15px', outline: 'none' },
   submitBtn: { width: '100%', backgroundColor: '#0f766e', color: '#fff', border: 'none', borderRadius: '12px', padding: '15px', fontSize: '15px', fontWeight: '800', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', boxShadow: '0 8px 24px rgba(15,118,110,0.2)' },
-  
+
   // Verified Info Card
   verifiedCard: { width: '100%', maxWidth: '560px', backgroundColor: '#fff', borderRadius: '24px', border: '1px solid rgba(148,163,184,0.16)', overflow: 'hidden', boxShadow: '0 12px 28px rgba(15,23,42,0.04)' },
   verifiedCardHeader: { padding: '18px 25px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
@@ -2389,7 +2481,7 @@ const styles = {
   doneBtn: { backgroundColor: '#0f766e', color: '#fff', border: 'none', borderRadius: '10px', padding: '12px 25px', fontWeight: '800', cursor: 'pointer', fontSize: '13px', boxShadow: '0 8px 24px rgba(15,118,110,0.15)' },
   emptyCard: { padding: '40px', backgroundColor: '#fff', border: '1px dashed #cbd5e1', borderRadius: '16px', textAlign: 'center', color: '#64748b', fontSize: '13px' },
   loaderSection: { padding: '60px 0', textAlign: 'center', color: '#0f766e', display: 'flex', flexDirection: 'column', gap: '10px', alignItems: 'center', justifyContent: 'center', fontSize: '14px', fontWeight: '600' },
-  
+
   // Folio Panel Styles
   folioContainer: { display: 'flex', flexDirection: 'column', gap: '15px', backgroundColor: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: '14px', padding: '15px', marginTop: '10px' },
   folioSummary: { display: 'flex', flexDirection: 'column', gap: '6px', borderBottom: '1px dashed #cbd5e1', paddingBottom: '10px' },

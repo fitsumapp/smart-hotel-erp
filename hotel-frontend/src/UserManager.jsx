@@ -197,7 +197,7 @@ const UserManager = () => {
     }
 
     if (hasRooms) {
-      available.push('Reception');
+      available.push('Reception', 'Housekeeping');
     }
 
     if (hasFinance) {
@@ -422,6 +422,7 @@ const getRoleBadgeStyle = (role) => {
     case 'admin': return { ...base, backgroundColor: '#f1f5f9', color: '#64748b' };
     case 'waiter': return { ...base, backgroundColor: '#fef3c7', color: '#b45309' };
     case 'finance': return { ...base, backgroundColor: '#e0f2fe', color: '#0369a1' };
+    case 'housekeeping': return { ...base, backgroundColor: '#ccfbf1', color: '#0f766e' };
     default: return { ...base, backgroundColor: '#f1f5f9', color: '#64748b' };
   }
 };

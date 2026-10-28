@@ -24,7 +24,8 @@ export default function ReportsCenter({ initialTab }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [zClosed, setZClosed] = useState(false);
+  const [closing, setClosing] = useState(false);
+  const [showCloseModal, setShowCloseModal] = useState(false);
   const printRef = useRef();
 
   // When navigated from sidebar with a different initialTab, switch automatically
@@ -33,7 +34,7 @@ export default function ReportsCenter({ initialTab }) {
       setActiveTab(initialTab);
       setData(null);
       setError('');
-      setZClosed(false);
+      setShowCloseModal(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialTab]);
@@ -49,14 +50,13 @@ export default function ReportsCenter({ initialTab }) {
       } else if (activeTab === 'xreport') {
         res = await axios.get(`${API_BASE_URL}/users/reports/x-report/?date=${reportDate}`);
       } else if (activeTab === 'zreport') {
-        res = await axios.post(`${API_BASE_URL}/users/reports/z-report/`, { date: reportDate });
-        setZClosed(true);
+        res = await axios.get(`${API_BASE_URL}/users/reports/z-report/?date=${reportDate}`);
       } else if (activeTab === 'occupancy') {
         res = await axios.get(`${API_BASE_URL}/users/reports/occupancy/`);
       } else if (activeTab === 'bookings') {
         res = await axios.get(`${API_BASE_URL}/users/reservations/?date_from=${reportDate}`);
       } else if (activeTab === 'inventory') {
-        res = await axios.get(`${API_BASE_URL}/users/inventory/items/`);
+        res = await axios.get(`${API_BASE_URL}/users/inventory-items/`);
       }
       setData(res?.data);
     } catch (err) {
@@ -65,6 +65,20 @@ export default function ReportsCenter({ initialTab }) {
       setLoading(false);
     }
   }, [activeTab, reportDate]);
+
+  const handleCloseDay = async () => {
+    setClosing(true);
+    setError('');
+    try {
+      const res = await axios.post(`${API_BASE_URL}/users/reports/z-report/`, { date: reportDate });
+      setData(res.data);
+      setShowCloseModal(false);
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to close business day.');
+    } finally {
+      setClosing(false);
+    }
+  };
 
   const handlePrint = () => {
     if (!printRef.current) return;
@@ -167,7 +181,7 @@ export default function ReportsCenter({ initialTab }) {
         {REPORT_TABS.map(tab => (
           <button
             key={tab.id}
-            onClick={() => { setActiveTab(tab.id); setData(null); setError(''); setZClosed(false); }}
+            onClick={() => { setActiveTab(tab.id); setData(null); setError(''); }}
             style={{
               display: 'flex', alignItems: 'center', gap: 8,
               padding: '10px 18px', borderRadius: 12, border: activeTab === tab.id ? 'none' : '1px solid #cbd5e1', cursor: 'pointer',
@@ -198,8 +212,25 @@ export default function ReportsCenter({ initialTab }) {
         )}
         <button onClick={fetchReport} disabled={loading} style={runBtn}>
           <RefreshCw size={16} className={loading ? 'spin' : ''} />
-          {loading ? 'Loading...' : activeTab === 'zreport' ? 'Run Z-Report (Close Day)' : 'Generate Report'}
+          {loading ? 'Loading...' : activeTab === 'zreport' ? 'Preview Z-Report' : 'Generate Report'}
         </button>
+        {activeTab === 'zreport' && data && !data.is_closed && (
+          <button
+            onClick={() => setShowCloseModal(true)}
+            disabled={closing || loading}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              padding: '10px 18px', borderRadius: 12, border: 'none',
+              backgroundColor: '#dc2626', color: '#ffffff',
+              fontWeight: 700, fontSize: 13, cursor: 'pointer',
+              boxShadow: '0 4px 12px rgba(220, 38, 38, 0.25)',
+              transition: 'all 0.2s',
+            }}
+          >
+            <CheckCircle size={16} />
+            Close Business Day (Z-Report)
+          </button>
+        )}
         {data && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             <button onClick={handlePrint} style={printBtn}>
@@ -220,9 +251,92 @@ export default function ReportsCenter({ initialTab }) {
         </div>
       )}
 
-      {zClosed && data && (
-        <div style={{ backgroundColor: 'rgba(190,242,100,0.1)', border: '1px solid rgba(190,242,100,0.3)', borderRadius: 12, padding: 12, marginBottom: 16, color: '#bef264', fontWeight: 700, fontSize: 13 }} className="no-print">
-          ✓ Z-Report closed for {data.date} by {data.closed_by}
+      {activeTab === 'zreport' && data && !data.is_closed && (
+        <div style={{
+          backgroundColor: '#fffbeb',
+          border: '1px solid #fde68a',
+          borderRadius: 12, padding: 14, marginBottom: 16,
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          flexWrap: 'wrap', gap: 10
+        }} className="no-print">
+          <div>
+            <span style={{ color: '#b45309', fontWeight: 800, fontSize: 13 }}>⚠️ Day Preview (Open):</span>{' '}
+            <span style={{ color: '#78350f', fontSize: 13 }}>
+              Business day for <strong>{data.date}</strong> is currently <strong>OPEN</strong>. Previewing figures does not close or lock registers.
+            </span>
+          </div>
+          <button
+            onClick={() => setShowCloseModal(true)}
+            disabled={closing}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '8px 14px', borderRadius: 8, border: 'none',
+              backgroundColor: '#dc2626', color: '#ffffff',
+              fontWeight: 700, fontSize: 12, cursor: 'pointer'
+            }}
+          >
+            <CheckCircle size={14} /> Close Business Day
+          </button>
+        </div>
+      )}
+
+      {activeTab === 'zreport' && data && data.is_closed && (
+        <div style={{ backgroundColor: 'rgba(190,242,100,0.1)', border: '1px solid rgba(190,242,100,0.3)', borderRadius: 12, padding: 14, marginBottom: 16, color: '#4d7c0f', fontWeight: 700, fontSize: 13 }} className="no-print">
+          ✓ Z-Report closed & finalized for {data.date}{data.closed_at ? ` at ${new Date(data.closed_at).toLocaleTimeString()}` : ''}{data.closed_by ? ` by ${data.closed_by}` : ''}
+        </div>
+      )}
+
+      {/* Confirmation Modal */}
+      {showCloseModal && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(15, 23, 42, 0.75)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 9999, padding: 20
+        }}>
+          <div style={{
+            backgroundColor: '#ffffff', borderRadius: 16, padding: 28,
+            maxWidth: 480, width: '100%', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+            border: '1px solid #e2e8f0'
+          }}>
+            <h3 style={{ margin: '0 0 12px 0', fontSize: 20, color: '#0f172a', fontWeight: 700 }}>
+              Confirm Business Day Closure
+            </h3>
+            <p style={{ margin: '0 0 16px 0', fontSize: 14, color: '#475569', lineHeight: 1.5 }}>
+              Are you sure you want to finalize and close the business day for <strong>{reportDate}</strong>?
+            </p>
+            <div style={{ backgroundColor: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: 12, marginBottom: 20 }}>
+              <p style={{ margin: 0, fontSize: 13, color: '#991b1b', lineHeight: 1.4 }}>
+                <strong>Warning:</strong> This action will mark all registers and audits as closed for this date. This cannot be undone.
+              </p>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
+              <button
+                type="button"
+                onClick={() => setShowCloseModal(false)}
+                disabled={closing}
+                style={{
+                  padding: '10px 18px', borderRadius: 10, border: '1px solid #cbd5e1',
+                  backgroundColor: '#f8fafc', color: '#475569', fontWeight: 600, fontSize: 14, cursor: 'pointer'
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleCloseDay}
+                disabled={closing}
+                style={{
+                  padding: '10px 18px', borderRadius: 10, border: 'none',
+                  backgroundColor: '#dc2626', color: '#ffffff', fontWeight: 700, fontSize: 14, cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', gap: 8
+                }}
+              >
+                {closing ? <RefreshCw size={16} className="spin" /> : <CheckCircle size={16} />}
+                {closing ? 'Closing Day...' : 'Confirm & Close Day'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -607,6 +721,7 @@ function BookingsReportView({ data }) {
       case 'checked_out': return { bg: '#f0fdf4', text: '#166534' };
       case 'confirmed': return { bg: '#fef3c7', text: '#d97706' };
       case 'cancelled': return { bg: '#fef2f2', text: '#991b1b' };
+      case 'no_show': return { bg: '#fee2e2', text: '#b91c1c' };
       default: return { bg: '#f1f5f9', text: '#475569' };
     }
   };

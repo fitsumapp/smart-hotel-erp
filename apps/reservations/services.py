@@ -67,6 +67,7 @@ def build_reservation_summary(reservation):
         "public_token": reservation.public_token,
         "payment_reference": reservation.payment_reference,
         "paid_at": reservation.paid_at.isoformat() if reservation.paid_at else None,
+        "no_show_at": reservation.no_show_at.isoformat() if getattr(reservation, "no_show_at", None) else None,
     }
 
 

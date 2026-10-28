@@ -76,6 +76,7 @@ class ExpenseTransactionViewSet(viewsets.ModelViewSet):
     permission_classes = [IsFinanceStaff]
 
     def get_queryset(self):
+        ensure_default_accounts()
         return ExpenseTransaction.objects.all().select_related("expense_account", "payment_account", "supplier")
 
     def create(self, request, *args, **kwargs):
@@ -243,89 +244,138 @@ class FinancialStatementsView(APIView):
         })
 
 
+def parse_date_param(val, default_val=None):
+    """
+    Robustly parse date inputs in various formats (ISO, YYYY-MM-DD, MM/DD/YYYY, DD/MM/YYYY).
+    Returns datetime.date or default_val.
+    """
+    if not val or not str(val).strip():
+        return default_val
+    val_str = str(val).strip()
+
+    # 1. Try ISO format / fromisoformat
+    try:
+        clean_iso = val_str.replace("Z", "+00:00")
+        return datetime.fromisoformat(clean_iso).date()
+    except (ValueError, TypeError):
+        pass
+
+    # 2. Try common date string formats
+    formats = [
+        "%Y-%m-%d",
+        "%m/%d/%Y",
+        "%d/%m/%Y",
+        "%Y/%m/%d",
+        "%m-%d-%Y",
+        "%d-%m-%Y",
+        "%Y-%m-%d %H:%M:%S",
+        "%b %d %Y",
+        "%B %d, %Y",
+    ]
+    for fmt_str in formats:
+        try:
+            return datetime.strptime(val_str, fmt_str).date()
+        except (ValueError, TypeError):
+            continue
+
+    return default_val
+
+
 class TaxReportView(APIView):
     permission_classes = [IsFinanceStaff]
 
     def get(self, request):
         if request.user.role not in ["admin", "finance"] and not request.user.is_superuser:
             return Response({"error": "Access denied."}, status=403)
-            
+
         today = timezone.now().date()
         default_start = today.replace(day=1)
-        
+
         start_date_str = request.query_params.get("start_date")
         end_date_str = request.query_params.get("end_date")
-        
+
+        start_date = parse_date_param(start_date_str, default_start)
+        end_date = parse_date_param(end_date_str, today)
+
+        if start_date > end_date:
+            return Response({"error": "start_date cannot be after end_date."}, status=400)
+
         try:
-            start_date = datetime.fromisoformat(start_date_str).date() if start_date_str else default_start
-        except ValueError:
-            start_date = default_start
-        try:
-            end_date = datetime.fromisoformat(end_date_str).date() if end_date_str else today
-        except ValueError:
-            end_date = today
-            
-        # VAT and Service Charge are collected on:
-        # 1. Restaurant Orders
-        from django.db.models import Sum
-        order_taxes = Order.objects.filter(
-            payment_status="paid",
-            updated_at__gte=start_dt, updated_at__lt=end_dt
-        ).aggregate(
-            vat=Sum("vat_amount"),
-            service_charge=Sum("service_charge_amount"),
-            subtotal=Sum("sub_total"),
-            total=Sum("total_amount")
-        )
-        
-        # 2. Rooms (Bookings - SystemSettings tax ratios on room histories or reservations)
-        room_rev = RoomHistory.objects.filter(
-            created_at__gte=start_dt, created_at__lt=end_dt
-        ).aggregate(total=Sum("revenue"))["total"] or Decimal("0.00")
-        
-        settings_obj = get_system_settings()
-        room_subtotal = Decimal("0.00")
-        room_vat = Decimal("0.00")
-        room_sc = Decimal("0.00")
-        
-        if room_rev > 0:
-            vat_pct = to_decimal(settings_obj.vat_percentage) if settings_obj.vat_enabled else Decimal("0")
-            sc_pct = to_decimal(settings_obj.service_charge_percentage) if settings_obj.service_charge_enabled else Decimal("0")
-            
-            divider = Decimal("1.0") + (vat_pct + sc_pct) / Decimal("100")
-            room_subtotal = (room_rev / divider).quantize(TWOPLACES, rounding=ROUND_HALF_UP)
-            
-            if settings_obj.vat_enabled:
-                room_vat = (room_subtotal * vat_pct / Decimal("100")).quantize(TWOPLACES, rounding=ROUND_HALF_UP)
-            if settings_obj.service_charge_enabled:
-                room_sc = (room_subtotal * sc_pct / Decimal("100")).quantize(TWOPLACES, rounding=ROUND_HALF_UP)
-                
-        fb_subtotal = to_decimal(order_taxes["subtotal"])
-        fb_vat = to_decimal(order_taxes["vat"])
-        fb_sc = to_decimal(order_taxes["service_charge"])
-        fb_total = to_decimal(order_taxes["total"])
-        
-        return Response({
-            "start_date": start_date.isoformat(),
-            "end_date": end_date.isoformat(),
-            "restaurant": {
-                "subtotal": float(fb_subtotal),
-                "vat": float(fb_vat),
-                "service_charge": float(fb_sc),
-                "total": float(fb_total)
-            },
-            "rooms": {
-                "subtotal": float(room_subtotal),
-                "vat": float(room_vat),
-                "service_charge": float(room_sc),
-                "total": float(room_rev)
-            },
-            "aggregated": {
-                "vat_collected": float(fb_vat + room_vat),
-                "service_charge_collected": float(fb_sc + room_sc),
-                "total_tax_collected": float(fb_vat + room_vat + fb_sc + room_sc)
-            }
-        })
+            start_dt, end_dt = datetime_bounds(start_date, end_date)
+
+            # VAT and Service Charge are collected on:
+            # 1. Restaurant Orders
+            from django.db.models import Sum
+            order_taxes = Order.objects.filter(
+                payment_status="paid",
+                updated_at__gte=start_dt, updated_at__lt=end_dt
+            ).aggregate(
+                vat=Sum("vat_amount"),
+                service_charge=Sum("service_charge_amount"),
+                subtotal=Sum("sub_total"),
+                total=Sum("total_amount")
+            ) or {}
+
+            # 2. Rooms (Bookings - SystemSettings tax ratios on room histories or reservations)
+            room_agg = RoomHistory.objects.filter(
+                created_at__gte=start_dt, created_at__lt=end_dt
+            ).aggregate(total=Sum("revenue"))
+            room_rev = room_agg.get("total") or Decimal("0.00")
+
+            settings_obj = get_system_settings()
+            room_subtotal = Decimal("0.00")
+            room_vat = Decimal("0.00")
+            room_sc = Decimal("0.00")
+
+            if room_rev > Decimal("0.00") and settings_obj:
+                vat_pct = to_decimal(settings_obj.vat_percentage) if settings_obj.vat_enabled else Decimal("0")
+                sc_pct = to_decimal(settings_obj.service_charge_percentage) if settings_obj.service_charge_enabled else Decimal("0")
+
+                divider = Decimal("1.0") + (vat_pct + sc_pct) / Decimal("100")
+                if divider > Decimal("0.00"):
+                    room_subtotal = (room_rev / divider).quantize(TWOPLACES, rounding=ROUND_HALF_UP)
+
+                if settings_obj.vat_enabled:
+                    room_vat = (room_subtotal * vat_pct / Decimal("100")).quantize(TWOPLACES, rounding=ROUND_HALF_UP)
+                if settings_obj.service_charge_enabled:
+                    room_sc = (room_subtotal * sc_pct / Decimal("100")).quantize(TWOPLACES, rounding=ROUND_HALF_UP)
+
+            fb_subtotal = to_decimal(order_taxes.get("subtotal") or Decimal("0.00"))
+            fb_vat = to_decimal(order_taxes.get("vat") or Decimal("0.00"))
+            fb_sc = to_decimal(order_taxes.get("service_charge") or Decimal("0.00"))
+            fb_total = to_decimal(order_taxes.get("total") or Decimal("0.00"))
+
+            return Response({
+                "start_date": start_date.isoformat(),
+                "end_date": end_date.isoformat(),
+                "restaurant": {
+                    "subtotal": float(fb_subtotal),
+                    "vat": float(fb_vat),
+                    "service_charge": float(fb_sc),
+                    "total": float(fb_total)
+                },
+                "rooms": {
+                    "subtotal": float(room_subtotal),
+                    "vat": float(room_vat),
+                    "service_charge": float(room_sc),
+                    "total": float(room_rev)
+                },
+                "aggregated": {
+                    "vat_collected": float(fb_vat + room_vat),
+                    "service_charge_collected": float(fb_sc + room_sc),
+                    "total_tax_collected": float(fb_vat + room_vat + fb_sc + room_sc)
+                }
+            })
+        except Exception as exc:
+            logger.exception("Failed to calculate tax report")
+            return Response({
+                "start_date": start_date.isoformat(),
+                "end_date": end_date.isoformat(),
+                "restaurant": {"subtotal": 0.0, "vat": 0.0, "service_charge": 0.0, "total": 0.0},
+                "rooms": {"subtotal": 0.0, "vat": 0.0, "service_charge": 0.0, "total": 0.0},
+                "aggregated": {"vat_collected": 0.0, "service_charge_collected": 0.0, "total_tax_collected": 0.0},
+                "warning": "Tax report calculation experienced an issue; safe defaults returned."
+            }, status=200)
 
 
 class PayrollEntryViewSet(viewsets.ModelViewSet):

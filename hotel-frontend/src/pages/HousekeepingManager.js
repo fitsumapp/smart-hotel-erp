@@ -116,7 +116,7 @@ export default function HousekeepingManager({ userData }) {
 
       setTasks(tasksRes.data || []);
       setRooms(roomsRes.data || []);
-      setOccupiedRooms(occupiedRes.data?.occupied_rooms || []);
+      setOccupiedRooms(Array.isArray(occupiedRes.data) ? occupiedRes.data : (occupiedRes.data?.occupied_rooms || []));
       setMinibarItems(mbItemsRes.data || []);
       setInventoryCandidates(candidatesRes.data || []);
       setLostFoundItems(lfRes.data || []);

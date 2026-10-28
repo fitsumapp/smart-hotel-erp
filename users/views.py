@@ -34,7 +34,11 @@ from .permissions import (
     IsReservationOperator,
     IsFinanceStaff,
     IsInventoryManager,
+    IsSupplierOperator,
     IsWaiterOrAdmin,
+    IsHousekeepingOperator,
+    IsHousekeepingOrAdmin,
+    IsRoomOperator,
 )
 
 # Tenant (hotel schema) models
@@ -196,15 +200,7 @@ _WAITER_STATUS_PRIORITY = {
 }
 
 
-ORDER_STATUS_TRANSITIONS = {
-    "pending": {"preparing", "cancelled"},
-    "preparing": {"ready", "cancelled"},
-    "ready": set(),
-    "served": set(),
-    "bill_requested": set(),
-    "paid": set(),
-    "cancelled": set(),
-}
+from hotel.integrity import ORDER_STATUS_TRANSITIONS
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Auth Views
@@ -420,8 +416,8 @@ from apps.reservations.services import build_reservation_summary, calculate_rese
 # Backward-compatible view exports while callers migrate to domain modules.
 from apps.identity.views import LoginView, LogoutView, RegisterView, ResendOTPView, UserViewSet, VerifyMFAView, VerifyOTPView  # noqa: E402,F401
 from apps.inventory.views import InventoryCategoryViewSet, InventoryDashboardStatsView, InventoryItemViewSet, RecipeBOMViewSet, StockTransactionViewSet, SupplierViewSet  # noqa: E402,F401
-from apps.rooms.views import MaintenanceLogDetailView, MaintenanceLogView, RoomHistoryView, RoomViewSet  # noqa: E402,F401
-from apps.reservations.views import CreateCheckoutPaymentSessionView, DigitalCheckInView, EnhancedCheckoutView, FolioChargeDeleteView, FolioChargeView, GenerateFinalBillView, GuestProfileDetailView, GuestProfileView, PublicQRCheckInView, PublicReservationDetailView, PublicReservationVerifyPaymentView, PublicRoomCatalogView, PublicRoomReserveView, ReservationListView, ReserveRoomNowView, UpdateRoomFrontDeskStatusView, VerifyCheckoutPaymentView  # noqa: E402,F401
+from apps.rooms.views import MaintenanceLogDetailView, MaintenanceLogView, RoomHistoryView, RoomViewSet, PublicSiteInfoView  # noqa: E402,F401
+from apps.reservations.views import CreateCheckoutPaymentSessionView, DigitalCheckInView, EnhancedCheckoutView, FolioChargeDeleteView, FolioChargeView, GenerateFinalBillView, GuestProfileDetailView, GuestProfileView, PublicQRCheckInView, PublicReservationDetailView, PublicReservationVerifyPaymentView, PublicRoomCatalogView, PublicRoomReserveView, ReservationListView, ReservationNoShowView, ReserveRoomNowView, UpdateRoomFrontDeskStatusView, VerifyCheckoutPaymentView  # noqa: E402,F401
 from apps.orders.views import AdminOrdersView, CashierCompletedBillsView, CashierOrderProcessView, CashierPendingBillsView, CashierReceiptView, CategoryViewSet, CompleteOrderView, CreateDigitalPaymentSessionView, CreateOrderView, DashboardStatsView, KitchenOrdersView, MarkOrderServedView, MenuItemViewSet, NotificationDetailView, NotificationView, OccupiedRoomsListView, OrderPaymentSummaryView, RequestBillView, RestaurantTableViewSet, RoomChargeProcessView, SystemSettingsView, UpdateOrderStatusView, WaiterCashPaymentView, WaiterOrdersView  # noqa: E402,F401
 from apps.payments.views import ChapaWebhookView, PublicInitiateChapaPaymentView, PublicPaymentDetailView, PublicVerifyChapaPaymentView  # noqa: E402,F401
 from apps.reporting.views import FinanceDashboardStatsView, OccupancyReportView, PoliceReportView, XReportView, ZReportView  # noqa: E402,F401
