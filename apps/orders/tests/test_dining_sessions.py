@@ -719,6 +719,8 @@ from django.db import connection
 
 class DiningSessionConcurrencyTestCase(TransactionTestCase):
     def setUp(self):
+        if connection.vendor != "postgresql":
+            self.skipTest("PostgreSQL-specific dining session concurrency test")
         self.waiter = User.objects.create_user(
             username="waiter-conc-test", password="test-password", role=User.WAITER, is_active=True
         )
