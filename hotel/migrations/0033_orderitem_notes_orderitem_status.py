@@ -3,6 +3,18 @@
 from django.db import migrations, models
 
 
+def set_pg_defaults(apps, schema_editor):
+    if schema_editor.connection.vendor == "postgresql":
+        schema_editor.execute("ALTER TABLE hotel_orderitem ALTER COLUMN notes SET DEFAULT '';")
+        schema_editor.execute("ALTER TABLE hotel_orderitem ALTER COLUMN status SET DEFAULT 'pending';")
+
+
+def drop_pg_defaults(apps, schema_editor):
+    if schema_editor.connection.vendor == "postgresql":
+        schema_editor.execute("ALTER TABLE hotel_orderitem ALTER COLUMN notes DROP DEFAULT;")
+        schema_editor.execute("ALTER TABLE hotel_orderitem ALTER COLUMN status DROP DEFAULT;")
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -20,8 +32,5 @@ class Migration(migrations.Migration):
             name='status',
             field=models.CharField(choices=[('pending', 'Pending'), ('preparing', 'Preparing'), ('ready', 'Ready')], default='pending', max_length=20),
         ),
-        migrations.RunSQL(
-            sql="ALTER TABLE hotel_orderitem ALTER COLUMN notes SET DEFAULT ''; ALTER TABLE hotel_orderitem ALTER COLUMN status SET DEFAULT 'pending';",
-            reverse_sql="ALTER TABLE hotel_orderitem ALTER COLUMN notes DROP DEFAULT; ALTER TABLE hotel_orderitem ALTER COLUMN status DROP DEFAULT;",
-        ),
+        migrations.RunPython(set_pg_defaults, drop_pg_defaults),
     ]

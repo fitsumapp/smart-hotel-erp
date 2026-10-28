@@ -8,6 +8,6 @@ gunicorn==23.0.0
 inflection==0.5.1
 Pillow==11.3.0
 psycopg2-binary==2.9.10
-python-dotenv==1.1.1
-requests==2.32.4
+python-dotenv==1.2.2
+requests==2.33.0
 uritemplate==4.2.0
