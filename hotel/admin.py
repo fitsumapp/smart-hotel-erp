@@ -3,13 +3,23 @@ from unfold.admin import ModelAdmin, TabularInline
 from unfold.decorators import display
 
 from .models import (
-    Category, MenuItem, Room, Reservation, RestaurantTable,
+    Category, MenuItem, Room, Reservation, RestaurantTable, DiningSession,
     Order, OrderItem, Notification, PaymentAttempt, PaymentWebhookEvent,
     SystemSettings, AuditEvent, MaintenanceLog, RoomHistory, GuestProfile,
     FolioCharge, DayAuditLog, InventoryCategory, Supplier, InventoryItem,
     StockTransaction, RecipeBOM, Account, JournalEntry, JournalEntryItem,
     ExpenseTransaction, Budget, PayrollEntry,
-    HousekeepingTask, MinibarItem, LostAndFoundItem
+    HousekeepingTask, MinibarItem, LostAndFoundItem,
+    StockLocation, StockBatch, BatchLocationBalance, ItemLocationBalance,
+    StockTransfer, StockTransferItem,
+    RequestForQuotation, RequestForQuotationItem,
+    SupplierQuotation, SupplierQuotationItem,
+    ProcurementApprovalPolicy, ProcurementApprovalTier,
+    PurchaseRequisition, PurchaseRequisitionItem,
+    PurchaseOrder, PurchaseOrderItem,
+    GoodsReceiptNote, GoodsReceiptNoteItem,
+    SupplierInvoice, SupplierInvoiceItem,
+    StocktakeSession, StocktakeItem,
 )
 
 
@@ -120,6 +130,15 @@ class FolioChargeAdmin(ModelAdmin):
     list_display = ["id", "reservation", "description", "amount", "added_by", "added_at"]
     list_filter = ["added_at"]
     search_fields = ["description", "reservation__confirmation_code", "added_by"]
+    list_per_page = 25
+
+
+@admin.register(DayAuditLog)
+class DayAuditLogAdmin(ModelAdmin):
+    list_display = ["audit_date", "is_closed", "total_revenue", "total_room_revenue", "total_cash", "total_card", "closed_by", "closed_at"]
+    list_filter = ["is_closed", "audit_date"]
+    search_fields = ["audit_date", "closed_by", "notes"]
+    ordering = ["-audit_date"]
     list_per_page = 25
 
 
@@ -246,6 +265,15 @@ class RestaurantTableAdmin(ModelAdmin):
         return obj.status
 
 
+@admin.register(DiningSession)
+class DiningSessionAdmin(ModelAdmin):
+    list_display = ["id", "table", "status", "opened_by_username", "created_at", "closed_at"]
+    list_filter = ["status", "created_at"]
+    search_fields = ["table__table_code", "opened_by_username"]
+    ordering = ["-created_at"]
+    list_per_page = 25
+
+
 @admin.register(Order)
 class OrderAdmin(ModelAdmin):
     list_display = ["order_id_display", "table", "waiter_username", "total_amount", "display_status", "display_payment_status", "created_at"]
@@ -318,6 +346,70 @@ class StockTransactionAdmin(ModelAdmin):
 class RecipeBOMAdmin(ModelAdmin):
     list_display = ["menu_item", "ingredient", "quantity_required"]
     search_fields = ["menu_item__name", "ingredient__name"]
+
+
+@admin.register(StockLocation)
+class StockLocationAdmin(ModelAdmin):
+    list_display = ["code", "name", "location_type", "is_active", "custodian"]
+    list_filter = ["location_type", "is_active"]
+    search_fields = ["code", "name"]
+
+
+@admin.register(StockBatch)
+class StockBatchAdmin(ModelAdmin):
+    list_display = ["batch_number", "item", "current_quantity", "initial_quantity", "unit_cost", "received_date", "expiry_date", "display_status", "is_legacy"]
+    list_filter = ["status", "is_legacy", "expiry_date"]
+    search_fields = ["batch_number", "item__name", "item__item_code", "supplier_batch_number"]
+    readonly_fields = ["verified_at", "verified_by", "created_at"]
+    list_per_page = 25
+
+    @display(description="Status", label={
+        "active": "success",
+        "expired": "danger",
+        "unverified_quarantine": "warning",
+        "depleted": "secondary",
+    })
+    def display_status(self, obj):
+        return obj.status
+
+
+@admin.register(BatchLocationBalance)
+class BatchLocationBalanceAdmin(ModelAdmin):
+    list_display = ["batch", "location", "quantity"]
+    list_filter = ["location"]
+    search_fields = ["batch__batch_number", "batch__item__name"]
+
+
+@admin.register(ItemLocationBalance)
+class ItemLocationBalanceAdmin(ModelAdmin):
+    list_display = ["item", "location", "quantity"]
+    list_filter = ["location"]
+    search_fields = ["item__name", "item__item_code"]
+
+
+class StockTransferItemInline(TabularInline):
+    model = StockTransferItem
+    extra = 0
+    fields = ["item", "batch", "requested_quantity", "dispatched_quantity", "received_quantity", "damaged_quantity"]
+
+
+@admin.register(StockTransfer)
+class StockTransferAdmin(ModelAdmin):
+    list_display = ["transfer_number", "source_location", "destination_location", "display_status", "requested_by", "created_at"]
+    list_filter = ["status", "source_location", "destination_location"]
+    search_fields = ["transfer_number", "requested_by__username"]
+    inlines = [StockTransferItemInline]
+    list_per_page = 25
+
+    @display(description="Status", label={
+        "draft": "secondary",
+        "dispatched": "warning",
+        "completed": "success",
+        "partially_received": "info",
+        "cancelled": "danger",
+    })
+    def display_status(self, obj):
+        return obj.status
 
 
 # ── Finance & Accounting ──────────────────────────────────────────────────────
@@ -422,3 +514,168 @@ class AuditEventAdmin(ModelAdmin):
     def has_add_permission(self, request): return False
     def has_change_permission(self, request, obj=None): return False
     def has_delete_permission(self, request, obj=None): return False
+
+
+# ── Procurement Inlines & ModelAdmins ────────────────────────────────────────
+
+class ProcurementApprovalTierInline(TabularInline):
+    model = ProcurementApprovalTier
+    extra = 0
+    fields = ["tier_level", "name", "min_amount", "max_amount", "required_role"]
+
+
+@admin.register(ProcurementApprovalPolicy)
+class ProcurementApprovalPolicyAdmin(ModelAdmin):
+    list_display = ["name", "is_active", "currency", "price_tolerance_percentage", "created_at"]
+    list_filter = ["is_active", "currency"]
+    inlines = [ProcurementApprovalTierInline]
+
+
+class PurchaseRequisitionItemInline(TabularInline):
+    model = PurchaseRequisitionItem
+    extra = 0
+    fields = ["item", "quantity_requested", "estimated_unit_cost", "notes"]
+
+
+@admin.register(PurchaseRequisition)
+class PurchaseRequisitionAdmin(ModelAdmin):
+    list_display = [
+        "requisition_number", "department", "status", "total_estimated_amount",
+        "requested_by", "requested_at", "approved_by", "approved_at"
+    ]
+    list_filter = ["status", "department", "requested_at"]
+    search_fields = ["requisition_number", "department", "requested_by__username"]
+    inlines = [PurchaseRequisitionItemInline]
+
+
+class RequestForQuotationItemInline(TabularInline):
+    model = RequestForQuotationItem
+    extra = 0
+    fields = ["item", "target_quantity", "requisition_item", "specifications"]
+
+
+@admin.register(RequestForQuotation)
+class RequestForQuotationAdmin(ModelAdmin):
+    list_display = [
+        "rfq_number", "title", "status", "delivery_location",
+        "submission_deadline", "is_public_bidding", "created_by", "created_at"
+    ]
+    list_filter = ["status", "is_public_bidding", "delivery_location"]
+    search_fields = ["rfq_number", "title"]
+    filter_horizontal = ["requisitions", "invited_suppliers"]
+    inlines = [RequestForQuotationItemInline]
+
+
+class SupplierQuotationItemInline(TabularInline):
+    model = SupplierQuotationItem
+    extra = 0
+    fields = [
+        "item", "quoted_quantity", "quoted_unit_price", "discount_percentage",
+        "line_total", "offered_brand_or_spec", "award_status", "is_converted_to_po", "converted_quantity"
+    ]
+    readonly_fields = ["line_total", "converted_quantity"]
+
+    def has_change_permission(self, request, obj=None):
+        if obj and obj.status in ["accepted", "partially_awarded", "converted_to_po", "rejected", "expired"]:
+            return False
+        return super().has_change_permission(request, obj)
+
+    def has_delete_permission(self, request, obj=None):
+        if obj and obj.status in ["accepted", "partially_awarded", "converted_to_po", "rejected", "expired"]:
+            return False
+        return super().has_delete_permission(request, obj)
+
+    def has_add_permission(self, request, obj=None):
+        if obj and obj.status in ["accepted", "partially_awarded", "converted_to_po", "rejected", "expired"]:
+            return False
+        return super().has_add_permission(request, obj)
+
+
+@admin.register(SupplierQuotation)
+class SupplierQuotationAdmin(ModelAdmin):
+    list_display = [
+        "quotation_number", "supplier", "rfq", "status",
+        "total_quoted_amount", "currency", "total_landed_cost_etb",
+        "valid_until", "quotation_date"
+    ]
+    list_filter = ["status", "currency", "quotation_date", "valid_until"]
+    search_fields = ["quotation_number", "supplier_reference", "supplier__name"]
+    inlines = [SupplierQuotationItemInline]
+
+    def has_delete_permission(self, request, obj=None):
+        if obj and obj.status in ["accepted", "partially_awarded", "converted_to_po", "rejected", "expired"]:
+            return False
+        return super().has_delete_permission(request, obj)
+
+    def get_readonly_fields(self, request, obj=None):
+        if obj and obj.status in ["accepted", "partially_awarded", "converted_to_po", "rejected", "expired"]:
+            return [field.name for field in self.model._meta.fields]
+        return self.readonly_fields
+
+
+class PurchaseOrderItemInline(TabularInline):
+    model = PurchaseOrderItem
+    extra = 0
+    fields = ["item", "quantity_ordered", "quantity_received", "unit_price", "line_total", "originating_quote_item"]
+    readonly_fields = ["line_total", "originating_quote_item"]
+
+
+@admin.register(PurchaseOrder)
+class PurchaseOrderAdmin(ModelAdmin):
+    list_display = [
+        "po_number", "supplier", "status", "total_amount",
+        "delivery_location", "originating_quotation", "delivery_due_date", "issued_by", "issued_at"
+    ]
+    list_filter = ["status", "supplier", "delivery_location"]
+    search_fields = ["po_number", "supplier__name"]
+    inlines = [PurchaseOrderItemInline]
+
+
+class GoodsReceiptNoteItemInline(TabularInline):
+    model = GoodsReceiptNoteItem
+    extra = 0
+    fields = ["item", "quantity_received", "quantity_rejected", "batch_number", "expiry_date", "unit_cost", "total_cost"]
+
+
+@admin.register(GoodsReceiptNote)
+class GoodsReceiptNoteAdmin(ModelAdmin):
+    list_display = ["grn_number", "purchase_order", "supplier", "location", "status", "received_by", "received_at"]
+    list_filter = ["status", "location", "received_at"]
+    search_fields = ["grn_number", "delivery_note_number", "supplier__name"]
+    inlines = [GoodsReceiptNoteItemInline]
+
+
+class SupplierInvoiceItemInline(TabularInline):
+    model = SupplierInvoiceItem
+    extra = 0
+    fields = ["item", "billed_quantity", "billed_unit_price", "line_total", "price_variance", "is_matched"]
+    readonly_fields = ["line_total", "price_variance", "is_matched"]
+
+
+@admin.register(SupplierInvoice)
+class SupplierInvoiceAdmin(ModelAdmin):
+    list_display = [
+        "internal_number", "vendor_invoice_number", "supplier", "purchase_order",
+        "total_amount", "match_status", "is_paid", "invoice_date", "due_date"
+    ]
+    list_filter = ["match_status", "is_paid", "invoice_date"]
+    search_fields = ["internal_number", "vendor_invoice_number", "supplier__name"]
+    inlines = [SupplierInvoiceItemInline]
+
+
+class StocktakeItemInline(TabularInline):
+    model = StocktakeItem
+    extra = 0
+    fields = ["item", "batch", "theoretical_quantity", "counted_quantity", "variance_quantity", "variance_value"]
+    readonly_fields = ["theoretical_quantity", "variance_quantity", "variance_value"]
+
+
+@admin.register(StocktakeSession)
+class StocktakeSessionAdmin(ModelAdmin):
+    list_display = [
+        "session_number", "title", "location", "counting_mode", "status",
+        "total_theoretical_value", "total_counted_value", "total_variance_value", "snapshot_at"
+    ]
+    list_filter = ["status", "counting_mode", "location"]
+    search_fields = ["session_number", "title"]
+    inlines = [StocktakeItemInline]

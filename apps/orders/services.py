@@ -43,7 +43,7 @@ def get_system_settings():
 def calculate_order_financials(order, settings_obj=None):
     settings_obj = settings_obj or get_system_settings()
     sub_total = sum(
-        (to_decimal(item.price_at_order) * item.quantity) for item in order.items.all()
+        (to_decimal(item.price_at_order) * item.quantity) for item in order.items.exclude(status="cancelled")
     )
     service_amount = Decimal("0.00")
     if settings_obj.service_charge_enabled:
@@ -133,6 +133,7 @@ def create_order_idempotently(*, table_id, items, waiter, idempotency_key=None, 
             # Retroactively link any existing unassigned unpaid orders for this table to this session
             Order.objects.filter(table=table, payment_status="pending", session__isnull=True).update(session=session)
 
+    now = timezone.now()
     order = Order.objects.create(
         table=table,
         session=session,
@@ -140,6 +141,7 @@ def create_order_idempotently(*, table_id, items, waiter, idempotency_key=None, 
         waiter_username=waiter.username,
         status="pending",
         payment_status="pending",
+        received_at=now,
         idempotency_key=idempotency_key,
         idempotency_fingerprint=fingerprint,
     )
@@ -160,6 +162,7 @@ def create_order_idempotently(*, table_id, items, waiter, idempotency_key=None, 
             price_at_order=menu_item.price,
             notes=notes,
             status="pending",
+            received_at=now,
         )
     if table.status != "occupied":
         table.status = "occupied"
@@ -229,10 +232,20 @@ def generate_tx_ref(order):
 
 
 @transaction.atomic
-def finalize_paid_order(order, payment_method, payment_reference=None, tip_amount=None, cashier=None, payment_attempt=None, reservation=None):
+def finalize_paid_order(order, payment_method, payment_reference=None, tip_amount=None, cashier=None, payment_attempt=None, reservation=None, enforce_served=True):
     order = Order.objects.select_for_update().select_related("table").prefetch_related("items__menu_item__ingredients_bom__ingredient").get(pk=order.pk)
     if order.payment_status == "paid":
         return order, False
+
+    # Authoritative dining order protection:
+    # A dining session order must not be paid while active items remain undelivered
+    if enforce_served and order.session is not None:
+        unserved = order.items.select_for_update().filter(status__in=["pending", "preparing", "ready"]).exists()
+        if unserved:
+            raise ValidationError(
+                f"Cannot finalize payment for dining order #{order.id}: items are still in preparation or awaiting delivery. "
+                "Please confirm delivery or cancel remaining items before payment."
+            )
 
     sync_order_financials(order)
     if tip_amount is not None:
@@ -339,20 +352,47 @@ def finalize_paid_order(order, payment_method, payment_reference=None, tip_amoun
     if settings is None or getattr(settings, "module_inventory", True):
         total_ingredient_cost = Decimal("0.00")
         try:
-            for order_item in order.items.all():
+            from hotel.models import ItemLocationBalance, StockLocation
+            for order_item in order.items.exclude(status="cancelled"):
                 menu_item = order_item.menu_item
                 for bom_item in menu_item.ingredients_bom.all():
                     ingredient = bom_item.ingredient
                     qty_to_deduct = bom_item.quantity_required * Decimal(str(order_item.quantity))
-                    locked_item, _ = record_stock_change(
-                        item_id=ingredient.pk, transaction_type="sale_deduction",
-                        quantity=qty_to_deduct, unit_cost=ingredient.unit_cost,
+
+                    # Resolve target location (Kitchen vs Bar vs Main Store fallback)
+                    cat_name = str(getattr(menu_item, "category", "")).lower()
+                    preferred_code = "BAR-MAIN" if any(w in cat_name for w in ("bar", "beverage", "drink", "cocktail", "wine", "beer", "liquor")) else "KITCHEN-MAIN"
+                    target_location = StockLocation.objects.filter(code=preferred_code, is_active=True).first()
+                    if target_location:
+                        ilb = ItemLocationBalance.objects.filter(item=ingredient, location=target_location).first()
+                        if not ilb or ilb.quantity < qty_to_deduct:
+                            main_loc = StockLocation.objects.filter(code="STORE-MAIN", is_active=True).first()
+                            if main_loc:
+                                main_ilb = ItemLocationBalance.objects.filter(item=ingredient, location=main_loc).first()
+                                if main_ilb and main_ilb.quantity >= qty_to_deduct:
+                                    target_location = main_loc
+
+                    locked_item, stx = record_stock_change(
+                        item_id=ingredient.pk,
+                        transaction_type="sale_deduction",
+                        quantity=qty_to_deduct,
+                        unit_cost=ingredient.unit_cost,
+                        location=target_location,
                         reference_number=f"ORD-{order.id}",
-                        notes=f"Auto-deducted for menu item '{menu_item.name}' (qty: {order_item.quantity})",
+                        idempotency_key=f"POS-BOM-{order.id}-{order_item.id}-{ingredient.id}",
+                        notes=f"Auto-deducted for menu item '{menu_item.name}' (qty: {order_item.quantity}) from {getattr(target_location, 'name', 'Main Store')}",
                         logged_by_username=cashier.username if cashier else "system_auto",
                     )
-                    total_ingredient_cost += qty_to_deduct * to_decimal(locked_item.unit_cost)
-                    
+
+                    consumptions = list(stx.batch_consumptions.all()) if stx else []
+                    if consumptions:
+                        ingredient_cost = sum((c.total_cost for c in consumptions), Decimal("0.00"))
+                    else:
+                        effective_uc = to_decimal(stx.unit_cost if stx else locked_item.unit_cost)
+                        ingredient_cost = (qty_to_deduct * effective_uc).quantize(TWOPLACES)
+
+                    total_ingredient_cost += ingredient_cost
+
             if total_ingredient_cost > 0:
                 post_journal_entry(
                     description=f"Auto JV: COGS for Order #{order.id}",
@@ -360,14 +400,14 @@ def finalize_paid_order(order, payment_method, payment_reference=None, tip_amoun
                         {
                             "account_code": "5000",
                             "debit": total_ingredient_cost,
-                            "credit": Decimal("0.00")
+                            "credit": Decimal("0.00"),
                         },
                         {
                             "account_code": "1300",
                             "debit": Decimal("0.00"),
-                            "credit": total_ingredient_cost
-                        }
-                    ]
+                            "credit": total_ingredient_cost,
+                        },
+                    ],
                 )
         except Exception as e:
             raise ValueError(f"Inventory deduction failed for Order #{order.id}: {e}") from e
@@ -408,6 +448,7 @@ def settle_dining_session(
     tip_amount=None,
     cashier=None,
     reservation=None,
+    enforce_served=True,
 ):
     """
     Settle all unpaid orders belonging to a dining session in one atomic transaction.
@@ -425,9 +466,29 @@ def settle_dining_session(
         session.orders.select_for_update()
         .filter(payment_status="pending")
         .exclude(status="cancelled")
-        .order_by("created_at")
+        .order_by("id")
     )
+    if enforce_served and unpaid_orders:
+        unserved_items = OrderItem.objects.select_for_update().filter(
+            order__in=unpaid_orders,
+            status__in=["pending", "preparing", "ready"]
+        ).exists()
+        if unserved_items:
+            raise ValidationError(
+                "Cannot settle dining session: table still has items in preparation or awaiting service. "
+                "Please confirm delivery or cancel remaining items before settlement."
+            )
     if not unpaid_orders:
+        if enforce_served:
+            active_unserved = OrderItem.objects.filter(
+                order__session=session,
+                status__in=["pending", "preparing", "ready"]
+            ).exclude(order__status="cancelled").exists()
+            if active_unserved:
+                raise ValidationError(
+                    "Cannot close dining session: table still has items in preparation or awaiting service."
+                )
+
         if session.orders.exclude(status="cancelled").filter(payment_status="paid").exists():
             session.status = "closed"
             session.closed_at = timezone.now()
@@ -451,6 +512,7 @@ def settle_dining_session(
             tip_amount=order_tip,
             cashier=cashier,
             reservation=reservation,
+            enforce_served=enforce_served,
         )
         settled_orders.append(settled)
 

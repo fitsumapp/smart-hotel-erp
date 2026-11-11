@@ -120,6 +120,7 @@ class DiningSessionAndReorderingTestCase(APITestCase):
         session = order1.session
 
         # Settle Round 1 only
+        order1.items.update(status="served")
         finalize_paid_order(order1, payment_method="Cash", cashier=self.cashier)
         order1.refresh_from_db()
         self.assertEqual(order1.payment_status, "paid")
@@ -133,6 +134,7 @@ class DiningSessionAndReorderingTestCase(APITestCase):
         self.assertEqual(session.status, "active")
 
         # Settle Round 2
+        order2.items.update(status="served")
         finalize_paid_order(order2, payment_method="Cash", cashier=self.cashier)
         order2.refresh_from_db()
         self.assertEqual(order2.payment_status, "paid")
@@ -200,6 +202,8 @@ class DiningSessionAndReorderingTestCase(APITestCase):
             waiter=self.waiter,
         )
         session = order1.session
+        order1.items.update(status="served")
+        order2.items.update(status="served")
 
         self.client.force_authenticate(self.cashier)
         url = reverse("settle-dining-session", kwargs={"session_id": session.id})
@@ -396,6 +400,7 @@ class DiningSessionAndReorderingTestCase(APITestCase):
             waiter=self.waiter,
         )
         session = order1.session
+        order1.items.update(status="served")
 
         self.client.force_authenticate(self.cashier)
         url = reverse("settle-dining-session", kwargs={"session_id": session.id})
@@ -437,6 +442,7 @@ class DiningSessionAndReorderingTestCase(APITestCase):
             waiter=self.waiter,
         )
         session = order1.session
+        order1.items.update(status="served")
 
         # Settle first time
         self.client.force_authenticate(self.cashier)
@@ -474,6 +480,8 @@ class DiningSessionAndReorderingTestCase(APITestCase):
         session = order1.session
 
         # Waiter or cashier settles order1 individually
+        order1.items.update(status="served")
+        order2.items.update(status="served")
         finalize_paid_order(order1, payment_method="Cash", cashier=self.cashier)
         order1.refresh_from_db()
         self.assertEqual(order1.payment_status, "paid")
@@ -517,6 +525,7 @@ class DiningSessionAndReorderingTestCase(APITestCase):
             waiter=self.waiter,
         )
         session = order1.session
+        order1.items.update(status="served")
         settle_dining_session(session, cashier=self.cashier)
         session.refresh_from_db()
         self.assertEqual(session.status, "closed")
@@ -581,6 +590,7 @@ class DiningSessionAndReorderingTestCase(APITestCase):
             waiter=self.waiter,
         )
         session = order1.session
+        order1.items.update(status="served")
 
         self.client.force_authenticate(self.cashier)
         url = reverse("settle-dining-session", kwargs={"session_id": session.id})
@@ -652,6 +662,7 @@ class DiningSessionAndReorderingTestCase(APITestCase):
         session = order1.session
 
         # Settle order1 only
+        order1.items.update(status="served")
         finalize_paid_order(order1, payment_method="Cash", cashier=self.cashier)
 
         self.client.force_authenticate(self.cashier)
@@ -670,6 +681,7 @@ class DiningSessionAndReorderingTestCase(APITestCase):
         self.assertEqual(res.data["amount_due"], 125.0)
 
         # Settle order2 as well
+        order2.items.update(status="served")
         finalize_paid_order(order2, payment_method="Cash", cashier=self.cashier)
         res_full = self.client.get(url)
         self.assertEqual(res_full.data["paid_amount"], 375.0)
@@ -687,6 +699,7 @@ class DiningSessionAndReorderingTestCase(APITestCase):
             waiter=self.waiter,
         )
         session = order1.session
+        order1.items.update(status="served")
 
         self.client.force_authenticate(self.cashier)
         url = reverse("settle-dining-session", kwargs={"session_id": session.id})
@@ -721,12 +734,16 @@ class DiningSessionConcurrencyTestCase(TransactionTestCase):
     def setUp(self):
         if connection.vendor != "postgresql":
             self.skipTest("PostgreSQL-specific dining session concurrency test")
+        import uuid
+        uid = uuid.uuid4().hex[:6]
+        User.objects.filter(username__startswith="waiter-conc").delete()
+        RestaurantTable.objects.filter(table_code__startswith="T-CONC").delete()
         self.waiter = User.objects.create_user(
-            username="waiter-conc-test", password="test-password", role=User.WAITER, is_active=True
+            username=f"waiter-conc-{uid}", password="test-password", role=User.WAITER, is_active=True
         )
-        self.table = RestaurantTable.objects.create(table_code="T-CONC", status="available")
-        cat = Category.objects.create(name="Food-Conc", station="Kitchen")
-        self.item = MenuItem.objects.create(name="Conc Burger", category=cat, price=Decimal("150.00"))
+        self.table = RestaurantTable.objects.create(table_code=f"T-CONC-{uid}", status="available")
+        cat, _ = Category.objects.get_or_create(name="Food-Conc", defaults={"station": "Kitchen"})
+        self.item = MenuItem.objects.create(name=f"Conc Burger {uid}", category=cat, price=Decimal("150.00"))
 
     def test_concurrent_first_order_creation_results_in_single_active_session(self):
         """
@@ -777,6 +794,7 @@ class DiningSessionConcurrencyTestCase(TransactionTestCase):
             waiter=self.waiter,
         )
         session = order.session
+        order.items.update(status="served")
 
         successes = []
         failures = []

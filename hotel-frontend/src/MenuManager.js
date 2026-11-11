@@ -1,3 +1,4 @@
+import { apiErrorMessage } from './apiClient';
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -58,7 +59,7 @@ const MenuManager = () => {
       }
     } catch (error) {
       console.error("ዳታ መጫን አልተቻለም፦", error);
-      setFetchError("ዳታ መጫን አልተቻለም፦ " + (error.message || "Network Error"));
+      setFetchError("ዳታ መጫን አልተቻለም፦ " + apiErrorMessage(error));
     } finally {
       setLoading(false);
     }

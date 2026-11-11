@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import axios from 'axios';
 import {
   Shield, TrendingUp, Hotel, Printer,
-  RefreshCw, Calendar, CheckCircle, BookMarked, Layers, Activity
+  RefreshCw, Calendar, CheckCircle, BookMarked, Layers, Activity, ChefHat, Clock, AlertTriangle, Wine
 } from 'lucide-react';
 import { API_BASE_URL } from '../apiConfig';
 
@@ -14,6 +14,7 @@ const REPORT_TABS = [
   { id: 'occupancy',label: 'Occupancy & Revenue', icon: <Hotel       size={16} />, color: '#a78bfa' },
   { id: 'bookings', label: 'Bookings Report',     icon: <BookMarked  size={16} />, color: '#fb923c' },
   { id: 'inventory',label: 'Inventory Report',    icon: <Layers      size={16} />, color: '#fbbf24' },
+  { id: 'operations_timing', label: 'Kitchen & Bar Performance', icon: <ChefHat size={16} />, color: '#10b981' },
 ];
 
 const today = new Date().toISOString().split('T')[0];
@@ -57,6 +58,8 @@ export default function ReportsCenter({ initialTab }) {
         res = await axios.get(`${API_BASE_URL}/users/reservations/?date_from=${reportDate}`);
       } else if (activeTab === 'inventory') {
         res = await axios.get(`${API_BASE_URL}/users/inventory-items/`);
+      } else if (activeTab === 'operations_timing') {
+        res = await axios.get(`${API_BASE_URL}/users/reports/operations-timing/?date=${reportDate}`);
       }
       setData(res?.data);
     } catch (err) {
@@ -349,6 +352,7 @@ export default function ReportsCenter({ initialTab }) {
           {activeTab === 'occupancy'&& <OccupancyView data={data} />}
           {activeTab === 'bookings' && <BookingsReportView data={data} />}
           {activeTab === 'inventory'&& <InventoryReportView data={data} />}
+          {activeTab === 'operations_timing' && <OperationsTimingReportView data={data} />}
         </motion.div>
       )}
 
@@ -359,6 +363,7 @@ export default function ReportsCenter({ initialTab }) {
         {data && activeTab === 'occupancy' && <PrintableOccupancy data={data} />}
         {data && activeTab === 'bookings' && <PrintableBookingsReport data={data} />}
         {data && activeTab === 'inventory' && <PrintableInventoryReport data={data} />}
+        {data && activeTab === 'operations_timing' && <PrintableOperationsTimingReport data={data} />}
       </div>
     </div>
   );
@@ -934,3 +939,197 @@ const tableWrap = { backgroundColor: '#fff', borderRadius: 14, border: '1px soli
 const th = { padding: '12px 14px', fontSize: 10, fontWeight: 700, color: '#64748b', textAlign: 'left', textTransform: 'uppercase', letterSpacing: '0.06em', whiteSpace: 'nowrap' };
 const td = { padding: '10px 14px', fontSize: 12, color: '#0f172a', whiteSpace: 'nowrap', borderBottom: '1px solid #f1f5f9' };
 
+function OperationsTimingReportView({ data }) {
+  if (!data) return null;
+  const { summary, kitchen, bar, staff_performance, top_bottlenecks, targets } = data;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+      {/* KPI Cards Row */}
+      <div style={grid4}>
+        <div style={kpiCard}>
+          <div style={kpiLabel}>Avg Kitchen Prep</div>
+          <div style={{ ...kpiVal, color: kitchen.avg_prep_minutes > targets.kds_target_minutes ? '#ef4444' : '#10b981' }}>
+            {kitchen.avg_prep_minutes} <span style={kpiUnit}>min</span>
+          </div>
+          <div style={kpiSub}>Target: {targets.kds_target_minutes} min</div>
+        </div>
+
+        <div style={kpiCard}>
+          <div style={kpiLabel}>Avg Bar Fulfillment</div>
+          <div style={{ ...kpiVal, color: bar.avg_fulfillment_minutes > targets.bar_target_minutes ? '#ef4444' : '#7c3aed' }}>
+            {bar.avg_fulfillment_minutes} <span style={kpiUnit}>min</span>
+          </div>
+          <div style={kpiSub}>Target: {targets.bar_target_minutes} min</div>
+        </div>
+
+        <div style={kpiCard}>
+          <div style={kpiLabel}>Delay Incident Rate</div>
+          <div style={{ ...kpiVal, color: summary.overall_delay_rate > 15 ? '#ef4444' : '#10b981' }}>
+            {summary.overall_delay_rate}%
+          </div>
+          <div style={kpiSub}>{kitchen.delayed_target_count + bar.delayed_target_count} delayed items</div>
+        </div>
+
+        <div style={kpiCard}>
+          <div style={kpiLabel}>Total Completed Items</div>
+          <div style={kpiVal}>{summary.total_items_ready}</div>
+          <div style={kpiSub}>{summary.total_items_served} served to guests</div>
+        </div>
+      </div>
+
+      {/* Station Side-by-Side Breakdown */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 20 }}>
+        {/* Kitchen Station Card */}
+        <div style={reportCard}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+            <h4 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: '#0f766e', display: 'flex', alignItems: 'center', gap: 8 }}>
+              🍳 Kitchen Display System
+            </h4>
+            <span style={{ fontSize: 12, fontWeight: 700, padding: '4px 10px', borderRadius: 8, background: '#dcfce7', color: '#166534' }}>
+              {kitchen.ready_items} Ready / {kitchen.total_items} Ordered
+            </span>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={statRow}><span>Avg Prep Time:</span><strong>{kitchen.avg_prep_minutes} min</strong></div>
+            <div style={statRow}><span>Avg Delivery Time:</span><strong>{kitchen.avg_delivery_minutes} min</strong></div>
+            <div style={statRow}><span>Target Exceeded (&gt;{targets.kds_target_minutes}m):</span><strong style={{ color: kitchen.delayed_target_count ? '#ea580c' : '#166534' }}>{kitchen.delayed_target_count}</strong></div>
+            <div style={statRow}><span>Critical Delay (&gt;{targets.kds_warning_minutes}m):</span><strong style={{ color: kitchen.delayed_warning_count ? '#ef4444' : '#166534' }}>{kitchen.delayed_warning_count}</strong></div>
+            <div style={statRow}><span>Station Delay Rate:</span><strong>{kitchen.delay_rate}%</strong></div>
+          </div>
+        </div>
+
+        {/* Bar Station Card */}
+        <div style={reportCard}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+            <h4 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: '#7c3aed', display: 'flex', alignItems: 'center', gap: 8 }}>
+              🍷 Bar Display System
+            </h4>
+            <span style={{ fontSize: 12, fontWeight: 700, padding: '4px 10px', borderRadius: 8, background: '#f3e8ff', color: '#6b21a8' }}>
+              {bar.ready_items} Ready / {bar.total_items} Ordered
+            </span>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={statRow}><span>Avg Fulfillment Time:</span><strong>{bar.avg_fulfillment_minutes} min</strong></div>
+            <div style={statRow}><span>Avg Delivery Time:</span><strong>{bar.avg_delivery_minutes} min</strong></div>
+            <div style={statRow}><span>Target Exceeded (&gt;{targets.bar_target_minutes}m):</span><strong style={{ color: bar.delayed_target_count ? '#ea580c' : '#166534' }}>{bar.delayed_target_count}</strong></div>
+            <div style={statRow}><span>Critical Delay (&gt;{targets.bar_warning_minutes}m):</span><strong style={{ color: bar.delayed_warning_count ? '#ef4444' : '#166534' }}>{bar.delayed_warning_count}</strong></div>
+            <div style={statRow}><span>Station Delay Rate:</span><strong>{bar.delay_rate}%</strong></div>
+          </div>
+        </div>
+      </div>
+
+      {/* Staff Attribution & Performance Leaderboard */}
+      <div style={reportCard}>
+        <h4 style={{ margin: '0 0 16px 0', fontSize: 16, fontWeight: 800, color: '#0f172a' }}>
+          👨‍🍳 Staff Service &amp; Preparation Attribution
+        </h4>
+        {staff_performance.length === 0 ? (
+          <div style={{ color: '#64748b', fontSize: 13, fontStyle: 'italic' }}>No staff completion recorded for this period.</div>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+              <thead>
+                <tr style={{ borderBottom: '2px solid #e2e8f0', textAlign: 'left', color: '#64748b' }}>
+                  <th style={{ padding: '8px 12px' }}>Staff Name</th>
+                  <th style={{ padding: '8px 12px' }}>Station</th>
+                  <th style={{ padding: '8px 12px' }}>Completed Items</th>
+                  <th style={{ padding: '8px 12px' }}>Avg Duration</th>
+                  <th style={{ padding: '8px 12px' }}>Delayed Count</th>
+                  <th style={{ padding: '8px 12px' }}>Delay Rate</th>
+                </tr>
+              </thead>
+              <tbody>
+                {staff_performance.map((s, idx) => (
+                  <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                    <td style={{ padding: '10px 12px', fontWeight: 700, color: '#1e293b' }}>{s.name}</td>
+                    <td style={{ padding: '10px 12px' }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 6, background: s.role === 'Kitchen' ? '#dcfce7' : '#f3e8ff', color: s.role === 'Kitchen' ? '#166534' : '#6b21a8' }}>
+                        {s.role}
+                      </span>
+                    </td>
+                    <td style={{ padding: '10px 12px', fontWeight: 700 }}>{s.completed_items}</td>
+                    <td style={{ padding: '10px 12px' }}>{s.avg_duration_minutes} min</td>
+                    <td style={{ padding: '10px 12px', color: s.delay_count ? '#ea580c' : '#166534', fontWeight: 700 }}>{s.delay_count}</td>
+                    <td style={{ padding: '10px 12px', fontWeight: 700 }}>{s.delay_rate}%</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Top Delay Bottlenecks */}
+      <div style={reportCard}>
+        <h4 style={{ margin: '0 0 16px 0', fontSize: 16, fontWeight: 800, color: '#991b1b', display: 'flex', alignItems: 'center', gap: 8 }}>
+          🚨 Top Service Bottlenecks (Items Exceeding Target)
+        </h4>
+        {top_bottlenecks.length === 0 ? (
+          <div style={{ color: '#166534', fontSize: 13, fontWeight: 600, background: '#dcfce7', padding: '10px 14px', borderRadius: 8 }}>
+            ✓ Excellent performance! No items exceeded timing benchmarks during this period.
+          </div>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+              <thead>
+                <tr style={{ borderBottom: '2px solid #e2e8f0', textAlign: 'left', color: '#64748b' }}>
+                  <th style={{ padding: '8px 12px' }}>Item</th>
+                  <th style={{ padding: '8px 12px' }}>Table</th>
+                  <th style={{ padding: '8px 12px' }}>Station</th>
+                  <th style={{ padding: '8px 12px' }}>Actual Duration</th>
+                  <th style={{ padding: '8px 12px' }}>Benchmark</th>
+                  <th style={{ padding: '8px 12px' }}>Overdue By</th>
+                  <th style={{ padding: '8px 12px' }}>Staff</th>
+                </tr>
+              </thead>
+              <tbody>
+                {top_bottlenecks.map((b) => (
+                  <tr key={b.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                    <td style={{ padding: '10px 12px', fontWeight: 700, color: '#1e293b' }}>{b.item_name}</td>
+                    <td style={{ padding: '10px 12px' }}>Table {b.table_code}</td>
+                    <td style={{ padding: '10px 12px' }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 6, background: b.station === 'Kitchen' ? '#dcfce7' : '#f3e8ff', color: b.station === 'Kitchen' ? '#166534' : '#6b21a8' }}>
+                        {b.station}
+                      </span>
+                    </td>
+                    <td style={{ padding: '10px 12px', fontWeight: 800, color: '#b91c1c' }}>{b.actual_minutes} min</td>
+                    <td style={{ padding: '10px 12px', color: '#64748b' }}>{b.target_minutes} min</td>
+                    <td style={{ padding: '10px 12px', color: '#ef4444', fontWeight: 800 }}>+{b.delay_minutes} min</td>
+                    <td style={{ padding: '10px 12px', color: '#475569' }}>{b.staff_name}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function PrintableOperationsTimingReport({ data }) {
+  if (!data) return null;
+  const { date, summary, kitchen, bar, targets } = data;
+  return (
+    <div style={{ padding: 20 }}>
+      <h2 style={{ textAlign: 'center', margin: '0 0 5px 0' }}>KITCHEN &amp; BAR OPERATIONS REPORT</h2>
+      <p style={{ textAlign: 'center', color: '#666', margin: '0 0 15px 0' }}>Period: {date}</p>
+      <hr />
+      <h4>SUMMARY</h4>
+      <p>Total Items Ordered: {summary.total_items_ordered} | Items Ready: {summary.total_items_ready} | Overall Delay Rate: {summary.overall_delay_rate}%</p>
+      <h4>KITCHEN PERFORMANCE (Target: {targets.kds_target_minutes}m)</h4>
+      <p>Completed: {kitchen.ready_items} | Avg Prep Time: {kitchen.avg_prep_minutes} min | Delayed Count: {kitchen.delayed_target_count} ({kitchen.delay_rate}%)</p>
+      <h4>BAR PERFORMANCE (Target: {targets.bar_target_minutes}m)</h4>
+      <p>Completed: {bar.ready_items} | Avg Fulfillment Time: {bar.avg_fulfillment_minutes} min | Delayed Count: {bar.delayed_target_count} ({bar.delay_rate}%)</p>
+    </div>
+  );
+}
+
+const grid4 = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16 };
+const kpiCard = { backgroundColor: '#fff', border: '1px solid rgba(148,163,184,0.16)', borderRadius: 16, padding: 18, boxShadow: '0 8px 20px rgba(15,23,42,0.03)' };
+const kpiLabel = { fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: 6 };
+const kpiVal = { fontSize: 28, fontWeight: 900, color: '#0f172a' };
+const kpiUnit = { fontSize: 14, fontWeight: 600, color: '#64748b' };
+const kpiSub = { fontSize: 11, fontWeight: 600, color: '#94a3b8', marginTop: 4 };
+const statRow = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13, borderBottom: '1px solid #f8fafc', paddingBottom: 6 };

@@ -198,6 +198,10 @@ class Milestone2EndToEndWorkflowsTests(TestCase):
         self.assertEqual(res_order.status_code, status.HTTP_201_CREATED)
         order_id = res_order.data["order_id"]
 
+        # Ensure order items are marked served in accordance with the Item-Level Lifecycle
+        from hotel.models import OrderItem
+        OrderItem.objects.filter(order_id=order_id).update(status="served")
+
         # Cashier finalizes order
         self.client.force_authenticate(user=self.cashier)
         res_finalize = self.client.post(f"/api/users/cashier/process/{order_id}/", {

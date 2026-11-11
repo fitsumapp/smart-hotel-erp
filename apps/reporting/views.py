@@ -727,4 +727,244 @@ class FinanceDashboardStatsView(APIView):
             "closed_days": closed_days_data
         }, status=status.HTTP_200_OK)
 
+class OperationsTimingReportView(APIView):
+    """Kitchen and Bar operations timing and service performance report."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        if not (request.user.is_superuser or request.user.role in ["admin", "hotel_manager", "kitchen", "bar", "finance"]):
+            return Response({"error": "Access denied."}, status=status.HTTP_403_FORBIDDEN)
+
+        date_param = request.query_params.get("date")
+        start_date_param = request.query_params.get("start_date")
+        end_date_param = request.query_params.get("end_date")
+
+        today = timezone.now().date()
+        if start_date_param and end_date_param:
+            try:
+                start_date = datetime.fromisoformat(start_date_param).date()
+                end_date = datetime.fromisoformat(end_date_param).date()
+            except Exception:
+                start_date, end_date = today, today
+        elif date_param:
+            try:
+                start_date = end_date = datetime.fromisoformat(date_param).date()
+            except Exception:
+                start_date = end_date = today
+        else:
+            start_date = end_date = today
+
+        start_dt, end_dt = datetime_bounds(start_date, end_date)
+
+        from hotel.models import SystemSettings, OrderItem, Order
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+
+        settings_obj = SystemSettings.objects.first()
+        kds_target = getattr(settings_obj, "kds_prep_target_minutes", 15) or 15
+        kds_warning = getattr(settings_obj, "kds_delay_warning_minutes", 20) or 20
+        bar_target = getattr(settings_obj, "bar_fulfillment_target_minutes", 5) or 5
+        bar_warning = getattr(settings_obj, "bar_delay_warning_minutes", 10) or 10
+
+        items_qs = (
+            OrderItem.objects.filter(
+                received_at__gte=start_dt,
+                received_at__lte=end_dt,
+            )
+            .exclude(status="cancelled")
+            .select_related("order__table", "menu_item__category")
+        )
+
+        items_list = list(items_qs)
+
+        user_ids = set()
+        for it in items_list:
+            if it.prepared_by_id_ref:
+                user_ids.add(it.prepared_by_id_ref)
+            if it.ready_by_id_ref:
+                user_ids.add(it.ready_by_id_ref)
+            if it.served_by_id_ref:
+                user_ids.add(it.served_by_id_ref)
+
+        users_map = {u.id: (u.get_full_name() or u.username) for u in User.objects.filter(id__in=user_ids)}
+
+        # Kitchen Metrics
+        kitchen_items = [it for it in items_list if it.get_station().lower() != "bar"]
+        ready_kitchen = [it for it in kitchen_items if it.ready_at is not None]
+        served_kitchen = [it for it in kitchen_items if it.served_at is not None and it.ready_at is not None]
+
+        kitchen_prep_times = []
+        kitchen_delayed_target_count = 0
+        kitchen_delayed_warning_count = 0
+
+        for it in ready_kitchen:
+            start_t = it.preparation_started_at or it.received_at
+            if start_t:
+                prep_min = max(0.0, (it.ready_at - start_t).total_seconds() / 60.0)
+                kitchen_prep_times.append(prep_min)
+                if prep_min > kds_target:
+                    kitchen_delayed_target_count += 1
+                if prep_min > kds_warning:
+                    kitchen_delayed_warning_count += 1
+
+        kitchen_delivery_times = [
+            max(0.0, (it.served_at - it.ready_at).total_seconds() / 60.0)
+            for it in served_kitchen
+        ]
+
+        avg_kitchen_prep = round(sum(kitchen_prep_times) / len(kitchen_prep_times), 1) if kitchen_prep_times else 0.0
+        avg_kitchen_delivery = round(sum(kitchen_delivery_times) / len(kitchen_delivery_times), 1) if kitchen_delivery_times else 0.0
+        kitchen_delay_rate = round((kitchen_delayed_target_count / len(ready_kitchen) * 100), 1) if ready_kitchen else 0.0
+
+        # Bar Metrics
+        bar_items = [it for it in items_list if it.get_station().lower() == "bar"]
+        ready_bar = [it for it in bar_items if it.ready_at is not None]
+        served_bar = [it for it in bar_items if it.served_at is not None and it.ready_at is not None]
+
+        bar_fulfillment_times = []
+        bar_delayed_target_count = 0
+        bar_delayed_warning_count = 0
+
+        for it in ready_bar:
+            start_t = it.received_at
+            if start_t:
+                ful_min = max(0.0, (it.ready_at - start_t).total_seconds() / 60.0)
+                bar_fulfillment_times.append(ful_min)
+                if ful_min > bar_target:
+                    bar_delayed_target_count += 1
+                if ful_min > bar_warning:
+                    bar_delayed_warning_count += 1
+
+        bar_delivery_times = [
+            max(0.0, (it.served_at - it.ready_at).total_seconds() / 60.0)
+            for it in served_bar
+        ]
+
+        avg_bar_fulfillment = round(sum(bar_fulfillment_times) / len(bar_fulfillment_times), 1) if bar_fulfillment_times else 0.0
+        avg_bar_delivery = round(sum(bar_delivery_times) / len(bar_delivery_times), 1) if bar_delivery_times else 0.0
+        bar_delay_rate = round((bar_delayed_target_count / len(ready_bar) * 100), 1) if ready_bar else 0.0
+
+        # Staff breakdown
+        staff_stats = {}
+        for it in ready_kitchen:
+            staff_id = it.prepared_by_id_ref or it.ready_by_id_ref
+            if staff_id:
+                s_name = users_map.get(staff_id, f"Staff #{staff_id}")
+                if s_name not in staff_stats:
+                    staff_stats[s_name] = {"role": "Kitchen", "completed_count": 0, "total_minutes": 0.0, "delayed_count": 0}
+                st = it.preparation_started_at or it.received_at
+                m = max(0.0, (it.ready_at - st).total_seconds() / 60.0) if st else 0.0
+                staff_stats[s_name]["completed_count"] += 1
+                staff_stats[s_name]["total_minutes"] += m
+                if m > kds_target:
+                    staff_stats[s_name]["delayed_count"] += 1
+
+        for it in ready_bar:
+            staff_id = it.ready_by_id_ref
+            if staff_id:
+                s_name = users_map.get(staff_id, f"Staff #{staff_id}")
+                if s_name not in staff_stats:
+                    staff_stats[s_name] = {"role": "Bar", "completed_count": 0, "total_minutes": 0.0, "delayed_count": 0}
+                m = max(0.0, (it.ready_at - it.received_at).total_seconds() / 60.0) if it.received_at else 0.0
+                staff_stats[s_name]["completed_count"] += 1
+                staff_stats[s_name]["total_minutes"] += m
+                if m > bar_target:
+                    staff_stats[s_name]["delayed_count"] += 1
+
+        staff_list = []
+        for s_name, s_data in staff_stats.items():
+            cnt = s_data["completed_count"]
+            avg_m = round(s_data["total_minutes"] / cnt, 1) if cnt else 0.0
+            del_rate = round(s_data["delayed_count"] / cnt * 100, 1) if cnt else 0.0
+            staff_list.append({
+                "name": s_name,
+                "role": s_data["role"],
+                "completed_items": cnt,
+                "avg_duration_minutes": avg_m,
+                "delay_count": s_data["delayed_count"],
+                "delay_rate": del_rate,
+            })
+        staff_list.sort(key=lambda x: x["completed_items"], reverse=True)
+
+        # Bottlenecks: top 10 delayed items
+        delayed_items = []
+        for it in ready_kitchen:
+            st = it.preparation_started_at or it.received_at
+            dur = max(0.0, (it.ready_at - st).total_seconds() / 60.0) if st else 0.0
+            if dur > kds_target:
+                staff_name = users_map.get(it.prepared_by_id_ref or it.ready_by_id_ref, "Unassigned")
+                delayed_items.append({
+                    "id": it.id,
+                    "order_id": it.order_id,
+                    "table_code": it.order.table.table_code if it.order and it.order.table else "N/A",
+                    "item_name": it.menu_item.name if it.menu_item else "Unknown",
+                    "station": "Kitchen",
+                    "actual_minutes": round(dur, 1),
+                    "target_minutes": kds_target,
+                    "delay_minutes": round(dur - kds_target, 1),
+                    "staff_name": staff_name,
+                    "received_at": it.received_at.isoformat() if it.received_at else None,
+                    "ready_at": it.ready_at.isoformat() if it.ready_at else None,
+                })
+
+        for it in ready_bar:
+            dur = max(0.0, (it.ready_at - it.received_at).total_seconds() / 60.0) if it.received_at else 0.0
+            if dur > bar_target:
+                staff_name = users_map.get(it.ready_by_id_ref, "Unassigned")
+                delayed_items.append({
+                    "id": it.id,
+                    "order_id": it.order_id,
+                    "table_code": it.order.table.table_code if it.order and it.order.table else "N/A",
+                    "item_name": it.menu_item.name if it.menu_item else "Unknown",
+                    "station": "Bar",
+                    "actual_minutes": round(dur, 1),
+                    "target_minutes": bar_target,
+                    "delay_minutes": round(dur - bar_target, 1),
+                    "staff_name": staff_name,
+                    "received_at": it.received_at.isoformat() if it.received_at else None,
+                    "ready_at": it.ready_at.isoformat() if it.ready_at else None,
+                })
+
+        delayed_items.sort(key=lambda x: x["delay_minutes"], reverse=True)
+        top_delayed = delayed_items[:10]
+
+        return Response({
+            "date": start_date.isoformat() if start_date == end_date else f"{start_date.isoformat()} to {end_date.isoformat()}",
+            "targets": {
+                "kds_target_minutes": kds_target,
+                "kds_warning_minutes": kds_warning,
+                "bar_target_minutes": bar_target,
+                "bar_warning_minutes": bar_warning,
+            },
+            "summary": {
+                "total_items_ordered": len(items_list),
+                "total_items_ready": len(ready_kitchen) + len(ready_bar),
+                "total_items_served": len(served_kitchen) + len(served_bar),
+                "overall_delay_rate": round(
+                    ((kitchen_delayed_target_count + bar_delayed_target_count) / (len(ready_kitchen) + len(ready_bar)) * 100), 1
+                ) if (len(ready_kitchen) + len(ready_bar)) > 0 else 0.0,
+            },
+            "kitchen": {
+                "total_items": len(kitchen_items),
+                "ready_items": len(ready_kitchen),
+                "served_items": len(served_kitchen),
+                "avg_prep_minutes": avg_kitchen_prep,
+                "avg_delivery_minutes": avg_kitchen_delivery,
+                "delayed_target_count": kitchen_delayed_target_count,
+                "delayed_warning_count": kitchen_delayed_warning_count,
+                "delay_rate": kitchen_delay_rate,
+            },
+            "bar": {
+                "total_items": len(bar_items),
+                "ready_items": len(ready_bar),
+                "served_items": len(served_bar),
+                "avg_fulfillment_minutes": avg_bar_fulfillment,
+                "avg_delivery_minutes": avg_bar_delivery,
+                "delayed_target_count": bar_delayed_target_count,
+                "delayed_warning_count": bar_delayed_warning_count,
+                "delay_rate": bar_delay_rate,
+            },
+            "staff_performance": staff_list,
+            "top_bottlenecks": top_delayed,
+        }, status=status.HTTP_200_OK)
 

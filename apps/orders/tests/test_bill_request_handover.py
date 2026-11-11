@@ -21,7 +21,7 @@ class RestaurantBillRequestAndHandoverTestCase(APITestCase):
         self.manager = User.objects.create_user(
             username="manager-btest",
             password="test-password",
-            role="manager",
+            role=User.HOTEL_MANAGER,
             is_active=True,
         )
         self.waiter1 = User.objects.create_user(
@@ -151,13 +151,21 @@ class RestaurantBillRequestAndHandoverTestCase(APITestCase):
         self.assertEqual(order.status, "served")
 
     def test_admin_and_manager_supervisory_access(self):
-        """Admin or manager can request a bill supervisory for any waiter's order."""
+        """Admin or hotel manager can request a bill supervisory for any waiter's order."""
         order = self._create_order_for_waiter(self.waiter1, order_status="served")
         self.client.force_authenticate(user=self.admin)
         res = self.client.post(f"/users/orders/{order.id}/request-bill/")
         self.assertEqual(res.status_code, status.HTTP_200_OK)
         order.refresh_from_db()
         self.assertEqual(order.status, "bill_requested")
+
+        # Verify hotel_manager supervisory access
+        order2 = self._create_order_for_waiter(self.waiter1, order_status="served")
+        self.client.force_authenticate(user=self.manager)
+        res2 = self.client.post(f"/users/orders/{order2.id}/request-bill/")
+        self.assertEqual(res2.status_code, status.HTTP_200_OK)
+        order2.refresh_from_db()
+        self.assertEqual(order2.status, "bill_requested")
 
     def test_unassigned_order_claimed_by_requesting_waiter(self):
         """When a bill is requested for an unassigned order (e.g. self-service QR), the waiter claims ownership."""

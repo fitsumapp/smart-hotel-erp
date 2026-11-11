@@ -29,6 +29,8 @@ import PublicBookingConfirmation from './pages/PublicBookingConfirmation';
 import OrdersManager from './pages/OrdersManager';
 import HousekeepingManager from './pages/HousekeepingManager';
 import HousekeepingDashboard from './pages/HousekeepingDashboard';
+import ProcurementCenter from './pages/procurement/ProcurementCenter';
+import StocktakeCenter from './pages/stocktaking/StocktakeCenter';
 
 import { Bell, Search, LogOut, Loader2, Menu } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -400,7 +402,7 @@ const DashboardLayout = ({ activeTab, setActiveTab, userData, handleLogout }) =>
       }
     };
     fetchSettings();
-    const interval = setInterval(fetchSettings, 5000);
+    const interval = setInterval(fetchSettings, 60000);
     return () => clearInterval(interval);
   }, []);
 
@@ -416,6 +418,19 @@ const DashboardLayout = ({ activeTab, setActiveTab, userData, handleLogout }) =>
     if (isInvTab && hotelSettings.module_inventory === false) setActiveTab('dashboard');
     if (isFinTab && hotelSettings.module_finance === false) setActiveTab('dashboard');
   }, [hotelSettings, activeTab, setActiveTab]);
+
+  useEffect(() => {
+    const role = (userData?.role || '').toLowerCase().trim();
+    if (role === 'hotel_manager' && (activeTab === 'users' || activeTab === 'settings')) {
+      setActiveTab('dashboard');
+    }
+    if (role === 'inventory') {
+      const isInvAllowed = ['inventory', 'stocktaking', 'procurement', 'report_inventory'].includes(activeTab) || activeTab.startsWith('procurement_');
+      if (!isInvAllowed) {
+        setActiveTab('inventory');
+      }
+    }
+  }, [userData?.role, activeTab, setActiveTab]);
 
   return (
     <div className="app-layout-container">
@@ -433,6 +448,7 @@ const DashboardLayout = ({ activeTab, setActiveTab, userData, handleLogout }) =>
         handleLogout={handleLogout}
         isOpen={sidebarOpen}
         setIsOpen={setSidebarOpen}
+        hotelSettings={hotelSettings}
       />
 
       <div className="main-content-container">
@@ -495,14 +511,26 @@ const DashboardLayout = ({ activeTab, setActiveTab, userData, handleLogout }) =>
           <AnimatePresence mode="wait">
             {activeTab === 'dashboard' && (
               <motion.div key="dash" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}>
-                <h1 style={pageTitle}>Admin Dashboard Overview</h1>
+                <h1 style={pageTitle}>
+                  {userData?.role?.toLowerCase().trim() === 'hotel_manager'
+                    ? 'Hotel Operations Overview'
+                    : 'Admin Dashboard Overview'}
+                </h1>
                 <DashboardContent hotelSettings={hotelSettings} />
               </motion.div>
             )}
             {activeTab === 'orders'               && <OrdersManager userData={userData} />}
             {activeTab === 'categories'           && <CategoryManager />}
             {activeTab === 'menus'                && <MenuManager />}
-            {activeTab === 'inventory'            && <InventoryDashboard userData={userData} handleLogout={handleLogout} />}
+            {activeTab === 'inventory'            && <InventoryDashboard userData={userData} handleLogout={handleLogout} onNavigate={setActiveTab} />}
+            {activeTab === 'stocktaking'          && <StocktakeCenter userData={userData} />}
+            {activeTab === 'procurement'          && <ProcurementCenter userData={userData} />}
+            {activeTab.startsWith('procurement_') && (
+              <ProcurementCenter
+                userData={userData}
+                initialSection={activeTab.replace('procurement_', '')}
+              />
+            )}
             {['rooms', 'reservation_booking', 'checkin_checkout', 'night_audit'].includes(activeTab) && (
               <RoomManager activeSection={activeTab} />
             )}
@@ -511,14 +539,15 @@ const DashboardLayout = ({ activeTab, setActiveTab, userData, handleLogout }) =>
             {activeTab === 'reports'   && <ReportsCenter />}
             {activeTab === 'finance'   && <FinanceDashboard />}
             {activeTab === 'tables'    && <TableManager />}
-            {activeTab === 'users'     && <UserManager />}
-            {activeTab === 'settings'  && <SystemSettingsManager />}
+            {activeTab === 'users'     && !['hotel_manager', 'inventory'].includes((userData?.role || '').toLowerCase().trim()) && <UserManager />}
+            {activeTab === 'settings'  && !['hotel_manager', 'inventory'].includes((userData?.role || '').toLowerCase().trim()) && <SystemSettingsManager />}
             {activeTab === 'report_police'    && <ReportsCenter initialTab="police" />}
             {activeTab === 'report_xreport'   && <ReportsCenter initialTab="xreport" />}
             {activeTab === 'report_zreport'   && <ReportsCenter initialTab="zreport" />}
             {activeTab === 'report_occupancy' && <ReportsCenter initialTab="occupancy" />}
             {activeTab === 'report_bookings'  && <ReportsCenter initialTab="bookings" />}
             {activeTab === 'report_inventory' && <ReportsCenter initialTab="inventory" />}
+            {activeTab === 'report_operations_timing' && <ReportsCenter initialTab="operations_timing" />}
           </AnimatePresence>
         </main>
       </div>
@@ -544,7 +573,9 @@ function App() {
     if (savedUser) {
       const parsed = JSON.parse(savedUser);
       setUserData(parsed);
-      if (parsed.role?.toLowerCase().trim() === 'finance') setActiveTab('finance');
+      const r = parsed.role?.toLowerCase().trim();
+      if (r === 'finance') setActiveTab('finance');
+      else if (r === 'inventory') setActiveTab('inventory');
     }
   }, []);
 
@@ -553,6 +584,8 @@ function App() {
     const role = user.role?.toLowerCase().trim();
     if (role === 'finance') {
       setActiveTab('finance');
+    } else if (role === 'inventory') {
+      setActiveTab('inventory');
     } else {
       setActiveTab('dashboard');
     }
@@ -576,7 +609,10 @@ function App() {
     switch (role) {
       case 'admin':
       case 'finance':
+      case 'hotel_manager':
         return <DashboardLayout activeTab={activeTab} setActiveTab={setActiveTab} userData={user} handleLogout={handleLogout} />;
+      case 'inventory':
+        return <DashboardLayout activeTab={activeTab || 'inventory'} setActiveTab={setActiveTab} userData={user} handleLogout={handleLogout} />;
       case 'waiter':
         return <WaiterDashboard userData={user} handleLogout={handleLogout} />;
       case 'cashier':
@@ -587,8 +623,6 @@ function App() {
         return <BarDashboard userData={user} handleLogout={handleLogout} />;
       case 'reception':
         return <ReceptionDashboard userData={user} handleLogout={handleLogout} />;
-      case 'inventory':
-        return <InventoryDashboard userData={user} handleLogout={handleLogout} />;
       case 'customer':
         return <CustomerDashboard userData={user} handleLogout={handleLogout} />;
       case 'housekeeping':

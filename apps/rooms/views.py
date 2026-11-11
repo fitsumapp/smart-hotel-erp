@@ -1,5 +1,6 @@
 """Rooms API views extracted from the legacy facade."""
 # Shared imports and compatibility helpers live in users.views during migration.
+from django.core.exceptions import ValidationError
 from users.views import *  # noqa: F401,F403
 
 class RoomViewSet(viewsets.ModelViewSet):
@@ -256,7 +257,7 @@ class MinibarConsumeView(APIView):
 
     def post(self, request):
         room_id = request.data.get("room_id")
-        items_consumed = request.data.get("items", [])
+        items_consumed = request.data.get("items") or request.data.get("items_consumed") or []
         notes = request.data.get("notes", "Minibar consumption")
 
         if not room_id or not items_consumed:
@@ -271,56 +272,101 @@ class MinibarConsumeView(APIView):
             room=room, status="checked_in"
         ).order_by("-check_in_date").first()
 
+        from hotel.integrity import record_stock_change
+        from hotel.accounting import post_entry
+
         created_charges = []
-        with transaction.atomic():
-            for entry in items_consumed:
-                item_id = entry.get("item_id")
-                qty = Decimal(str(entry.get("quantity", 1)))
-                if qty <= 0:
-                    continue
+        try:
+            with transaction.atomic():
+                for entry in items_consumed:
+                    item_id = entry.get("item_id")
+                    qty = Decimal(str(entry.get("quantity", 1)))
+                    if qty <= 0:
+                        continue
 
-                try:
-                    inv_item = InventoryItem.objects.select_for_update().get(id=item_id)
-                except InventoryItem.DoesNotExist:
-                    continue
+                    try:
+                        inv_item = InventoryItem.objects.select_for_update().get(id=item_id)
+                    except InventoryItem.DoesNotExist:
+                        continue
 
-                price = Decimal(str(entry.get("price") or inv_item.selling_price or "0.00"))
-                line_total = price * qty
+                    price = Decimal(str(entry.get("price") or inv_item.selling_price or "0.00"))
+                    line_total = price * qty
 
-                if reservation:
-                    folio_charge = FolioCharge.objects.create(
-                        reservation=reservation,
-                        description=f"Minibar: {inv_item.name} (x{qty})",
-                        amount=line_total,
-                        added_by=request.user.username or "Housekeeping",
-                        inventory_item=inv_item,
+                    if reservation:
+                        folio_charge = FolioCharge.objects.create(
+                            reservation=reservation,
+                            description=f"Minibar: {inv_item.name} (x{qty})",
+                            amount=line_total,
+                            added_by=request.user.username or "Housekeeping",
+                            inventory_item=inv_item,
+                            quantity=qty,
+                        )
+                        created_charges.append({
+                            "id": folio_charge.id,
+                            "description": folio_charge.description,
+                            "amount": float(folio_charge.amount),
+                            "quantity": float(qty),
+                        })
+
+                    # Centralized stock mutation through integrity service (targeting MINIBAR-PANTRY)
+                    from hotel.models import StockLocation, ItemLocationBalance
+                    mb_loc = StockLocation.objects.filter(code="MINIBAR-PANTRY", is_active=True).first()
+                    target_loc = None
+                    if mb_loc:
+                        ilb = ItemLocationBalance.objects.filter(item=inv_item, location=mb_loc).first()
+                        if ilb and ilb.quantity >= qty:
+                            target_loc = mb_loc
+                    if not target_loc:
+                        main_loc = StockLocation.objects.filter(code="STORE-MAIN", is_active=True).first()
+                        if main_loc:
+                            main_ilb = ItemLocationBalance.objects.filter(item=inv_item, location=main_loc).first()
+                            if main_ilb and main_ilb.quantity >= qty:
+                                target_loc = main_loc
+
+                    note_detail = f"Minibar consumption Room {room.room_number}. {notes}".strip()
+                    item, stx = record_stock_change(
+                        item_id=inv_item.pk,
+                        transaction_type="issuance",
                         quantity=qty,
+                        unit_cost=inv_item.unit_cost,
+                        location=target_loc,
+                        destination_dept="Housekeeping",
+                        destination_room=f"Room {room.room_number}",
+                        reference_number=f"Minibar-Room-{room.room_number}",
+                        notes=note_detail,
+                        logged_by_username=request.user.username or "Housekeeping",
                     )
-                    created_charges.append({
-                        "id": folio_charge.id,
-                        "description": folio_charge.description,
-                        "amount": float(folio_charge.amount),
-                        "quantity": float(qty),
-                    })
 
-                inv_item.current_stock = max(Decimal("0.00"), inv_item.current_stock - qty)
-                inv_item.save(update_fields=["current_stock"])
+                    # Post GL inventory cost entry (COGS / Inventory Asset) with layer-exact cost
+                    consumptions = list(stx.batch_consumptions.all()) if stx else []
+                    if consumptions:
+                        total_cost = sum((c.total_cost for c in consumptions), Decimal("0.00"))
+                    else:
+                        total_cost = (qty * (stx.unit_cost if stx else inv_item.unit_cost)).quantize(Decimal("0.01"))
 
-                StockTransaction.objects.create(
-                    item=inv_item,
-                    transaction_type="issuance",
-                    quantity=qty,
-                    unit_cost=inv_item.unit_cost,
-                    destination_room=room.room_number,
-                    notes=f"{notes} — Room {room.room_number}",
-                    logged_by_username=request.user.username or "Housekeeping",
-                )
+                    if total_cost > Decimal("0.00"):
+                        try:
+                            from apps.finance.services import ensure_default_accounts
+                            ensure_default_accounts()
+                            post_entry(
+                                description=f"Auto JV: Minibar Issuance - {inv_item.name} (Room {room.room_number})",
+                                lines=[
+                                    {"account_code": "5000", "debit": total_cost, "credit": Decimal("0.00")},
+                                    {"account_code": "1300", "debit": Decimal("0.00"), "credit": total_cost},
+                                ],
+                            )
+                        except Exception as gl_err:
+                            import logging
+                            logging.getLogger(__name__).warning("Minibar GL posting skipped or failed: %s", gl_err)
 
-                mb_record = MinibarItem.objects.filter(room=room, item=inv_item).first()
-                if mb_record:
-                    mb_record.current_quantity = max(0, mb_record.current_quantity - int(qty))
-                    mb_record.last_checked_by = request.user.username or "Housekeeping"
-                    mb_record.save(update_fields=["current_quantity", "last_checked_by", "last_restocked_at"])
+                    mb_record = MinibarItem.objects.filter(room=room, item=inv_item).first()
+                    if mb_record:
+                        mb_record.current_quantity = max(0, mb_record.current_quantity - int(qty))
+                        mb_record.last_checked_by = request.user.username or "Housekeeping"
+                        mb_record.save(update_fields=["current_quantity", "last_checked_by", "last_restocked_at"])
+        except ValidationError as e:
+            msg = e.message if hasattr(e, "message") else ("; ".join(e.messages) if hasattr(e, "messages") else str(e))
+            return Response({"error": msg}, status=400)
 
         return Response({
             "message": "Minibar consumption recorded successfully.",
@@ -385,5 +431,49 @@ class PublicSiteInfoView(APIView):
         return Response({
             "public_site_url": base_url.rstrip("/") if base_url else ""
         })
+
+
+class NightAuditStatusView(APIView):
+    """
+    Returns current PMS operational business date and pre-audit readiness checklist.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        if not (request.user.is_superuser or request.user.role in ["admin", "reception", "finance"]):
+            return Response({"error": "Access denied. Requires reception, finance, or administrator."}, status=403)
+        from hotel.night_audit import get_night_audit_status
+        data = get_night_audit_status()
+        return Response(data)
+
+
+class NightAuditExecuteView(APIView):
+    """
+    Executes the PMS Night Audit:
+    - Accrues room charges + lodging VAT & service charge to guest folios.
+    - Posts balanced double-entry GL journal entry.
+    - Snapshots DayAuditLog.
+    - Advances operational business date by +1 day.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        if not (request.user.is_superuser or request.user.role in ["admin", "reception", "finance"]):
+            return Response({"error": "Access denied. Requires reception, finance, or administrator."}, status=403)
+
+        notes = request.data.get("notes", "")
+        force = bool(request.data.get("force", False))
+
+        from hotel.night_audit import execute_night_audit
+        try:
+            result = execute_night_audit(user=request.user, notes=notes, force=force)
+            return Response(result, status=200)
+        except ValidationError as e:
+            msg = e.message if hasattr(e, "message") else ("; ".join(e.messages) if hasattr(e, "messages") else str(e))
+            return Response({"error": msg}, status=400)
+        except Exception as e:
+            logger.exception("Night audit execution failed: %s", e)
+            return Response({"error": f"Night audit execution failed: {str(e)}"}, status=500)
+
 
 

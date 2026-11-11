@@ -1,6 +1,9 @@
 """Identity serializers."""
-from users.serializers import *  # noqa: F401,F403
+from rest_framework import serializers
+from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
+
+User = get_user_model()
 
 class PublicRegistrationSerializer(serializers.ModelSerializer):
     """Accept only fields that an untrusted public registrant may set."""

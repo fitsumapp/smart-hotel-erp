@@ -16,26 +16,28 @@ from core.validators import validate_file_signature, validate_upload_size
 
 class User(AbstractUser):
     ADMIN = "admin"
+    HOTEL_MANAGER = "hotel_manager"
     RECEPTION = "reception"
     WAITER = "waiter"
     CASHIER = "cashier"
     KITCHEN = "kitchen"
     BAR = "bar"
     INVENTORY = "inventory"
-    DELIVERY = "delivery"
+    DELIVERY = "delivery"  # ADR-006: Deprecated phantom role. Retained for historical schema compatibility.
     HOUSEKEEPING = "housekeeping"
     FINANCE = "finance"
     CUSTOMER = "customer"
 
     ROLE_CHOICES = [
         (ADMIN, "Admin"),
+        (HOTEL_MANAGER, "Hotel Manager"),
         (RECEPTION, "Reception"),
         (WAITER, "Waiter"),
         (CASHIER, "Cashier"),
         (KITCHEN, "Kitchen"),
         (BAR, "Bar"),
         (INVENTORY, "Inventory"),
-        (DELIVERY, "Delivery"),
+        (DELIVERY, "Delivery (Deprecated)"),
         (HOUSEKEEPING, "Housekeeping"),
         (FINANCE, "Finance"),
         (CUSTOMER, "Customer"),

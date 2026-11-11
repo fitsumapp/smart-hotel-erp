@@ -1,3 +1,4 @@
+import { apiErrorMessage } from './apiClient';
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import {
@@ -102,7 +103,9 @@ const UserManager = () => {
     setFormData({
       full_name: fullName,
       email: user.email || '',
-      role: user.role ? user.role.charAt(0).toUpperCase() + user.role.slice(1) : 'Waiter',
+      role: user.role
+        ? (user.role.toLowerCase() === 'hotel_manager' ? 'Hotel Manager' : user.role.charAt(0).toUpperCase() + user.role.slice(1))
+        : 'Waiter',
       phone_number: user.phone_number || '',
       password: '',
       is_active: user.is_active,
@@ -123,7 +126,10 @@ const UserManager = () => {
     data.append('last_name', nameParts.slice(1).join(' ') || '');
     data.append('username', generatedUsername);
     data.append('email', email);
-    data.append('role', formData.role.toLowerCase());
+    const normalizedRole = formData.role.toLowerCase().trim() === 'hotel manager'
+      ? 'hotel_manager'
+      : formData.role.toLowerCase().trim();
+    data.append('role', normalizedRole);
     data.append('phone_number', formData.phone_number);
 
     if (formData.password) data.append('password', formData.password);
@@ -160,9 +166,7 @@ const UserManager = () => {
       fetchUsers();
     } catch (err) {
       console.error("Full Error details:", err.response?.data);
-      const errorMsg = err.response?.data
-        ? getApiErrorMessages(err.response.data)
-        : "Network error occurred";
+      const errorMsg = apiErrorMessage(err, "Unable to save user.");
       alert("Unable to save user:\n" + errorMsg);
     }
   };
@@ -174,7 +178,7 @@ const UserManager = () => {
 
   // --- Dynamic Roles Filtering ---
   const getAvailableRoles = () => {
-    let available = ['Admin'];
+    let available = ['Admin', 'Hotel Manager'];
 
     const hasPos = hotelSettings?.module_pos !== undefined
       ? Boolean(hotelSettings.module_pos)
@@ -219,7 +223,11 @@ const UserManager = () => {
       const nameMatch = `${user.first_name || ''} ${user.last_name || ''} ${user.username || ''}`.toLowerCase().includes(searchQuery.toLowerCase());
       const emailMatch = (user.email || "").toLowerCase().includes(searchQuery.toLowerCase());
       const queryMatch = nameMatch || emailMatch;
-      const roleMatch = roleFilter === 'All Roles' || (user.role && user.role.toLowerCase() === roleFilter.toLowerCase());
+      const roleMatch = roleFilter === 'All Roles' ||
+        (user.role && (
+          user.role.toLowerCase() === roleFilter.toLowerCase() ||
+          (roleFilter === 'Hotel Manager' && user.role.toLowerCase() === 'hotel_manager')
+        ));
       const statusMatch = statusFilter === 'All Status' || (statusFilter === 'Active' && user.is_active) || (statusFilter === 'Inactive' && !user.is_active);
       return queryMatch && roleMatch && statusMatch;
     });
@@ -291,7 +299,7 @@ const UserManager = () => {
                     </div>
                   </div>
                 </td>
-                <td style={tdStyle}><span style={getRoleBadgeStyle(user.role)}>{user.role}</span></td>
+                <td style={tdStyle}><span style={getRoleBadgeStyle(user.role)}>{user.role === 'hotel_manager' ? 'Hotel Manager' : user.role}</span></td>
                 <td style={tdStyle}><span style={getStatusBadgeStyle(user.is_active)}>{user.is_active ? 'Active' : 'Inactive'}</span></td>
                 <td style={{...tdStyle, textAlign: 'center'}}>
                   <div style={actionButtonsWrapperStyle}>
@@ -419,7 +427,9 @@ const Switch = ({checked, onChange}) => (
 const getRoleBadgeStyle = (role) => {
   const base = { padding: '4px 10px', borderRadius: '20px', fontSize: '12px', fontWeight: '600' };
   switch (role?.toLowerCase()) {
-    case 'admin': return { ...base, backgroundColor: '#f1f5f9', color: '#64748b' };
+    case 'admin': return { ...base, backgroundColor: '#fee2e2', color: '#b91c1c' };
+    case 'hotel_manager': return { ...base, backgroundColor: '#ede9fe', color: '#6d28d9' };
+    case 'inventory': return { ...base, backgroundColor: '#fef9c3', color: '#854d0e' };
     case 'waiter': return { ...base, backgroundColor: '#fef3c7', color: '#b45309' };
     case 'finance': return { ...base, backgroundColor: '#e0f2fe', color: '#0369a1' };
     case 'housekeeping': return { ...base, backgroundColor: '#ccfbf1', color: '#0f766e' };
