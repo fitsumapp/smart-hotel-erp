@@ -7,13 +7,19 @@ from django.db import IntegrityError, transaction
 from django.db.models import F
 from django.utils import timezone
 
+import datetime
 from .models import (
     AuditEvent,
+    BatchLocationBalance,
     InventoryItem,
     InventoryWasteRecord,
+    ItemLocationBalance,
     PaymentAttempt,
     Reservation,
     Room,
+    StockBatch,
+    StockBatchConsumption,
+    StockLocation,
     StockTransaction,
     SystemSettings,
 )
@@ -29,10 +35,10 @@ RESERVATION_STATUS_TRANSITIONS = {
     "no_show": set(),
 }
 ORDER_STATUS_TRANSITIONS = {
-    "pending": {"preparing", "paid", "cancelled"},
-    "preparing": {"ready", "paid", "cancelled"},
-    "ready": {"served", "paid", "cancelled"},
-    "served": {"bill_requested", "paid", "cancelled"},
+    "pending": {"preparing", "ready", "served", "paid", "cancelled"},
+    "preparing": {"ready", "served", "paid", "cancelled"},
+    "ready": {"preparing", "served", "paid", "cancelled"},
+    "served": {"preparing", "bill_requested", "paid", "cancelled"},
     "bill_requested": {"paid", "cancelled"},
     "paid": set(),
     "cancelled": set(),
@@ -80,16 +86,138 @@ def transition_reservation(*, reservation_id, to_status, **updates):
 
 
 @transaction.atomic
-def transition_order(*, order_id, to_status):
+def transition_order(*, order_id, to_status, user_id=None):
     from .models import Order
+    now = timezone.now()
     order = Order.objects.select_for_update().select_related("table").get(pk=order_id)
     if to_status == order.status:
         return order, False
     if to_status not in ORDER_STATUS_TRANSITIONS.get(order.status, set()):
         raise ValidationError(f"Cannot transition order from {order.status} to {to_status}.")
     order.status = to_status
-    order.save(update_fields=["status", "updated_at"])
+    update_fields = {"status", "updated_at"}
+    if to_status == "served" and not order.served_at:
+        order.served_at = now
+        update_fields.add("served_at")
+        if user_id:
+            order.served_by_id_ref = user_id
+            update_fields.add("served_by_id_ref")
+    elif to_status == "ready" and not order.ready_at:
+        order.ready_at = now
+        update_fields.add("ready_at")
+    elif to_status == "preparing" and not order.preparation_started_at:
+        order.preparation_started_at = now
+        update_fields.add("preparation_started_at")
+    order.save(update_fields=list(update_fields))
     return order, True
+
+
+@transaction.atomic
+def recalculate_order_lifecycle(order_id, user_id=None):
+    """
+    Indivisibly recalculate overall Order status and milestone timestamps
+    based strictly on its constituent non-cancelled OrderItems.
+    """
+    from .models import Order
+    now = timezone.now()
+    order = Order.objects.select_for_update().prefetch_related("items").get(pk=order_id)
+
+    # Post-service terminal states (paid, cancelled, bill_requested, finalized) must not regress
+    if (
+        order.status in ["paid", "cancelled", "bill_requested"]
+        or order.payment_status == "paid"
+        or order.financials_finalized_at is not None
+        or getattr(order, "bill_prepared_at", None) is not None
+        or order.cash_handovers.filter(status__in=["pending", "confirmed"]).exists()
+    ):
+        return order
+
+    all_items = list(order.items.all())
+    items = [it for it in all_items if it.status != "cancelled"]
+
+    update_fields = {"updated_at"}
+
+    if not items and all_items:
+        # All items were cancelled
+        if order.payment_status != "paid" and order.status not in ["paid", "cancelled"]:
+            if not order.cash_handovers.filter(status="pending").exists():
+                old_status = order.status
+                order.status = "cancelled"
+                update_fields.add("status")
+                order.save(update_fields=list(update_fields))
+                try:
+                    from apps.audit.services import record_audit_event
+                    record_audit_event(
+                        action="order_cancelled",
+                        entity_type="order",
+                        entity_id=str(order.id),
+                        before={"status": old_status},
+                        after={"status": "cancelled", "reason": "all_items_cancelled"},
+                    )
+                except Exception:
+                    pass
+                try:
+                    from apps.orders.services import sync_order_financials
+                    sync_order_financials(order)
+                except Exception:
+                    pass
+                if order.waiter_id_ref:
+                    try:
+                        from hotel.models import Notification
+                        Notification.objects.create(
+                            user_id_ref=order.waiter_id_ref,
+                            message=f"Order #ORD-{order.id} (Table {order.table.table_code if order.table else ''}) was cancelled because all items were cancelled.",
+                        )
+                    except Exception:
+                        pass
+        return order
+
+    if not items:
+        return order
+
+    all_served = all(it.status == "served" for it in items)
+    all_ready_or_served = all(it.status in ["ready", "served"] for it in items)
+    any_preparing = any(it.status == "preparing" for it in items)
+    any_served = any(it.status == "served" for it in items)
+    any_ready = any(it.status == "ready" for it in items)
+
+    new_status = order.status
+
+    if all_served:
+        new_status = "served"
+        if not order.served_at:
+            order.served_at = now
+            update_fields.add("served_at")
+        if not order.served_by_id_ref:
+            serving_staff = user_id or next((it.served_by_id_ref for it in reversed(items) if it.served_by_id_ref), None)
+            if serving_staff:
+                order.served_by_id_ref = serving_staff
+                update_fields.add("served_by_id_ref")
+    elif all_ready_or_served and any_ready:
+        new_status = "ready"
+        if not order.ready_at:
+            order.ready_at = now
+            update_fields.add("ready_at")
+    elif any_preparing or any_served or any_ready:
+        new_status = "preparing"
+        if not order.preparation_started_at:
+            prep_starts = [it.preparation_started_at for it in items if it.preparation_started_at]
+            order.preparation_started_at = min(prep_starts) if prep_starts else now
+            update_fields.add("preparation_started_at")
+    else:
+        new_status = "pending"
+
+    if not order.received_at:
+        earliest_rcv = min((it.received_at for it in items if it.received_at), default=order.created_at)
+        order.received_at = earliest_rcv or now
+        update_fields.add("received_at")
+
+    if new_status != order.status:
+        order.status = new_status
+        update_fields.add("status")
+
+    order.save(update_fields=list(update_fields))
+    return order
 
 
 @transaction.atomic
@@ -136,47 +264,569 @@ def mark_payment_attempt_verified(*, tx_ref, provider_event_ref=None, safe_metad
     return attempt, True
 
 
+def resolve_stock_location(location_val=None):
+    """Resolve a location parameter to a StockLocation instance, defaulting to STORE-MAIN."""
+    if location_val is None:
+        loc = StockLocation.objects.filter(code="STORE-MAIN").first()
+        if not loc:
+            loc, _ = StockLocation.objects.get_or_create(
+                code="STORE-MAIN",
+                defaults={"name": "Main Central Store", "location_type": "warehouse", "is_active": True},
+            )
+        return loc
+    if isinstance(location_val, StockLocation):
+        return location_val
+    if isinstance(location_val, int):
+        return StockLocation.objects.get(pk=location_val)
+    if isinstance(location_val, str):
+        loc = StockLocation.objects.filter(code=location_val).first()
+        if loc:
+            return loc
+        if location_val.isdigit():
+            return StockLocation.objects.get(pk=int(location_val))
+    return StockLocation.objects.get(pk=location_val)
+
+
+def compute_stock_payload_hash(
+    *,
+    item_id,
+    transaction_type,
+    quantity,
+    unit_cost,
+    adjustment_direction=None,
+    supplier_id=None,
+    reference_number=None,
+    destination_dept=None,
+    destination_room=None,
+    location_id=None,
+    batch_id=None,
+):
+    import hashlib
+    from decimal import Decimal
+
+    item_id_str = str(item_id).strip()
+    tx_type_str = str(transaction_type or "").strip().lower()
+    qty_norm = f"{Decimal(str(quantity)).quantize(Decimal('0.01'))}"
+    cost_norm = f"{Decimal(str(unit_cost)).quantize(Decimal('0.01'))}"
+    adj_dir = str(adjustment_direction or "").strip().lower()
+    supp_str = str(supplier_id or "").strip()
+    ref_str = str(reference_number or "").strip()
+    dept_str = str(destination_dept or "").strip()
+    room_str = str(destination_room or "").strip()
+
+    payload_str = f"{item_id_str}:{tx_type_str}:{qty_norm}:{cost_norm}:{adj_dir}:{supp_str}:{ref_str}:{dept_str}:{room_str}"
+    if location_id is not None or batch_id is not None:
+        loc_str = str(location_id or "").strip()
+        b_str = str(batch_id or "").strip()
+        payload_str += f":{loc_str}:{b_str}"
+    return hashlib.sha256(payload_str.encode("utf-8")).hexdigest()
+
+
 @transaction.atomic
-def record_stock_change(*, item_id, transaction_type, quantity, unit_cost, **ledger_values):
-    """Lock balance, enforce no-negative-stock policy, then append ledger entry."""
+def record_stock_change(
+    *, item_id, transaction_type, quantity, unit_cost,
+    adjustment_direction=None, idempotency_key=None, **ledger_values
+):
+    """
+    Authoritative stock mutation service with FEFO/FIFO batch allocation,
+    multi-layer StockBatchConsumption breakdown, atomic balance synchronization,
+    and strict expired/quarantined batch lockout.
+    """
     quantity = Decimal(str(quantity))
     unit_cost = Decimal(str(unit_cost))
     if quantity <= 0 or unit_cost < 0:
         raise ValidationError("Quantity must be positive and unit cost cannot be negative.")
+
+    supplier_val = ledger_values.get("supplier")
+    supplier_id = getattr(supplier_val, "pk", supplier_val)
+
+    location_val = ledger_values.pop("location", None)
+    batch_val = ledger_values.pop("batch", None)
+    batch_number_val = ledger_values.pop("batch_number", None)
+    supplier_batch_val = ledger_values.pop("supplier_batch_number", None)
+    expiry_date_val = ledger_values.pop("expiry_date", None)
+
+    location = resolve_stock_location(location_val)
+
+    payload_hash = None
+    if idempotency_key:
+        idempotency_key = str(idempotency_key).strip()
+        payload_hash = compute_stock_payload_hash(
+            item_id=item_id,
+            transaction_type=transaction_type,
+            quantity=quantity,
+            unit_cost=unit_cost,
+            adjustment_direction=adjustment_direction,
+            supplier_id=supplier_id,
+            reference_number=ledger_values.get("reference_number"),
+            destination_dept=ledger_values.get("destination_dept"),
+            destination_room=ledger_values.get("destination_room"),
+            location_id=getattr(location, "pk", None) if location_val is not None else None,
+            batch_id=getattr(batch_val, "pk", batch_val) if batch_val is not None else None,
+        )
+        existing = StockTransaction.objects.select_for_update().filter(idempotency_key=idempotency_key).first()
+        if existing:
+            if existing.payload_hash and existing.payload_hash != payload_hash:
+                raise ValidationError("Idempotency key was already used for a different stock payload.")
+            item = InventoryItem.objects.select_for_update().get(pk=item_id)
+            existing._is_replay = True
+            return item, existing
+
     item = InventoryItem.objects.select_for_update().get(pk=item_id)
-    delta = quantity if transaction_type in ("purchase", "adjustment") else -quantity
+    today = timezone.now().date()
+
+    if transaction_type == "adjustment":
+        notes = str(ledger_values.get("notes") or "").strip()
+        if not notes:
+            raise ValidationError("A meaningful adjustment reason is required.")
+        if adjustment_direction not in ("increase", "decrease"):
+            raise ValidationError("Stock adjustment must specify direction as 'increase' or 'decrease'.")
+        is_incoming = (adjustment_direction == "increase")
+        delta = quantity if is_incoming else -quantity
+    elif transaction_type == "purchase":
+        is_incoming = True
+        delta = quantity
+        adjustment_direction = None
+    else:  # issuance, loss, sale_deduction
+        is_incoming = False
+        delta = -quantity
+        adjustment_direction = None
+
     new_balance = item.current_stock + delta
     if new_balance < 0:
-        raise ValidationError(f"Insufficient stock for {item.name}.")
-    InventoryItem.objects.filter(pk=item.pk).update(current_stock=F("current_stock") + delta)
-    if transaction_type == "purchase" and unit_cost > 0:
-        InventoryItem.objects.filter(pk=item.pk).update(unit_cost=unit_cost)
-    ledger = StockTransaction.objects.create(
-        item=item, transaction_type=transaction_type, quantity=quantity,
-        unit_cost=unit_cost, **ledger_values,
-    )
+        raise ValidationError(
+            f"Insufficient stock for {item.name}. Available: {item.current_stock} {item.unit}, requested: {quantity} {item.unit}."
+        )
+
+    # Legacy unbatched stock fallback:
+    # If the item has positive aggregate stock but zero batches exist in the system
+    # (e.g. created in unit tests or directly via InventoryItem.objects.create),
+    # seed the initial legacy batch so allocation can proceed safely.
+    if not StockBatch.objects.filter(item=item).exists() and item.current_stock > Decimal("0.00"):
+        legacy_status = "unverified_quarantine" if item.is_perishable else "active"
+        legacy_batch = StockBatch.objects.create(
+            item=item,
+            batch_number=f"LEGACY-INITIAL-{item.item_code}",
+            initial_quantity=item.current_stock,
+            current_quantity=item.current_stock,
+            unit_cost=item.unit_cost if item.unit_cost is not None else Decimal("0.00"),
+            received_date=today,
+            expiry_date=None,
+            status=legacy_status,
+            is_legacy=True,
+        )
+        BatchLocationBalance.objects.get_or_create(
+            batch=legacy_batch, location=location, defaults={"quantity": item.current_stock}
+        )
+        ItemLocationBalance.objects.get_or_create(
+            item=item, location=location, defaults={"quantity": item.current_stock}
+        )
+
+    consumption_records = []
+    primary_batch = None
+    effective_unit_cost = unit_cost
+
+    try:
+        with transaction.atomic():
+            if is_incoming:
+                # INCOMING: Purchase or Adjustment Increase
+                if batch_val:
+                    if isinstance(batch_val, StockBatch):
+                        batch = StockBatch.objects.select_for_update().get(pk=batch_val.pk)
+                    else:
+                        batch = StockBatch.objects.select_for_update().get(pk=batch_val)
+                    batch.current_quantity += quantity
+                    if batch.status == "depleted":
+                        batch.status = "active"
+                    batch.save(update_fields=["current_quantity", "status"])
+                else:
+                    bn = batch_number_val or f"BAT-{item.item_code}-{today.strftime('%Y%m%d')}-{uuid4().hex[:6].upper()}"
+                    exp_d = expiry_date_val
+                    if exp_d is None and item.is_perishable and item.shelf_life_days and item.shelf_life_days > 0:
+                        exp_d = today + datetime.timedelta(days=item.shelf_life_days)
+                    batch = StockBatch.objects.create(
+                        item=item,
+                        batch_number=bn,
+                        supplier=ledger_values.get("supplier"),
+                        supplier_batch_number=supplier_batch_val,
+                        initial_quantity=quantity,
+                        current_quantity=quantity,
+                        unit_cost=unit_cost,
+                        received_date=today,
+                        expiry_date=exp_d,
+                        status="active",
+                        is_legacy=False,
+                    )
+                primary_batch = batch
+
+                # Increment BatchLocationBalance
+                blb, _ = BatchLocationBalance.objects.select_for_update().get_or_create(
+                    batch=batch, location=location, defaults={"quantity": Decimal("0.00")}
+                )
+                blb.quantity += quantity
+                blb.save(update_fields=["quantity"])
+
+                # Increment ItemLocationBalance
+                ilb, _ = ItemLocationBalance.objects.select_for_update().get_or_create(
+                    item=item, location=location, defaults={"quantity": Decimal("0.00")}
+                )
+                ilb.quantity += quantity
+                ilb.save(update_fields=["quantity"])
+
+                # Increment aggregate stock
+                InventoryItem.objects.filter(pk=item.pk).update(current_stock=F("current_stock") + quantity)
+                if transaction_type == "purchase" and unit_cost > 0:
+                    InventoryItem.objects.filter(pk=item.pk).update(unit_cost=unit_cost)
+
+            else:
+                # OUTGOING: Issuance, Loss, Sale Deduction, Adjustment Decrease
+                if batch_val:
+                    # Explicit manual batch selection
+                    if isinstance(batch_val, StockBatch):
+                        manual_batch = StockBatch.objects.select_for_update().get(pk=batch_val.pk)
+                    else:
+                        manual_batch = StockBatch.objects.select_for_update().get(pk=batch_val)
+
+                    if manual_batch.item_id != item.pk:
+                        raise ValidationError("Specified batch does not belong to this inventory item.")
+
+                    is_waste_disposal = (transaction_type == "loss")
+                    if not is_waste_disposal:
+                        if manual_batch.expiry_date and manual_batch.expiry_date < today:
+                            raise ValidationError(
+                                f"Batch '{manual_batch.batch_number}' has expired ({manual_batch.expiry_date}) "
+                                f"and cannot be used for {transaction_type}. Expired stock must be routed to waste."
+                            )
+                        if manual_batch.status == "unverified_quarantine":
+                            raise ValidationError(
+                                f"Batch '{manual_batch.batch_number}' is in unverified quarantine "
+                                f"and cannot be used for {transaction_type} until physically verified."
+                            )
+                        if manual_batch.status in ("recalled", "depleted"):
+                            raise ValidationError(
+                                f"Batch '{manual_batch.batch_number}' status is '{manual_batch.status}' and cannot be consumed."
+                            )
+
+                    blb = BatchLocationBalance.objects.select_for_update().filter(batch=manual_batch, location=location).first()
+                    avail = min(manual_batch.current_quantity, blb.quantity if blb else Decimal("0.00"))
+                    if avail < quantity:
+                        raise ValidationError(
+                            f"Insufficient stock in batch {manual_batch.batch_number} at {location.name}. "
+                            f"Available: {avail} {item.unit}, requested: {quantity} {item.unit}."
+                        )
+
+                    manual_batch.current_quantity -= quantity
+                    if manual_batch.current_quantity == Decimal("0.00"):
+                        manual_batch.status = "depleted"
+                    manual_batch.save(update_fields=["current_quantity", "status"])
+
+                    if blb:
+                        blb.quantity -= quantity
+                        blb.save(update_fields=["quantity"])
+
+                    primary_batch = manual_batch
+                    layer_cost = (quantity * manual_batch.unit_cost).quantize(Decimal("0.01"))
+                    consumption_records.append((manual_batch, quantity, manual_batch.unit_cost, layer_cost))
+                    effective_unit_cost = manual_batch.unit_cost
+
+                else:
+                    # Authoritative FEFO / FIFO automatic allocation
+                    is_waste = transaction_type in ("loss", "waste_disposal")
+
+                    candidate_qs = StockBatch.objects.select_for_update().filter(
+                        item=item,
+                        current_quantity__gt=Decimal("0.00"),
+                    )
+                    if is_waste:
+                        candidate_qs = candidate_qs.filter(status__in=["active", "expired"])
+                    else:
+                        candidate_qs = candidate_qs.filter(status="active")
+
+                    if location:
+                        candidate_qs = candidate_qs.filter(
+                            location_balances__location=location,
+                            location_balances__quantity__gt=Decimal("0.00"),
+                        )
+
+                    if item.is_perishable:
+                        if is_waste:
+                            # Waste disposal: write off expired stock first (or nearest to expiry)
+                            candidate_qs = candidate_qs.order_by("expiry_date", "received_date", "id")
+                        else:
+                            # FEFO: Must have known valid expiry date >= today
+                            candidate_qs = candidate_qs.filter(
+                                expiry_date__isnull=False,
+                                expiry_date__gte=today,
+                            ).order_by("expiry_date", "received_date", "id")
+                    else:
+                        if is_waste:
+                            candidate_qs = candidate_qs.order_by("received_date", "id")
+                        else:
+                            # FIFO: Exclude expired if any expiry is recorded, order by received_date
+                            candidate_qs = candidate_qs.exclude(
+                                expiry_date__lt=today
+                            ).order_by("received_date", "id")
+
+                    candidate_batches = list(candidate_qs)
+
+                    # Check available stock across valid candidate batches
+                    total_available_valid = Decimal("0.00")
+                    for b in candidate_batches:
+                        if location:
+                            blb_check = BatchLocationBalance.objects.filter(batch=b, location=location).first()
+                            b_qty = min(b.current_quantity, blb_check.quantity if blb_check else Decimal("0.00"))
+                        else:
+                            b_qty = b.current_quantity
+                        total_available_valid += max(Decimal("0.00"), b_qty)
+
+                    if total_available_valid < quantity:
+                        err_label = "Available" if is_waste else "Available (Unexpired & Verified)"
+                        raise ValidationError(
+                            f"Insufficient valid stock for {item.name}. Required: {quantity} {item.unit}, "
+                            f"{err_label}: {total_available_valid} {item.unit}."
+                        )
+
+                    remaining_to_consume = quantity
+                    total_cost_layers = Decimal("0.00")
+
+                    for b in candidate_batches:
+                        if remaining_to_consume <= Decimal("0.00"):
+                            break
+
+                        blb = None
+                        if location:
+                            blb, _ = BatchLocationBalance.objects.select_for_update().get_or_create(
+                                batch=b, location=location, defaults={"quantity": Decimal("0.00")}
+                            )
+                            allocatable = min(b.current_quantity, blb.quantity)
+                        else:
+                            blb = b.location_balances.select_for_update().filter(quantity__gt=Decimal("0.00")).first()
+                            allocatable = min(b.current_quantity, blb.quantity) if blb else b.current_quantity
+
+                        if allocatable <= Decimal("0.00"):
+                            continue
+
+                        take = min(remaining_to_consume, allocatable)
+                        l_cost = (take * b.unit_cost).quantize(Decimal("0.01"))
+                        total_cost_layers += l_cost
+
+                        b.current_quantity -= take
+                        if b.current_quantity == Decimal("0.00"):
+                            b.status = "depleted"
+                        b.save(update_fields=["current_quantity", "status"])
+
+                        if blb:
+                            blb.quantity -= take
+                            blb.save(update_fields=["quantity"])
+                            if not location:
+                                ilb = ItemLocationBalance.objects.select_for_update().filter(item=item, location=blb.location).first()
+                                if ilb:
+                                    ilb.quantity = max(Decimal("0.00"), ilb.quantity - take)
+                                    ilb.save(update_fields=["quantity"])
+
+                        if primary_batch is None:
+                            primary_batch = b
+
+                        consumption_records.append((b, take, b.unit_cost, l_cost))
+                        remaining_to_consume -= take
+
+                    if remaining_to_consume > Decimal("0.00"):
+                        err_label = "Available" if is_waste else "Available (Unexpired & Verified)"
+                        raise ValidationError(
+                            f"Insufficient valid stock for {item.name}. Required: {quantity} {item.unit}, "
+                            f"{err_label}: {quantity - remaining_to_consume} {item.unit}."
+                        )
+
+                    effective_unit_cost = (total_cost_layers / quantity).quantize(Decimal("0.01")) if quantity > 0 else unit_cost
+
+                # Decrement ItemLocationBalance
+                if location:
+                    ilb, _ = ItemLocationBalance.objects.select_for_update().get_or_create(
+                        item=item, location=location, defaults={"quantity": Decimal("0.00")}
+                    )
+                    ilb.quantity = max(Decimal("0.00"), ilb.quantity - quantity)
+                    ilb.save(update_fields=["quantity"])
+
+                # Decrement aggregate stock
+                InventoryItem.objects.filter(pk=item.pk).update(current_stock=F("current_stock") - quantity)
+
+            # Create parent StockTransaction ledger record
+            ledger = StockTransaction.objects.create(
+                item=item,
+                transaction_type=transaction_type,
+                quantity=quantity,
+                unit_cost=effective_unit_cost,
+                adjustment_direction=adjustment_direction,
+                idempotency_key=idempotency_key,
+                payload_hash=payload_hash,
+                location=location,
+                batch=primary_batch,
+                **ledger_values,
+            )
+            ledger._is_replay = False
+
+            # Create child StockBatchConsumption rows
+            for c_batch, c_qty, c_unit_cost, c_total_cost in consumption_records:
+                StockBatchConsumption.objects.create(
+                    transaction=ledger,
+                    batch=c_batch,
+                    quantity_consumed=c_qty,
+                    unit_cost=c_unit_cost,
+                    total_cost=c_total_cost,
+                )
+
+    except IntegrityError as exc:
+        if idempotency_key and "idempotency_key" in str(exc).lower():
+            existing = StockTransaction.objects.filter(idempotency_key=idempotency_key).first()
+            if existing:
+                if existing.payload_hash and existing.payload_hash != payload_hash:
+                    raise ValidationError("Idempotency key was already used for a different stock payload.")
+                item.refresh_from_db()
+                existing._is_replay = True
+                return item, existing
+        raise
+
     item.refresh_from_db()
     return item, ledger
 
+
 @transaction.atomic
-def reverse_stock_transaction(*, transaction_id, reason, logged_by_username=""):
+def reverse_stock_transaction(*, transaction_id, reason, logged_by_username="", post_gl_reversal=True):
     if not reason or not str(reason).strip():
         raise ValidationError("A reversal reason is required.")
     original = StockTransaction.objects.select_for_update().select_related("item").get(pk=transaction_id)
     if hasattr(original, "reversed_by"):
         return original.reversed_by, False
     item = InventoryItem.objects.select_for_update().get(pk=original.item_id)
-    incoming = original.transaction_type in ("purchase", "adjustment")
-    delta = -original.quantity if incoming else original.quantity
+    location = original.location or resolve_stock_location(None)
+
+    # Determine direction of original transaction
+    if original.transaction_type == "adjustment":
+        original_incoming = (getattr(original, "adjustment_direction", "") != "decrease")
+    else:
+        original_incoming = original.transaction_type in ("purchase",)
+
+    delta = -original.quantity if original_incoming else original.quantity
     if item.current_stock + delta < 0:
         raise ValidationError("Reversal would make stock negative.")
-    InventoryItem.objects.filter(pk=item.pk).update(current_stock=F("current_stock") + delta)
-    reversal = StockTransaction.objects.create(
-        item=item, transaction_type="adjustment", quantity=original.quantity,
-        unit_cost=original.unit_cost, reversal_of=original,
-        reference_number=f"REV-{original.pk}", notes=str(reason).strip(),
-        logged_by_username=logged_by_username,
+
+    # Multi-batch layer restoration if original was a deduction
+    consumptions = list(original.batch_consumptions.select_related("batch").all())
+    if consumptions:
+        for c in consumptions:
+            batch = StockBatch.objects.select_for_update().get(pk=c.batch_id)
+            batch.current_quantity += c.quantity_consumed
+            if batch.status == "depleted":
+                batch.status = "active"
+            batch.save(update_fields=["current_quantity", "status"])
+
+            blb, _ = BatchLocationBalance.objects.select_for_update().get_or_create(
+                batch=batch, location=location, defaults={"quantity": Decimal("0.00")}
+            )
+            blb.quantity += c.quantity_consumed
+            blb.save(update_fields=["quantity"])
+    elif not original_incoming and original.batch:
+        batch = StockBatch.objects.select_for_update().get(pk=original.batch_id)
+        batch.current_quantity += original.quantity
+        if batch.status == "depleted":
+            batch.status = "active"
+        batch.save(update_fields=["current_quantity", "status"])
+        blb, _ = BatchLocationBalance.objects.select_for_update().get_or_create(
+            batch=batch, location=location, defaults={"quantity": Decimal("0.00")}
+        )
+        blb.quantity += original.quantity
+        blb.save(update_fields=["quantity"])
+
+    # If original was incoming, decrement batch
+    if original_incoming and original.batch:
+        batch = StockBatch.objects.select_for_update().get(pk=original.batch_id)
+        if batch.current_quantity < original.quantity:
+            raise ValidationError("Cannot reverse transaction: batch stock has already been partially or fully consumed.")
+        batch.current_quantity -= original.quantity
+        if batch.current_quantity == Decimal("0.00"):
+            batch.status = "depleted"
+        batch.save(update_fields=["current_quantity", "status"])
+        blb, _ = BatchLocationBalance.objects.select_for_update().get_or_create(
+            batch=batch, location=location, defaults={"quantity": Decimal("0.00")}
+        )
+        blb.quantity = max(Decimal("0.00"), blb.quantity - original.quantity)
+        blb.save(update_fields=["quantity"])
+
+    # Update ItemLocationBalance
+    ilb, _ = ItemLocationBalance.objects.select_for_update().get_or_create(
+        item=item, location=location, defaults={"quantity": Decimal("0.00")}
     )
+    ilb.quantity = max(Decimal("0.00"), ilb.quantity + delta)
+    ilb.save(update_fields=["quantity"])
+
+    # Update aggregate stock
+    InventoryItem.objects.filter(pk=item.pk).update(current_stock=F("current_stock") + delta)
+    reversal_direction = "decrease" if original_incoming else "increase"
+
+    reversal = StockTransaction.objects.create(
+        item=item,
+        transaction_type="adjustment",
+        quantity=original.quantity,
+        unit_cost=original.unit_cost,
+        adjustment_direction=reversal_direction,
+        reversal_of=original,
+        reference_number=f"REV-{original.pk}",
+        notes=str(reason).strip(),
+        logged_by_username=logged_by_username,
+        location=location,
+        batch=original.batch,
+    )
+
+    # General Ledger compensating entries
+    if post_gl_reversal and original.transaction_type != "loss":
+        try:
+            from hotel.accounting import post_entry
+            if consumptions:
+                total_cost = sum(c.total_cost for c in consumptions)
+            else:
+                total_cost = (original.quantity * original.unit_cost).quantize(Decimal("0.01"))
+
+            if total_cost > Decimal("0.00"):
+                if original.transaction_type == "purchase":
+                    pay_acct = "2000" if original.supplier else "1000"
+                    post_entry(
+                        description=f"Auto Reversal JV: Purchase #{original.pk} ({item.name}) - {str(reason).strip()}",
+                        lines=[
+                            {"account_code": pay_acct, "debit": total_cost, "credit": Decimal("0.00")},
+                            {"account_code": "1300", "debit": Decimal("0.00"), "credit": total_cost},
+                        ],
+                    )
+                elif original.transaction_type == "issuance":
+                    post_entry(
+                        description=f"Auto Reversal JV: Issuance #{original.pk} ({item.name}) - {str(reason).strip()}",
+                        lines=[
+                            {"account_code": "1300", "debit": total_cost, "credit": Decimal("0.00")},
+                            {"account_code": "5000", "debit": Decimal("0.00"), "credit": total_cost},
+                        ],
+                    )
+                elif original.transaction_type == "adjustment":
+                    if getattr(original, "adjustment_direction", "") == "increase":
+                        post_entry(
+                            description=f"Auto Reversal JV: Adjustment Increase #{original.pk} ({item.name}) - {str(reason).strip()}",
+                            lines=[
+                                {"account_code": "5000", "debit": total_cost, "credit": Decimal("0.00")},
+                                {"account_code": "1300", "debit": Decimal("0.00"), "credit": total_cost},
+                            ],
+                        )
+                    else:
+                        post_entry(
+                            description=f"Auto Reversal JV: Adjustment Decrease #{original.pk} ({item.name}) - {str(reason).strip()}",
+                            lines=[
+                                {"account_code": "1300", "debit": total_cost, "credit": Decimal("0.00")},
+                                {"account_code": "5000", "debit": Decimal("0.00"), "credit": total_cost},
+                            ],
+                        )
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error("Failed to post GL reversal entry for stock transaction #%s: %s", original.pk, e)
+            raise ValidationError(f"Accounting reversal failed: {e}") from e
+
     return reversal, True
 
 
@@ -362,7 +1012,7 @@ def record_waste_entry(
                         description=f"Auto JV: Inventory Waste - {item.name} ({base_qty} {item.unit}) - {waste_category}",
                         items=[
                             {
-                                "account_code": "5000",
+                                "account_code": "5010",
                                 "debit": total_cost_loss,
                                 "credit": Decimal("0.00"),
                             },
@@ -435,12 +1085,16 @@ def record_waste_entry(
 
 
 @transaction.atomic
-def approve_waste_entry(*, waste_id, reviewer, justification=""):
+def approve_waste_entry(*, waste_id=None, waste_record_id=None, reviewer, justification=""):
     from decimal import Decimal
     from django.db.models import Sum
 
+    actual_id = waste_id if waste_id is not None else waste_record_id
+    if actual_id is None:
+        raise ValidationError("waste_id or waste_record_id is required.")
+
     try:
-        waste = InventoryWasteRecord.objects.select_for_update().get(pk=waste_id)
+        waste = InventoryWasteRecord.objects.select_for_update().get(pk=actual_id)
     except InventoryWasteRecord.DoesNotExist:
         raise ValidationError("Waste record not found.")
 
@@ -498,11 +1152,22 @@ def approve_waste_entry(*, waste_id, reviewer, justification=""):
                 f"Insufficient stock for {item.name}. Available: {item.current_stock} {item.unit}, required waste: {waste.base_quantity} {item.unit}."
             )
 
+        # Resolve location from storage_area if possible
+        target_waste_location = None
+        if waste.storage_area:
+            from django.db.models import Q
+            from hotel.models import StockLocation
+            target_waste_location = StockLocation.objects.filter(
+                Q(name__icontains=waste.storage_area) | Q(code__iexact=waste.storage_area),
+                is_active=True
+            ).first()
+
         updated_item, stx = record_stock_change(
             item_id=item.pk,
             transaction_type="loss",
             quantity=waste.base_quantity,
             unit_cost=waste.unit_cost_snapshot,
+            location=target_waste_location,
             notes=f"Approved Waste Loss [{waste.waste_category}]: {waste.notes}".strip(),
             destination_dept=waste.storage_area or "Waste / Scrap",
             logged_by_username=reviewer.username,
@@ -517,7 +1182,7 @@ def approve_waste_entry(*, waste_id, reviewer, justification=""):
                     description=f"Auto JV: Approved Inventory Waste - {item.name} ({waste.base_quantity} {item.unit}) - {waste.waste_category}",
                     items=[
                         {
-                            "account_code": "5000",
+                            "account_code": "5010",
                             "debit": waste.total_cost_loss,
                             "credit": Decimal("0.00"),
                         },

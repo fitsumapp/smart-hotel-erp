@@ -6,12 +6,15 @@ from .views import (
     HousekeepingTaskListView, HousekeepingTaskDetailView, HousekeepingTaskInspectView,
     MinibarItemsView, MinibarCandidateInventoryView, MinibarConsumeView,
     LostAndFoundListView, LostAndFoundClaimView, PublicSiteInfoView,
+    NightAuditStatusView, NightAuditExecuteView,
 )
 
 router = DefaultRouter()
 router.register(r"rooms", RoomViewSet, basename="room")
 
 urlpatterns = [
+    path("night-audit/status/", NightAuditStatusView.as_view(), name="night-audit-status"),
+    path("night-audit/execute/", NightAuditExecuteView.as_view(), name="night-audit-execute"),
     path("rooms/<int:room_id>/maintenance/", MaintenanceLogView.as_view(), name="room-maintenance"),
     path("maintenance/<int:log_id>/", MaintenanceLogDetailView.as_view(), name="maintenance-detail"),
     path("rooms/<int:room_id>/history/", RoomHistoryView.as_view(), name="room-history"),

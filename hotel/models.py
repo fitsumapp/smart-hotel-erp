@@ -363,6 +363,13 @@ class Order(models.Model):
     bill_prepared_at = models.DateTimeField(null=True, blank=True)
     bill_prepared_by_id_ref = models.IntegerField(null=True, blank=True, help_text="ID of the cashier who prepared/issued the bill")
 
+    # Order Lifecycle Timestamps (milestones aggregated from OrderItems)
+    received_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    preparation_started_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    ready_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    served_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    served_by_id_ref = models.IntegerField(null=True, blank=True, help_text="ID of the waiter who confirmed full customer delivery")
+
     class Meta:
         indexes = [
             # KDS / waiter views: open orders per table
@@ -378,19 +385,30 @@ class Order(models.Model):
             models.Index(fields=["payment_status", "updated_at"], name="ord_pay_updated_idx"),
             models.Index(fields=["waiter_id_ref", "payment_status", "updated_at"], name="ord_wait_pay_upd_idx"),
             models.Index(fields=["session"], name="ord_session_idx"),
+            models.Index(fields=["status", "received_at", "served_at"], name="ord_timing_perf_idx"),
         ]
 
     def __str__(self):
         return f"Order {self.id} — Table {self.table.table_code} ({self.status})"
 
+    def is_partially_served(self):
+        items = list(self.items.all())
+        if not items:
+            return False
+        non_cancelled = [it for it in items if it.status != "cancelled"]
+        if not non_cancelled:
+            return False
+        served_count = sum(1 for it in non_cancelled if it.status == "served")
+        return 0 < served_count < len(non_cancelled)
+
     def save(self, *args, **kwargs):
         if self.pk:
             original = type(self).objects.filter(pk=self.pk).first()
             allowed = {
-                "pending": {"preparing", "paid", "cancelled"},
-                "preparing": {"ready", "paid", "cancelled"},
-                "ready": {"served", "paid", "cancelled"},
-                "served": {"bill_requested", "paid", "cancelled"},
+                "pending": {"preparing", "ready", "served", "paid", "cancelled"},
+                "preparing": {"ready", "served", "paid", "cancelled"},
+                "ready": {"preparing", "served", "paid", "cancelled"},
+                "served": {"preparing", "bill_requested", "paid", "cancelled"},
                 "bill_requested": {"paid", "cancelled"},
                 "paid": set(), "cancelled": set(),
             }
@@ -540,6 +558,8 @@ class OrderItem(models.Model):
         ("pending", "Pending"),
         ("preparing", "Preparing"),
         ("ready", "Ready"),
+        ("served", "Served"),
+        ("cancelled", "Cancelled"),
     ]
     order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name="items")
     menu_item = models.ForeignKey(MenuItem, on_delete=models.CASCADE)
@@ -547,6 +567,23 @@ class OrderItem(models.Model):
     price_at_order = models.DecimalField(max_digits=10, decimal_places=2)
     status = models.CharField(max_length=20, choices=ITEM_STATUS, default="pending")
     notes = models.CharField(max_length=255, blank=True, default="")
+
+    # Item Lifecycle Timestamps (server-generated, timezone-aware, immutable once set)
+    received_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    preparation_started_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    ready_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    served_at = models.DateTimeField(null=True, blank=True, db_index=True)
+
+    # Staff Attribution (cross-schema user integer references)
+    prepared_by_id_ref = models.IntegerField(null=True, blank=True, help_text="ID of kitchen staff who began cooking")
+    ready_by_id_ref = models.IntegerField(null=True, blank=True, help_text="ID of staff who marked item ready")
+    served_by_id_ref = models.IntegerField(null=True, blank=True, help_text="ID of waiter who confirmed customer delivery")
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["status", "ready_at"], name="orditem_stat_ready_idx"),
+            models.Index(fields=["order", "status"], name="orditem_order_stat_idx"),
+        ]
 
     def get_station(self):
         if self.menu_item:
@@ -629,12 +666,44 @@ class SystemSettings(models.Model):
     printer_paper_size = models.CharField(max_length=10, choices=PRINTER_PAPER_SIZE_CHOICES, default="80mm")
 
     # Inventory Waste Controls
+    near_expiry_warning_days = models.PositiveIntegerField(
+        default=30,
+        help_text="Configurable surveillance window in days before batch expiry to trigger near-expiry warnings."
+    )
+
     waste_approval_threshold = models.DecimalField(
         max_digits=12,
         decimal_places=2,
         default=Decimal("1000.00"),
         help_text="Loss threshold in ETB above which inventory waste requires manager approval."
     )
+
+    # KDS & BDS Performance Targets
+    kds_prep_target_minutes = models.PositiveIntegerField(
+        default=15, help_text="Target food preparation time in minutes for Kitchen items."
+    )
+    kds_delay_warning_minutes = models.PositiveIntegerField(
+        default=20, help_text="Threshold in minutes to flag a kitchen ticket as delayed."
+    )
+    bar_fulfillment_target_minutes = models.PositiveIntegerField(
+        default=5, help_text="Target fulfillment time in minutes for Bar items."
+    )
+    bar_delay_warning_minutes = models.PositiveIntegerField(
+        default=10, help_text="Threshold in minutes to flag a bar ticket as delayed."
+    )
+
+    # Operational Business Date (PMS Night Audit Engine)
+    current_business_date = models.DateField(
+        default=timezone.now,
+        help_text="Active PMS business date for operations. Advanced by Night Audit.",
+    )
+
+    @classmethod
+    def get_settings(cls):
+        obj = cls.objects.first()
+        if not obj:
+            obj = cls.objects.create()
+        return obj
 
     def __str__(self):
         return f"Settings — {self.hotel_name}"
@@ -869,6 +938,12 @@ class InventoryItem(models.Model):
         max_digits=10, decimal_places=2, default=1.00,
         help_text="Units per pack/crate (e.g. 24 bottles per pack)"
     )
+    is_perishable = models.BooleanField(
+        default=False, help_text="True if item expires (dairy, meat, produce, etc.)"
+    )
+    shelf_life_days = models.PositiveIntegerField(
+        null=True, blank=True, help_text="Typical shelf life in days if perishable"
+    )
     last_stocked_at = models.DateTimeField(auto_now=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -886,6 +961,125 @@ class InventoryItem(models.Model):
         return f"{self.name} ({self.item_code}) - {self.current_stock} {self.unit}"
 
 
+# ── 16b. Stock Location ─────────────────────────────────────────────────────
+
+class StockLocation(models.Model):
+    LOCATION_TYPES = [
+        ("warehouse", "Central Warehouse / Main Store"),
+        ("kitchen", "Kitchen Production Pantry"),
+        ("bar", "Bar Station"),
+        ("housekeeping", "Housekeeping Storage"),
+        ("minibar", "Minibar Pantry"),
+        ("scrap", "Waste / Scrap Area"),
+        ("other", "Other Sub-Store"),
+    ]
+    code = models.CharField(max_length=50, unique=True, db_index=True, help_text="e.g. STORE-MAIN, KITCHEN-MAIN")
+    name = models.CharField(max_length=150)
+    location_type = models.CharField(max_length=30, choices=LOCATION_TYPES, default="warehouse")
+    is_active = models.BooleanField(default=True)
+    custodian = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="managed_stock_locations"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["code"]
+        verbose_name = "Stock Location"
+        verbose_name_plural = "Stock Locations"
+
+    def __str__(self):
+        return f"{self.name} ({self.code})"
+
+
+# ── 16c. Stock Batch / Lot ──────────────────────────────────────────────────
+
+class StockBatch(models.Model):
+    STATUS_CHOICES = [
+        ("active", "Active"),
+        ("depleted", "Depleted"),
+        ("quarantined_expired", "Quarantined (Expired)"),
+        ("unverified_quarantine", "Unverified Quarantine (Legacy Perishable)"),
+        ("recalled", "Recalled / Safety Hold"),
+    ]
+    item = models.ForeignKey(InventoryItem, on_delete=models.PROTECT, related_name="batches")
+    batch_number = models.CharField(max_length=100, db_index=True)
+    supplier_batch_number = models.CharField(max_length=100, blank=True, null=True, help_text="Vendor lot/batch reference")
+    supplier = models.ForeignKey(Supplier, on_delete=models.SET_NULL, null=True, blank=True, related_name="batches")
+    initial_quantity = models.DecimalField(max_digits=10, decimal_places=2)
+    current_quantity = models.DecimalField(max_digits=10, decimal_places=2)
+    unit_cost = models.DecimalField(max_digits=10, decimal_places=2)
+    received_date = models.DateField(default=timezone.now)
+    expiry_date = models.DateField(null=True, blank=True, db_index=True)
+
+    # Legacy & Verification Tracking
+    is_legacy = models.BooleanField(default=False)
+    status = models.CharField(max_length=30, choices=STATUS_CHOICES, default="active", db_index=True)
+    verified_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="verified_batches"
+    )
+    verified_at = models.DateTimeField(null=True, blank=True)
+    verification_notes = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["expiry_date", "received_date", "id"]
+        indexes = [
+            models.Index(fields=["item", "status"], name="batch_item_status_idx"),
+            models.Index(fields=["item", "expiry_date"], name="batch_item_expiry_idx"),
+        ]
+        constraints = [
+            models.CheckConstraint(condition=models.Q(current_quantity__gte=0), name="batch_stock_nonnegative"),
+            models.CheckConstraint(condition=models.Q(current_quantity__lte=models.F("initial_quantity")), name="batch_stock_le_initial"),
+            models.CheckConstraint(condition=models.Q(unit_cost__gte=0), name="batch_cost_nonnegative"),
+            models.UniqueConstraint(fields=["item", "batch_number"], name="uniq_item_batch_number"),
+        ]
+
+    def __str__(self):
+        return f"Batch {self.batch_number} - {self.item.name} ({self.current_quantity} {self.item.unit})"
+
+
+# ── 16d. Batch Location Balance ─────────────────────────────────────────────
+
+class BatchLocationBalance(models.Model):
+    batch = models.ForeignKey(StockBatch, on_delete=models.CASCADE, related_name="location_balances")
+    location = models.ForeignKey(StockLocation, on_delete=models.PROTECT, related_name="batch_balances")
+    quantity = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+
+    class Meta:
+        unique_together = [("batch", "location")]
+        indexes = [
+            models.Index(fields=["location", "batch"], name="blb_loc_batch_idx"),
+        ]
+        constraints = [
+            models.CheckConstraint(condition=models.Q(quantity__gte=0), name="blb_quantity_nonnegative"),
+        ]
+
+    def __str__(self):
+        return f"{self.location.code} - {self.batch.batch_number}: {self.quantity}"
+
+
+# ── 16e. Item Location Balance ──────────────────────────────────────────────
+
+class ItemLocationBalance(models.Model):
+    item = models.ForeignKey(InventoryItem, on_delete=models.CASCADE, related_name="location_balances")
+    location = models.ForeignKey(StockLocation, on_delete=models.PROTECT, related_name="item_balances")
+    quantity = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+
+    class Meta:
+        unique_together = [("item", "location")]
+        indexes = [
+            models.Index(fields=["location", "item"], name="ilb_loc_item_idx"),
+        ]
+        constraints = [
+            models.CheckConstraint(condition=models.Q(quantity__gte=0), name="ilb_quantity_nonnegative"),
+        ]
+
+    def __str__(self):
+        return f"{self.location.code} - {self.item.name}: {self.quantity} {self.item.unit}"
+
+
 # ── 17. Stock Transaction ────────────────────────────────────────────────────
 
 class StockTransaction(models.Model):
@@ -901,8 +1095,26 @@ class StockTransaction(models.Model):
     transaction_type = models.CharField(max_length=20, choices=TRANSACTION_TYPES)
     quantity = models.DecimalField(max_digits=10, decimal_places=2)
     unit_cost = models.DecimalField(max_digits=10, decimal_places=2)
+    ADJUSTMENT_DIRECTIONS = [
+        ("increase", "Increase"),
+        ("decrease", "Decrease"),
+    ]
+    adjustment_direction = models.CharField(
+        max_length=10, choices=ADJUSTMENT_DIRECTIONS, null=True, blank=True,
+        help_text="Required for adjustments: 'increase' adds stock, 'decrease' deducts stock."
+    )
+    idempotency_key = models.CharField(max_length=120, null=True, blank=True, unique=True, db_index=True)
+    payload_hash = models.CharField(max_length=64, null=True, blank=True, db_index=True)
     
     supplier = models.ForeignKey(Supplier, on_delete=models.SET_NULL, null=True, blank=True)
+    location = models.ForeignKey(
+        StockLocation, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="stock_transactions", help_text="Physical store/location"
+    )
+    batch = models.ForeignKey(
+        StockBatch, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="stock_transactions", help_text="Primary stock batch if single-batch"
+    )
     reference_number = models.CharField(max_length=100, blank=True, null=True, help_text="Invoice # or Order #")
     notes = models.TextField(blank=True, null=True)
     destination_dept = models.CharField(max_length=50, blank=True, null=True, help_text="e.g., Housekeeping, Kitchen, Bar")
@@ -943,6 +1155,80 @@ class StockTransaction(models.Model):
 
     def delete(self, *args, **kwargs):
         raise ValidationError("Stock ledger entries are immutable; create a reversing adjustment.")
+
+
+# ── 17b. Stock Batch Consumption ────────────────────────────────────────────
+
+class StockBatchConsumption(models.Model):
+    transaction = models.ForeignKey(StockTransaction, on_delete=models.CASCADE, related_name="batch_consumptions")
+    batch = models.ForeignKey(StockBatch, on_delete=models.PROTECT, related_name="consumptions")
+    quantity_consumed = models.DecimalField(max_digits=10, decimal_places=2)
+    unit_cost = models.DecimalField(max_digits=10, decimal_places=2)
+    total_cost = models.DecimalField(max_digits=12, decimal_places=2)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["transaction", "batch"], name="sbc_tx_batch_idx"),
+        ]
+        constraints = [
+            models.CheckConstraint(condition=models.Q(quantity_consumed__gt=0), name="sbc_qty_positive"),
+            models.CheckConstraint(condition=models.Q(unit_cost__gte=0), name="sbc_cost_nonnegative"),
+            models.CheckConstraint(condition=models.Q(total_cost__gte=0), name="sbc_total_nonnegative"),
+        ]
+
+    def __str__(self):
+        return f"TX #{self.transaction_id} consumed {self.quantity_consumed} from Batch #{self.batch_id}"
+
+
+# ── 17.5 Inventory Expiry & Batch Alerts ─────────────────────────────────────────
+
+class InventoryExpiryAlert(models.Model):
+    ALERT_TYPES = [
+        ("expired", "Expired Stock"),
+        ("near_expiry_1", "Expiring Within 1 Day"),
+        ("near_expiry_7", "Expiring Within 7 Days"),
+        ("near_expiry_14", "Expiring Within 14 Days"),
+        ("near_expiry_30", "Expiring Within 30 Days"),
+        ("unknown_expiry", "Perishable Stock - Unknown Expiry"),
+    ]
+    STATUS_CHOICES = [
+        ("active", "Active Alert"),
+        ("resolved", "Resolved"),
+        ("dismissed", "Dismissed by Staff"),
+    ]
+
+    batch = models.ForeignKey(
+        StockBatch, on_delete=models.CASCADE, related_name="expiry_alerts"
+    )
+    item = models.ForeignKey(
+        InventoryItem, on_delete=models.CASCADE, related_name="expiry_alerts"
+    )
+    location = models.ForeignKey(
+        StockLocation, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="expiry_alerts"
+    )
+    alert_type = models.CharField(max_length=30, choices=ALERT_TYPES, db_index=True)
+    threshold_days = models.IntegerField(default=0, help_text="Threshold in days (0=expired, -1=unknown)")
+    batch_number = models.CharField(max_length=100)
+    expiry_date = models.DateField(null=True, blank=True)
+    current_quantity = models.DecimalField(max_digits=12, decimal_places=4)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="active", db_index=True)
+    resolved_at = models.DateTimeField(null=True, blank=True)
+    resolution_reason = models.CharField(max_length=255, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["status", "alert_type"], name="exp_alert_status_type_idx"),
+            models.Index(fields=["batch", "alert_type", "status"], name="exp_alert_batch_type_idx"),
+        ]
+
+    def __str__(self):
+        return f"[{self.status.upper()}] {self.get_alert_type_display()} - Batch {self.batch_number} ({self.item.name})"
+
 
 
 # ── 18. Recipe BOM ───────────────────────────────────────────────────────────
@@ -1183,6 +1469,958 @@ class InventoryWasteRecord(models.Model):
 
     def __str__(self):
         return f"WASTE #{self.id} — {self.base_quantity} {self.item.unit} of {self.item.name} ({self.waste_category})"
+
+
+# ── 21b. Stock Transfer Management ─────────────────────────────────────────
+
+class StockTransfer(models.Model):
+    STATUS_CHOICES = [
+        ("draft", "Draft"),
+        ("requested", "Requested"),
+        ("in_transit", "In Transit (Dispatched)"),
+        ("completed", "Completed (Received)"),
+        ("partially_received", "Partially Received (Breakage/Shortage Recorded)"),
+        ("rejected", "Rejected at Destination"),
+        ("cancelled", "Cancelled"),
+    ]
+    transfer_number = models.CharField(max_length=64, unique=True, db_index=True)
+    source_location = models.ForeignKey(
+        StockLocation, on_delete=models.PROTECT, related_name="transfers_dispatched"
+    )
+    destination_location = models.ForeignKey(
+        StockLocation, on_delete=models.PROTECT, related_name="transfers_received"
+    )
+    status = models.CharField(max_length=30, choices=STATUS_CHOICES, default="draft", db_index=True)
+
+    requested_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="stock_transfers_requested"
+    )
+    requested_at = models.DateTimeField(default=timezone.now)
+
+    dispatched_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True, related_name="stock_transfers_dispatched"
+    )
+    dispatched_at = models.DateTimeField(null=True, blank=True)
+
+    received_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True, related_name="stock_transfers_received"
+    )
+    received_at = models.DateTimeField(null=True, blank=True)
+
+    notes = models.TextField(blank=True, default="")
+    rejection_reason = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["source_location", "status"], name="st_src_status_idx"),
+            models.Index(fields=["destination_location", "status"], name="st_dest_status_idx"),
+            models.Index(fields=["transfer_number"], name="st_num_idx"),
+        ]
+
+    def __str__(self):
+        return f"{self.transfer_number} ({self.source_location.code} -> {self.destination_location.code}): {self.status}"
+
+
+class StockTransferItem(models.Model):
+    transfer = models.ForeignKey(StockTransfer, on_delete=models.CASCADE, related_name="items")
+    item = models.ForeignKey(InventoryItem, on_delete=models.PROTECT, related_name="transfer_items")
+    batch = models.ForeignKey(StockBatch, on_delete=models.PROTECT, null=True, blank=True, related_name="transfer_items")
+
+    quantity_requested = models.DecimalField(max_digits=10, decimal_places=2)
+    quantity_dispatched = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("0.00"))
+    quantity_received = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("0.00"))
+    quantity_damaged = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("0.00"))
+    unit_cost = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("0.00"))
+
+    waste_record = models.ForeignKey(
+        InventoryWasteRecord, on_delete=models.SET_NULL, null=True, blank=True, related_name="transfer_items"
+    )
+    notes = models.CharField(max_length=255, blank=True, default="")
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["transfer", "item"], name="sti_trf_item_idx"),
+        ]
+        constraints = [
+            models.CheckConstraint(condition=models.Q(quantity_requested__gt=0), name="sti_qty_req_positive"),
+            models.CheckConstraint(condition=models.Q(quantity_dispatched__gte=0), name="sti_qty_disp_nonnegative"),
+            models.CheckConstraint(condition=models.Q(quantity_received__gte=0), name="sti_qty_recv_nonnegative"),
+            models.CheckConstraint(condition=models.Q(quantity_damaged__gte=0), name="sti_qty_dam_nonnegative"),
+            models.CheckConstraint(condition=models.Q(unit_cost__gte=0), name="sti_cost_nonnegative"),
+        ]
+
+    def __str__(self):
+        return f"{self.transfer.transfer_number} - {self.item.name} (Req: {self.quantity_requested}, Disp: {self.quantity_dispatched}, Recv: {self.quantity_received})"
+
+
+# ── 21d. Configurable Procurement & 3-Way Match GRNI ──────────────────────────────
+
+class ProcurementApprovalPolicy(models.Model):
+    name = models.CharField(max_length=100, unique=True)
+    description = models.TextField(blank=True, default="")
+    is_active = models.BooleanField(default=True)
+    currency = models.CharField(max_length=10, default="ETB")
+    price_tolerance_percentage = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal("0.00"),
+        help_text="Acceptable unit price variance percentage for 3-way matching",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.name} ({'Active' if self.is_active else 'Inactive'})"
+
+
+class ProcurementApprovalTier(models.Model):
+    policy = models.ForeignKey(ProcurementApprovalPolicy, on_delete=models.CASCADE, related_name="tiers")
+    tier_level = models.PositiveIntegerField(help_text="Ascending hierarchy level (1, 2, 3...)")
+    name = models.CharField(max_length=100)
+    min_amount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
+    max_amount = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True, help_text="Null represents an unlimited upper ceiling")
+    required_role = models.CharField(max_length=50, help_text="User role required to approve at this tier (e.g. inventory, kitchen, finance, admin)")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["tier_level"]
+        constraints = [
+            models.UniqueConstraint(fields=["policy", "tier_level"], name="unique_tier_per_policy"),
+            models.CheckConstraint(condition=models.Q(min_amount__gte=0), name="tier_min_amount_nonnegative"),
+        ]
+
+    def __str__(self):
+        ceiling = f"{self.max_amount} {self.policy.currency}" if self.max_amount is not None else "Unlimited"
+        return f"{self.name} (Lvl {self.tier_level}): {self.min_amount} - {ceiling} [{self.required_role}]"
+
+
+class PurchaseRequisition(models.Model):
+    STATUS_CHOICES = [
+        ("draft", "Draft"),
+        ("pending_approval", "Pending Approval"),
+        ("approved", "Approved"),
+        ("rejected", "Rejected"),
+        ("converted_to_po", "Converted to Purchase Order"),
+        ("cancelled", "Cancelled"),
+    ]
+
+    requisition_number = models.CharField(max_length=50, unique=True, db_index=True)
+    department = models.CharField(max_length=50, default="general")
+    status = models.CharField(max_length=30, choices=STATUS_CHOICES, default="draft", db_index=True)
+    requested_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="purchase_requisitions")
+    requested_at = models.DateTimeField(default=timezone.now)
+    approval_tier = models.ForeignKey(ProcurementApprovalTier, on_delete=models.SET_NULL, null=True, blank=True, related_name="requisitions")
+    approved_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="approved_requisitions")
+    approved_at = models.DateTimeField(null=True, blank=True)
+    rejection_reason = models.TextField(blank=True, default="")
+    total_estimated_amount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
+    notes = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["status"], name="pr_status_idx"),
+            models.Index(fields=["department"], name="pr_dept_idx"),
+        ]
+
+    def __str__(self):
+        return f"{self.requisition_number} ({self.department}) - {self.status} [{self.total_estimated_amount}]"
+
+
+class PurchaseRequisitionItem(models.Model):
+    requisition = models.ForeignKey(PurchaseRequisition, on_delete=models.CASCADE, related_name="items")
+    item = models.ForeignKey(InventoryItem, on_delete=models.PROTECT, related_name="requisition_items")
+    quantity_requested = models.DecimalField(max_digits=10, decimal_places=2)
+    estimated_unit_cost = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("0.00"))
+    notes = models.TextField(blank=True, default="")
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(condition=models.Q(quantity_requested__gt=0), name="pri_qty_req_positive"),
+            models.CheckConstraint(condition=models.Q(estimated_unit_cost__gte=0), name="pri_cost_nonnegative"),
+        ]
+
+    def __str__(self):
+        return f"{self.requisition.requisition_number} - {self.item.name} ({self.quantity_requested} {self.item.unit})"
+
+
+# ── 21.3 Request for Quotation (RFQ) ─────────────────────────────────────────
+
+class RequestForQuotation(models.Model):
+    STATUS_CHOICES = [
+        ("draft", "Draft"),
+        ("published", "Published / Open for Bids"),
+        ("closed", "Closed / Bidding Concluded"),
+        ("awarded", "Awarded / Quotations Selected"),
+        ("cancelled", "Cancelled"),
+    ]
+
+    rfq_number = models.CharField(max_length=50, unique=True, db_index=True)
+    title = models.CharField(max_length=200)
+    requisitions = models.ManyToManyField(
+        PurchaseRequisition,
+        related_name="rfqs",
+        blank=True,
+        help_text="Approved purchase requisitions aggregated into this RFQ",
+    )
+    is_public_bidding = models.BooleanField(
+        default=False,
+        help_text="If False, only explicitly invited suppliers may submit quotes",
+    )
+    invited_suppliers = models.ManyToManyField(
+        Supplier,
+        related_name="invited_rfqs",
+        blank=True,
+        help_text="Vendors authorized to participate in competitive bidding",
+    )
+    status = models.CharField(
+        max_length=30, choices=STATUS_CHOICES, default="draft", db_index=True
+    )
+    submission_deadline = models.DateTimeField(
+        db_index=True, help_text="Deadline after which no bids are accepted"
+    )
+    delivery_location = models.ForeignKey(
+        StockLocation,
+        on_delete=models.PROTECT,
+        related_name="rfqs",
+        help_text="Destination storage location (e.g. STORE-MAIN)",
+    )
+    terms_and_conditions = models.TextField(blank=True, default="")
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="created_rfqs",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["status"], name="rfq_status_idx"),
+            models.Index(fields=["submission_deadline"], name="rfq_deadline_idx"),
+        ]
+
+    def __str__(self):
+        return f"{self.rfq_number} - {self.title} ({self.status})"
+
+
+class RequestForQuotationItem(models.Model):
+    rfq = models.ForeignKey(
+        RequestForQuotation, on_delete=models.CASCADE, related_name="items"
+    )
+    item = models.ForeignKey(
+        InventoryItem, on_delete=models.PROTECT, related_name="rfq_items"
+    )
+    requisition_item = models.ForeignKey(
+        PurchaseRequisitionItem,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="rfq_lines",
+        help_text="Specific department requisition item being fulfilled",
+    )
+    target_quantity = models.DecimalField(max_digits=10, decimal_places=2)
+    specifications = models.TextField(
+        blank=True,
+        default="",
+        help_text="Detailed grade, packaging, or brand specifications",
+    )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["rfq", "item"], name="uniq_rfq_line_item"
+            ),
+            models.CheckConstraint(
+                condition=models.Q(target_quantity__gt=0),
+                name="rfqi_qty_positive",
+            ),
+        ]
+
+    def clean(self):
+        if self.requisition_item:
+            if self.requisition_item.requisition.status != "approved":
+                raise ValidationError(
+                    f"Requisition {self.requisition_item.requisition.requisition_number} "
+                    f"must be in 'approved' status (current: {self.requisition_item.requisition.status})."
+                )
+            if self.item_id and self.requisition_item.item_id != self.item_id:
+                raise ValidationError(
+                    f"RFQ item '{self.item}' does not match requisition line item '{self.requisition_item.item}'."
+                )
+
+    def __str__(self):
+        return f"{self.rfq.rfq_number} - {self.item.name} ({self.target_quantity} {self.item.unit})"
+
+
+# ── 21.4 Supplier Quotation & Quotation Items ─────────────────────────────────
+
+class SupplierQuotation(models.Model):
+    STATUS_CHOICES = [
+        ("draft", "Draft"),
+        ("submitted", "Submitted / Received"),
+        ("under_evaluation", "Under Evaluation"),
+        ("accepted", "Accepted / Awarded"),
+        ("partially_awarded", "Partially Awarded"),
+        ("converted_to_po", "Converted to Purchase Order"),
+        ("rejected", "Rejected"),
+        ("expired", "Expired"),
+        ("cancelled", "Cancelled"),
+    ]
+
+    quotation_number = models.CharField(
+        max_length=50, unique=True, db_index=True, help_text="e.g. SQ-20261103-XXXX"
+    )
+    supplier_reference = models.CharField(
+        max_length=100,
+        blank=True,
+        default="",
+        help_text="Vendor proforma/quote reference number",
+    )
+    rfq = models.ForeignKey(
+        RequestForQuotation,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="quotations",
+        help_text="Linked competitive RFQ (if sourced via tender)",
+    )
+    requisition = models.ForeignKey(
+        PurchaseRequisition,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="direct_quotations",
+        help_text="Linked requisition (if direct sole-source)",
+    )
+    sole_source_justification = models.TextField(
+        blank=True,
+        default="",
+        help_text="Mandatory justification when RFQ is bypassed",
+    )
+    supplier = models.ForeignKey(
+        Supplier, on_delete=models.PROTECT, related_name="quotations"
+    )
+
+    # Contractual Terms
+    quotation_date = models.DateField(default=timezone.now)
+    valid_until = models.DateField(
+        db_index=True, help_text="Hard deadline; bids cannot be accepted after"
+    )
+    delivery_lead_time_days = models.PositiveIntegerField(
+        default=1, help_text="Guaranteed delivery lead time in days"
+    )
+    payment_terms = models.CharField(
+        max_length=100,
+        default="Net 30",
+        help_text="e.g. Net 30, Cash on Delivery, 50% Advance",
+    )
+    warranty_terms = models.CharField(max_length=200, blank=True, default="")
+
+    # Currency & Landed Cost
+    currency = models.CharField(max_length=10, default="ETB")
+    exchange_rate = models.DecimalField(
+        max_digits=10,
+        decimal_places=4,
+        default=Decimal("1.0000"),
+        help_text="Exchange rate to ETB on quotation date",
+    )
+    subtotal = models.DecimalField(
+        max_digits=12, decimal_places=2, default=Decimal("0.00")
+    )
+    tax_amount = models.DecimalField(
+        max_digits=12, decimal_places=2, default=Decimal("0.00")
+    )
+    shipping_and_handling = models.DecimalField(
+        max_digits=12, decimal_places=2, default=Decimal("0.00")
+    )
+    customs_and_duties = models.DecimalField(
+        max_digits=12, decimal_places=2, default=Decimal("0.00")
+    )
+    total_quoted_amount = models.DecimalField(
+        max_digits=12, decimal_places=2, default=Decimal("0.00")
+    )
+    total_landed_cost_etb = models.DecimalField(
+        max_digits=12, decimal_places=2, default=Decimal("0.00")
+    )
+
+    # State & Decision
+    status = models.CharField(
+        max_length=30, choices=STATUS_CHOICES, default="draft", db_index=True
+    )
+    evaluated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="evaluated_quotations",
+    )
+    evaluated_at = models.DateTimeField(null=True, blank=True)
+    evaluation_notes = models.TextField(
+        blank=True, default="", help_text="Comparative scoring and rationale"
+    )
+
+    accepted_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="accepted_quotations",
+    )
+    accepted_at = models.DateTimeField(null=True, blank=True)
+    acceptance_justification = models.TextField(
+        blank=True,
+        default="",
+        help_text="Mandatory managerial rationale why this bid was awarded",
+    )
+
+    rejection_reason = models.TextField(blank=True, default="")
+    rejected_at = models.DateTimeField(null=True, blank=True)
+
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="created_quotations",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["status"], name="sq_status_idx"),
+            models.Index(fields=["valid_until"], name="sq_validity_idx"),
+            models.Index(fields=["supplier"], name="sq_supplier_idx"),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(total_quoted_amount__gte=0),
+                name="sq_total_nonnegative",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(total_landed_cost_etb__gte=0),
+                name="sq_landed_nonnegative",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(exchange_rate__gt=0),
+                name="sq_fx_positive",
+            ),
+        ]
+
+    def clean(self):
+        if not self.rfq and not (self.requisition and self.sole_source_justification):
+            raise ValidationError(
+                "Every quotation must be linked to an RFQ or provide a verified "
+                "Requisition and Sole Source Justification."
+            )
+        if self.valid_until and self.valid_until < self.quotation_date:
+            raise ValidationError("valid_until date cannot precede quotation_date.")
+
+    def save(self, *args, **kwargs):
+        allow_override = getattr(self, "_allow_immutable_override", False)
+        self._allow_immutable_override = False
+
+        # Immutability Safeguard: Protect awarded, converted, rejected, or expired quotations from mutation
+        if self.pk and not allow_override:
+            old = SupplierQuotation.objects.filter(pk=self.pk).values("status", "quotation_number").first()
+            if old and old["status"] in ["accepted", "partially_awarded", "converted_to_po", "rejected", "expired"]:
+                allowed_transitions = {
+                    ("accepted", "converted_to_po"),
+                    ("partially_awarded", "converted_to_po"),
+                }
+                if (old["status"], self.status) not in allowed_transitions:
+                    raise ValidationError(
+                        f"Quotation {old['quotation_number']} is in terminal/locked status "
+                        f"'{old['status']}' and cannot be modified."
+                    )
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        if not getattr(self, "_allow_immutable_override", False):
+            if self.status in ["accepted", "partially_awarded", "converted_to_po", "rejected", "expired"]:
+                raise ValidationError(
+                    f"Quotation {self.quotation_number} is in status '{self.status}' and cannot be deleted."
+                )
+        super().delete(*args, **kwargs)
+
+    def __str__(self):
+        return (
+            f"{self.quotation_number} - {self.supplier.name} ({self.status}) ["
+            f" {self.total_quoted_amount} {self.currency}]"
+        )
+
+
+class SupplierQuotationItem(models.Model):
+    AWARD_STATUS_CHOICES = [
+        ("pending", "Pending Evaluation"),
+        ("awarded", "Awarded"),
+        ("rejected", "Not Awarded"),
+    ]
+
+    quotation = models.ForeignKey(
+        SupplierQuotation, on_delete=models.CASCADE, related_name="items"
+    )
+    item = models.ForeignKey(
+        InventoryItem, on_delete=models.PROTECT, related_name="quotation_lines"
+    )
+    rfq_item = models.ForeignKey(
+        RequestForQuotationItem,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="quoted_lines",
+    )
+
+    quoted_quantity = models.DecimalField(max_digits=10, decimal_places=2)
+    quoted_unit_price = models.DecimalField(max_digits=10, decimal_places=2)
+    discount_percentage = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal("0.00")
+    )
+    line_total = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
+
+    offered_brand_or_spec = models.CharField(
+        max_length=200,
+        blank=True,
+        default="",
+        help_text="Specific vendor brand or packaging specification offered",
+    )
+    lead_time_days = models.PositiveIntegerField(
+        null=True, blank=True, help_text="Item-specific lead time if different"
+    )
+    award_status = models.CharField(
+        max_length=20, choices=AWARD_STATUS_CHOICES, default="pending"
+    )
+    is_converted_to_po = models.BooleanField(default=False)
+    converted_purchase_order = models.ForeignKey(
+        "PurchaseOrder",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="sourced_quote_items",
+        help_text="Purchase Order generated from this awarded quotation line (supports split awards)",
+    )
+    converted_quantity = models.DecimalField(
+        max_digits=10, decimal_places=2, default=Decimal("0.00")
+    )
+    notes = models.TextField(blank=True, default="")
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["quotation", "item"], name="uniq_quote_item"
+            ),
+            models.CheckConstraint(
+                condition=models.Q(quoted_quantity__gt=0),
+                name="sqi_qty_positive",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(quoted_unit_price__gte=0),
+                name="sqi_price_nonnegative",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(discount_percentage__gte=0) & models.Q(discount_percentage__lte=100),
+                name="sqi_discount_range",
+            ),
+        ]
+
+    def save(self, *args, **kwargs):
+        allow_override = getattr(self, "_allow_immutable_override", False)
+        allow_conversion = getattr(self, "_allow_conversion_update", False)
+        allow_award = getattr(self, "_allow_award_update", False)
+        self._allow_immutable_override = False
+        self._allow_conversion_update = False
+        self._allow_award_update = False
+
+        if self.pk and not allow_override:
+            if self.quotation.status in ["accepted", "partially_awarded", "converted_to_po", "rejected", "expired"]:
+                if not allow_conversion and not allow_award:
+                    raise ValidationError(
+                        f"Quotation {self.quotation.quotation_number} is locked; items cannot be modified."
+                    )
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        if not getattr(self, "_allow_immutable_override", False):
+            if self.quotation.status in ["accepted", "partially_awarded", "converted_to_po", "rejected", "expired"] or self.award_status == "awarded":
+                raise ValidationError(
+                    f"Awarded quotation items cannot be deleted from quotation {self.quotation.quotation_number}."
+                )
+        super().delete(*args, **kwargs)
+
+    def __str__(self):
+        return (
+            f"{self.quotation.quotation_number} - {self.item.name} ("
+            f" {self.quoted_quantity} @ {self.quoted_unit_price})"
+        )
+
+
+class PurchaseOrder(models.Model):
+    STATUS_CHOICES = [
+        ("draft", "Draft"),
+        ("issued", "Issued / Ordered"),
+        ("partially_received", "Partially Received"),
+        ("received", "Fully Received"),
+        ("closed", "Closed"),
+        ("cancelled", "Cancelled"),
+    ]
+
+    po_number = models.CharField(max_length=50, unique=True, db_index=True)
+    requisition = models.ForeignKey(PurchaseRequisition, on_delete=models.SET_NULL, null=True, blank=True, related_name="purchase_orders")
+    originating_quotation = models.ForeignKey(
+        SupplierQuotation,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="purchase_orders",
+        help_text="Originating supplier quotation if sourced through bidding or quotation",
+    )
+    supplier = models.ForeignKey(Supplier, on_delete=models.PROTECT, related_name="purchase_orders")
+    delivery_location = models.ForeignKey(StockLocation, on_delete=models.PROTECT, related_name="purchase_orders")
+    status = models.CharField(max_length=30, choices=STATUS_CHOICES, default="draft", db_index=True)
+    issued_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="issued_pos")
+    issued_at = models.DateTimeField(null=True, blank=True)
+    delivery_due_date = models.DateField(null=True, blank=True)
+    payment_terms = models.CharField(max_length=100, default="Net 30")
+    subtotal = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
+    tax_amount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
+    total_amount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
+    notes = models.TextField(blank=True, default="")
+    cancellation_reason = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["status"], name="po_status_idx"),
+            models.Index(fields=["supplier"], name="po_supplier_idx"),
+        ]
+
+    def __str__(self):
+        return f"{self.po_number} - {self.supplier.name} ({self.status}) [{self.total_amount}]"
+
+
+class PurchaseOrderItem(models.Model):
+    purchase_order = models.ForeignKey(PurchaseOrder, on_delete=models.CASCADE, related_name="items")
+    item = models.ForeignKey(InventoryItem, on_delete=models.PROTECT, related_name="po_items")
+    originating_quote_item = models.ForeignKey(
+        SupplierQuotationItem,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="po_items",
+        help_text="Originating quotation line item",
+    )
+    quantity_ordered = models.DecimalField(max_digits=10, decimal_places=2)
+    quantity_received = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("0.00"))
+    unit_price = models.DecimalField(max_digits=10, decimal_places=2)
+    line_total = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
+    notes = models.TextField(blank=True, default="")
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(condition=models.Q(quantity_ordered__gt=0), name="poi_qty_ord_positive"),
+            models.CheckConstraint(condition=models.Q(quantity_received__gte=0), name="poi_qty_recv_nonnegative"),
+            models.CheckConstraint(condition=models.Q(unit_price__gte=0), name="poi_price_nonnegative"),
+        ]
+
+    def __str__(self):
+        return f"{self.purchase_order.po_number} - {self.item.name} (Ordered: {self.quantity_ordered}, Recv: {self.quantity_received})"
+
+
+class GoodsReceiptNote(models.Model):
+    STATUS_CHOICES = [
+        ("draft", "Draft"),
+        ("approved", "Approved / Stock Received"),
+        ("cancelled", "Cancelled"),
+    ]
+
+    grn_number = models.CharField(max_length=50, unique=True, db_index=True)
+    purchase_order = models.ForeignKey(PurchaseOrder, on_delete=models.PROTECT, related_name="grns")
+    supplier = models.ForeignKey(Supplier, on_delete=models.PROTECT, related_name="grns")
+    location = models.ForeignKey(StockLocation, on_delete=models.PROTECT, related_name="grns")
+    delivery_note_number = models.CharField(max_length=100, blank=True, default="")
+    status = models.CharField(max_length=30, choices=STATUS_CHOICES, default="draft", db_index=True)
+    received_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="received_grns")
+    received_at = models.DateTimeField(default=timezone.now)
+    journal_entry = models.ForeignKey(JournalEntry, on_delete=models.SET_NULL, null=True, blank=True, related_name="grns")
+    total_received_cost = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
+    notes = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["status"], name="grn_status_idx"),
+            models.Index(fields=["purchase_order"], name="grn_po_idx"),
+        ]
+
+    def __str__(self):
+        return f"{self.grn_number} (PO: {self.purchase_order.po_number}) - {self.status}"
+
+
+class GoodsReceiptNoteItem(models.Model):
+    grn = models.ForeignKey(GoodsReceiptNote, on_delete=models.CASCADE, related_name="items")
+    po_item = models.ForeignKey(PurchaseOrderItem, on_delete=models.PROTECT, related_name="grn_items")
+    item = models.ForeignKey(InventoryItem, on_delete=models.PROTECT, related_name="grn_items")
+    quantity_received = models.DecimalField(max_digits=10, decimal_places=2)
+    quantity_rejected = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("0.00"))
+    rejection_reason = models.CharField(max_length=255, blank=True, default="")
+    batch = models.ForeignKey(StockBatch, on_delete=models.SET_NULL, null=True, blank=True, related_name="grn_items")
+    batch_number = models.CharField(max_length=100)
+    supplier_batch_number = models.CharField(max_length=100, blank=True, default="")
+    expiry_date = models.DateField(null=True, blank=True)
+    unit_cost = models.DecimalField(max_digits=10, decimal_places=2)
+    total_cost = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
+    notes = models.TextField(blank=True, default="")
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(condition=models.Q(quantity_received__gte=0), name="grni_qty_recv_nonnegative"),
+            models.CheckConstraint(condition=models.Q(quantity_rejected__gte=0), name="grni_qty_rej_nonnegative"),
+            models.CheckConstraint(condition=models.Q(unit_cost__gte=0), name="grni_cost_nonnegative"),
+        ]
+
+    def __str__(self):
+        return f"{self.grn.grn_number} - {self.item.name} (Recv: {self.quantity_received}, Rej: {self.quantity_rejected})"
+
+
+class SupplierInvoice(models.Model):
+    MATCH_STATUS_CHOICES = [
+        ("unmatched", "Unmatched"),
+        ("matched", "3-Way Matched"),
+        ("variance_flagged", "Variance Flagged"),
+        ("approved", "Approved for Payment"),
+        ("rejected", "Rejected"),
+    ]
+
+    internal_number = models.CharField(max_length=50, unique=True, db_index=True)
+    vendor_invoice_number = models.CharField(max_length=100, db_index=True)
+    supplier = models.ForeignKey(Supplier, on_delete=models.PROTECT, related_name="invoices")
+    purchase_order = models.ForeignKey(PurchaseOrder, on_delete=models.PROTECT, related_name="invoices")
+    invoice_date = models.DateField()
+    due_date = models.DateField()
+    subtotal = models.DecimalField(max_digits=12, decimal_places=2)
+    tax_amount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
+    total_amount = models.DecimalField(max_digits=12, decimal_places=2)
+    match_status = models.CharField(max_length=30, choices=MATCH_STATUS_CHOICES, default="unmatched", db_index=True)
+    matched_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="matched_invoices")
+    matched_at = models.DateTimeField(null=True, blank=True)
+    approved_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="approved_invoices")
+    approved_at = models.DateTimeField(null=True, blank=True)
+    variance_notes = models.TextField(blank=True, default="")
+    journal_entry = models.ForeignKey(JournalEntry, on_delete=models.SET_NULL, null=True, blank=True, related_name="supplier_invoices")
+    is_paid = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["match_status"], name="sinv_match_status_idx"),
+            models.Index(fields=["supplier", "vendor_invoice_number"], name="sinv_supp_invnum_idx"),
+        ]
+
+    def __str__(self):
+        return f"{self.internal_number} ({self.vendor_invoice_number}) - {self.supplier.name} [{self.total_amount}]"
+
+
+class SupplierInvoiceItem(models.Model):
+    invoice = models.ForeignKey(SupplierInvoice, on_delete=models.CASCADE, related_name="items")
+    po_item = models.ForeignKey(PurchaseOrderItem, on_delete=models.PROTECT, related_name="invoice_items")
+    grn_item = models.ForeignKey(GoodsReceiptNoteItem, on_delete=models.SET_NULL, null=True, blank=True, related_name="invoice_items")
+    item = models.ForeignKey(InventoryItem, on_delete=models.PROTECT)
+    billed_quantity = models.DecimalField(max_digits=10, decimal_places=2)
+    billed_unit_price = models.DecimalField(max_digits=10, decimal_places=2)
+    line_total = models.DecimalField(max_digits=12, decimal_places=2)
+    price_variance = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
+    is_matched = models.BooleanField(default=False)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(condition=models.Q(billed_quantity__gt=0), name="sii_qty_positive"),
+            models.CheckConstraint(condition=models.Q(billed_unit_price__gte=0), name="sii_price_nonnegative"),
+        ]
+
+    def __str__(self):
+        return f"{self.invoice.internal_number} - {self.item.name} (Billed: {self.billed_quantity} @ {self.billed_unit_price})"
+
+
+# ── 21.5 Physical Stocktaking (Dual-Mode Blind & Visible) ─────────────────────────
+
+class StocktakeSchedule(models.Model):
+    FREQUENCY_CHOICES = [
+        ("daily", "Daily"),
+        ("weekly", "Weekly"),
+        ("monthly", "Monthly"),
+    ]
+    COUNTING_MODES = [
+        ("blind", "Blind Count (Theoretical Qty Masked)"),
+        ("visible", "Visible Count (Theoretical Qty Displayed)"),
+    ]
+    STATUS_CHOICES = [
+        ("success", "Success"),
+        ("failed", "Failed"),
+        ("skipped", "Skipped"),
+    ]
+
+    name = models.CharField(max_length=255)
+    frequency = models.CharField(max_length=20, choices=FREQUENCY_CHOICES, default="daily", db_index=True)
+    location = models.ForeignKey(StockLocation, on_delete=models.PROTECT, related_name="stocktake_schedules")
+    category = models.ForeignKey(
+        InventoryCategory, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="stocktake_schedules", help_text="Optional category scope"
+    )
+    counting_mode = models.CharField(max_length=20, choices=COUNTING_MODES, default="blind")
+    assigned_staff = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="assigned_stocktake_schedules", help_text="Designated counter for generated sessions"
+    )
+    is_active = models.BooleanField(default=True, db_index=True)
+    scheduled_time = models.TimeField(default="06:00", help_text="Local execution time in hotel timezone (HH:MM)")
+    day_of_week = models.IntegerField(
+        null=True, blank=True,
+        help_text="0=Monday, 6=Sunday (Weekly schedules only)"
+    )
+    day_of_month = models.IntegerField(
+        null=True, blank=True,
+        help_text="Day of the month 1..31 (Monthly schedules only)"
+    )
+    last_run_at = models.DateTimeField(null=True, blank=True)
+    last_run_status = models.CharField(max_length=30, choices=STATUS_CHOICES, default="success")
+    last_error_message = models.TextField(blank=True, default="")
+    next_run_at = models.DateTimeField(db_index=True, help_text="Calculated next run timestamp in hotel timezone")
+
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="created_stocktake_schedules"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["next_run_at", "name"]
+        indexes = [
+            models.Index(fields=["is_active", "next_run_at"], name="stk_sched_active_next_idx"),
+            models.Index(fields=["frequency", "is_active"], name="stk_sched_freq_active_idx"),
+        ]
+
+    def __str__(self):
+        return f"{self.name} ({self.get_frequency_display()}) - Next: {self.next_run_at}"
+
+
+class StocktakeSession(models.Model):
+    COUNTING_MODES = [
+        ("blind", "Blind Count (Theoretical Qty Masked)"),
+        ("visible", "Visible Count (Theoretical Qty Displayed)"),
+    ]
+    STATUS_CHOICES = [
+        ("draft", "Draft / Scheduled"),
+        ("in_progress", "Counting in Progress"),
+        ("under_review", "Count Submitted / Under Supervisor Review"),
+        ("recount_required", "Recount Required"),
+        ("approved", "Approved & Stock Adjusted"),
+        ("cancelled", "Cancelled"),
+    ]
+
+    session_number = models.CharField(max_length=64, unique=True, db_index=True)
+    title = models.CharField(max_length=255)
+    location = models.ForeignKey(
+        StockLocation, on_delete=models.PROTECT, related_name="stocktake_sessions"
+    )
+    category = models.ForeignKey(
+        InventoryCategory, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="stocktake_sessions", help_text="Optional category scope"
+    )
+    counting_mode = models.CharField(max_length=20, choices=COUNTING_MODES, default="blind")
+    is_mode_locked = models.BooleanField(
+        default=False,
+        help_text="Permanently locked once physical counting commences (Owner Decision D-4)"
+    )
+    status = models.CharField(max_length=30, choices=STATUS_CHOICES, default="draft", db_index=True)
+
+    schedule = models.ForeignKey(
+        StocktakeSchedule, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="sessions", help_text="Originating automated schedule (if generated)"
+    )
+    scheduled_date = models.DateField(
+        null=True, blank=True, db_index=True,
+        help_text="Scheduled target business date"
+    )
+
+
+    snapshot_at = models.DateTimeField(auto_now_add=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="created_stocktakes"
+    )
+    counted_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="counted_stocktakes"
+    )
+    counted_at = models.DateTimeField(null=True, blank=True)
+    reviewed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="reviewed_stocktakes"
+    )
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    variance_approval_notes = models.TextField(blank=True, default="")
+
+    total_theoretical_value = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal("0.00"))
+    total_counted_value = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal("0.00"))
+    total_variance_value = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal("0.00"))
+
+    journal_entry = models.ForeignKey(
+        JournalEntry, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="stocktake_sessions"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["status"], name="stk_session_status_idx"),
+            models.Index(fields=["location", "status"], name="stk_loc_status_idx"),
+        ]
+
+    def __str__(self):
+        return f"{self.session_number} - {self.location.name} ({self.get_counting_mode_display()}) [{self.status}]"
+
+
+class StocktakeItem(models.Model):
+    session = models.ForeignKey(
+        StocktakeSession, on_delete=models.CASCADE, related_name="items"
+    )
+    item = models.ForeignKey(
+        InventoryItem, on_delete=models.PROTECT, related_name="stocktake_entries"
+    )
+    batch = models.ForeignKey(
+        StockBatch, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="stocktake_entries"
+    )
+    theoretical_quantity = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
+    counted_quantity = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    recounted_quantity = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    final_quantity = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+
+    unit_cost_snapshot = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
+    variance_quantity = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
+    variance_value = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal("0.00"))
+
+    requires_recount = models.BooleanField(default=False)
+    notes = models.TextField(blank=True, default="")
+    counted_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["item__name"]
+        indexes = [
+            models.Index(fields=["session", "item"], name="stk_item_session_idx"),
+        ]
+
+    def __str__(self):
+        return f"{self.session.session_number} - {self.item.name} (Theor: {self.theoretical_quantity}, Final: {self.final_quantity})"
 
 
 # ── 22. Expense Transaction ─────────────────────────────────────────────────────

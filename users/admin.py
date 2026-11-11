@@ -44,6 +44,7 @@ class CustomUserAdmin(BaseUserAdmin, ModelAdmin):
         description="Role",
         label={
             User.ADMIN: "danger",
+            User.HOTEL_MANAGER: "primary",
             User.FINANCE: "info",
             User.RECEPTION: "success",
             User.CASHIER: "warning",
@@ -52,6 +53,7 @@ class CustomUserAdmin(BaseUserAdmin, ModelAdmin):
             User.BAR: "info",
             User.INVENTORY: "primary",
             User.DELIVERY: "secondary",
+            User.HOUSEKEEPING: "info",
             User.CUSTOMER: "secondary",
         },
     )

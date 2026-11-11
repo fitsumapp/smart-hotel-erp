@@ -53,11 +53,21 @@ class OrderItemSerializer(serializers.ModelSerializer):
             "id", "menu_item", "menu_item_name", "category_name",
             "station", "category_station", "quantity", "price_at_order",
             "status", "notes",
+            "received_at", "preparation_started_at", "ready_at", "served_at",
+            "prepared_by_id_ref", "ready_by_id_ref", "served_by_id_ref",
         ]
+
+
+class SafeDateField(serializers.DateField):
+    def to_representation(self, value):
+        if hasattr(value, "date"):
+            value = value.date()
+        return super().to_representation(value)
 
 
 class SystemSettingsSerializer(serializers.ModelSerializer):
     enabled_features = serializers.SerializerMethodField()
+    current_business_date = SafeDateField(required=False)
 
     class Meta:
         model = SystemSettings
@@ -77,6 +87,12 @@ class SystemSettingsSerializer(serializers.ModelSerializer):
         if getattr(obj, "module_finance", True):
             features.extend(["finance", "payments"])
         return features
+
+    def validate_near_expiry_warning_days(self, value):
+        if value is not None:
+            if value < 1 or value > 365:
+                raise serializers.ValidationError("Near-expiry warning window must be a positive integer between 1 and 365 days.")
+        return value
 
 
 class OrderSerializer(serializers.ModelSerializer):
@@ -141,6 +157,21 @@ class OrderSerializer(serializers.ModelSerializer):
     bill_prepared_at = serializers.DateTimeField(read_only=True)
     has_pending_handover = serializers.SerializerMethodField()
     handover_details = serializers.SerializerMethodField()
+    is_partially_served = serializers.SerializerMethodField()
+    served_items_count = serializers.SerializerMethodField()
+
+    def get_is_partially_served(self, obj):
+        items = list(obj.items.all())
+        if not items:
+            return False
+        non_cancelled = [it for it in items if it.status != "cancelled"]
+        if not non_cancelled:
+            return False
+        served_count = sum(1 for it in non_cancelled if it.status == "served")
+        return 0 < served_count < len(non_cancelled)
+
+    def get_served_items_count(self, obj):
+        return sum(1 for it in obj.items.all() if it.status == "served")
 
     def get_has_pending_handover(self, obj):
         if hasattr(obj, "prefetched_cash_handovers"):
@@ -172,6 +203,8 @@ class OrderSerializer(serializers.ModelSerializer):
             "payment_reference", "tip_amount", "payment_page_token",
             "chapa_tx_ref", "chapa_checkout_url", "bill_prepared_at",
             "has_pending_handover", "handover_details", "created_at", "hotel_info",
+            "received_at", "preparation_started_at", "ready_at", "served_at",
+            "served_by_id_ref", "is_partially_served", "served_items_count",
         ]
 
     # Cache settings per serializer context to avoid N+1 queries

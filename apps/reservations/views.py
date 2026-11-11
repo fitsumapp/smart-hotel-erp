@@ -751,6 +751,24 @@ class FolioChargeView(APIView):
                         logged_by_username=request.user.username,
                     )
 
+                    # Post GL inventory cost entry
+                    try:
+                        from hotel.accounting import post_entry
+                        cost_amount = to_decimal(qty * inv_item.unit_cost)
+                        if cost_amount > 0:
+                            post_entry(
+                                description=f"Auto JV: Folio Inventory Cost - {inv_item.name} (Res #{reservation.id})",
+                                lines=[
+                                    {"account_code": "5000", "debit": cost_amount, "credit": Decimal("0.00")},
+                                    {"account_code": "1300", "debit": Decimal("0.00"), "credit": cost_amount},
+                                ],
+                            )
+                    except Exception as e:
+                        import logging
+                        logger = logging.getLogger(__name__)
+                        logger.error("GL Auto-post error for folio inventory cost: %s", e)
+                        raise ValidationError(f"Accounting entry failed for folio inventory cost: {e}") from e
+
                 # --- Post General Ledger Journal Entry ---
                 try:
                     amount = to_decimal(folio_charge.amount)

@@ -16,6 +16,7 @@ def ensure_default_accounts():
         
         # Liabilities (2000 - 2999)
         ("2000", "Accounts Payable", "liability"),
+        ("2010", "Goods Received Not Invoiced (GRNI)", "liability"),
         ("2200", "VAT Payable", "liability"),
         ("2300", "Service Charge Payable", "liability"),
         
@@ -29,6 +30,10 @@ def ensure_default_accounts():
         
         # Expenses (5000 - 5999)
         ("5000", "Inventory Cost of Goods Sold", "expense"),
+        ("5010", "Inventory Spoilage & Waste Expense", "expense"),
+        ("5020", "Inventory Stocktake Variance Expense", "expense"),
+        ("5030", "Department Operating Supplies Expense", "expense"),
+        ("5040", "Purchase Price Variance", "expense"),
         ("5100", "Salary Expense", "expense"),
         ("5200", "Utility Expense", "expense"),
         ("5300", "Rent Expense", "expense"),
@@ -59,5 +64,3 @@ def post_journal_entry(description, items, date=None):
     except Exception as exc:
         message = "; ".join(exc.messages) if hasattr(exc, "messages") else str(exc)
         raise ValueError(message) from exc
-
-

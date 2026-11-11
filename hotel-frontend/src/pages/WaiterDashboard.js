@@ -20,10 +20,31 @@ import {
   UtensilsCrossed,
   Wallet,
   X,
+  CheckCircle,
+  AlertTriangle,
 } from 'lucide-react';
 import { API_BASE_URL } from '../apiConfig';
 
 const API_BASE = `${API_BASE_URL}/users/`;
+
+const playWaiterChime = () => {
+  try {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return;
+    const ctx = new AudioCtx();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(659.25, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.15);
+    gain.gain.setValueAtTime(0.25, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.35);
+  } catch (e) {}
+};
 
 function WaiterDashboard({ userData, handleLogout }) {
   const [activeTab, setActiveTab] = useState('home');
@@ -44,6 +65,8 @@ function WaiterDashboard({ userData, handleLogout }) {
   const [isBusy, setIsBusy] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const prevNotifCount = useRef(0);
+  const prevReadyItemIdsRef = useRef(new Set());
+  const initialDataLoadedRef = useRef(false);
 
   const [filterStartDate, setFilterStartDate] = useState("");
   const [filterEndDate, setFilterEndDate] = useState("");
@@ -52,11 +75,16 @@ function WaiterDashboard({ userData, handleLogout }) {
   const headers = () => ({ Authorization: `Bearer ${localStorage.getItem('access_token')}` });
 
   useEffect(() => {
-    loadAllData();
-    const interval = setInterval(loadAllData, 5000);
+    fetchInitialData();
+    loadOperationalData();
+    const interval = setInterval(loadOperationalData, 5000);
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filterStartDate, filterEndDate, filterLimit]);
+
+  const loadOperationalData = async () => {
+    await Promise.all([fetchDashboardData(), fetchNotifications()]);
+  };
 
   const loadAllData = async () => {
     await Promise.all([fetchInitialData(), fetchDashboardData(), fetchNotifications()]);
@@ -84,7 +112,29 @@ function WaiterDashboard({ userData, handleLogout }) {
         axios.get(`${API_BASE}manage/`, { headers: headers() }),
         axios.get(`${API_BASE}menu-items/`, { headers: headers() }),
       ]);
-      if (resOrders.status === 'fulfilled') setOrders(resOrders.value.data || []);
+      if (resOrders.status === 'fulfilled') {
+        const nextOrders = resOrders.value.data || [];
+        setOrders(nextOrders);
+
+        const currentReadyIds = new Set();
+        nextOrders.forEach((o) => {
+          (o.items || []).forEach((it) => {
+            if (it.status === 'ready') currentReadyIds.add(it.id);
+          });
+        });
+
+        if (initialDataLoadedRef.current) {
+          const hasNewReadyItem = Array.from(currentReadyIds).some(
+            (id) => !prevReadyItemIdsRef.current.has(id)
+          );
+          if (hasNewReadyItem) {
+            playWaiterChime();
+          }
+        } else {
+          initialDataLoadedRef.current = true;
+        }
+        prevReadyItemIdsRef.current = currentReadyIds;
+      }
       if (resTables.status === 'fulfilled') setTables(resTables.value.data || []);
       if (resMenu.status === 'fulfilled') setMenuItems(resMenu.value.data || []);
     } catch (err) {
@@ -97,7 +147,7 @@ function WaiterDashboard({ userData, handleLogout }) {
       const res = await axios.get(`${API_BASE}notifications/`, { headers: headers() });
       const nextNotifications = res.data || [];
       if (nextNotifications.length > prevNotifCount.current) {
-        new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3').play().catch(() => {});
+        playWaiterChime();
       }
       prevNotifCount.current = nextNotifications.length;
       setNotifications(nextNotifications);
@@ -209,12 +259,40 @@ function WaiterDashboard({ userData, handleLogout }) {
     }
   };
 
-  const markServed = async (orderId) => {
+  const markOrderItemServed = async (itemId) => {
+    setIsBusy(true);
     try {
-      await axios.post(`${API_BASE}orders/${orderId}/mark-served/`, {}, { headers: headers() });
+      await axios.post(`${API_BASE}orders/items/${itemId}/mark-served/`, {}, { headers: headers() });
       await loadAllData();
+      if (detailsOrder) {
+        const res = await axios.get(`${API_BASE}waiter/my-orders/?_cb=${Date.now()}`, { headers: headers() });
+        const updatedOrders = res.data || [];
+        const refreshed = updatedOrders.find((o) => o.id === detailsOrder.id);
+        if (refreshed) setDetailsOrder(refreshed);
+      }
     } catch (err) {
-      alert(err.response?.data?.error || 'Failed to mark order as served.');
+      alert(err.response?.data?.error || 'Failed to mark item as served.');
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
+  const bulkMarkOrderItemsServed = async (itemIds) => {
+    if (!itemIds || !itemIds.length) return;
+    setIsBusy(true);
+    try {
+      await axios.post(`${API_BASE}orders/items/mark-served-bulk/`, { item_ids: itemIds }, { headers: headers() });
+      await loadAllData();
+      if (detailsOrder) {
+        const res = await axios.get(`${API_BASE}waiter/my-orders/?_cb=${Date.now()}`, { headers: headers() });
+        const updatedOrders = res.data || [];
+        const refreshed = updatedOrders.find((o) => o.id === detailsOrder.id);
+        if (refreshed) setDetailsOrder(refreshed);
+      }
+    } catch (err) {
+      alert(err.response?.data?.error || 'Failed to mark items as served.');
+    } finally {
+      setIsBusy(false);
     }
   };
 
@@ -321,9 +399,19 @@ function WaiterDashboard({ userData, handleLogout }) {
     () => orders.filter((order) => !['paid', 'cancelled'].includes(order.status)),
     [orders]
   );
-  const readyOrders = useMemo(() => orders.filter((order) => order.status === 'ready'), [orders]);
+  const readyOrders = useMemo(() => orders.filter((order) => (order.items || []).some((it) => it.status === 'ready')), [orders]);
+  const totalReadyItemsCount = useMemo(
+    () => orders.reduce((sum, o) => sum + (o.items || []).filter((it) => it.status === 'ready').length, 0),
+    [orders]
+  );
   const payableOrders = useMemo(
-    () => orders.filter((order) => ['served', 'bill_requested'].includes(order.status) && order.payment_status !== 'paid'),
+    () =>
+      orders.filter(
+        (order) =>
+          ['served', 'bill_requested'].includes(order.status) &&
+          order.payment_status !== 'paid' &&
+          (order.items || []).every((it) => ['served', 'cancelled'].includes(it.status))
+      ),
     [orders]
   );
   const paidOrders = useMemo(() => orders.filter((order) => order.payment_status === 'paid'), [orders]);
@@ -461,7 +549,7 @@ function WaiterDashboard({ userData, handleLogout }) {
 
               <section style={styles.metricGrid} className="waiter-metric-grid">
                 <MetricCard icon={<UtensilsCrossed size={18} />} label="Active Orders" value={activeOrders.length} tone="cyan" />
-                <MetricCard icon={<ChefHat size={18} />} label="Ready To Serve" value={readyOrders.length} tone="amber" />
+                <MetricCard icon={<ChefHat size={18} />} label="Items Ready For Pickup" value={totalReadyItemsCount} tone="amber" />
                 <MetricCard icon={<CreditCard size={18} />} label="Payment Queue" value={payableOrders.length} tone="green" />
                 <MetricCard icon={<Bell size={18} />} label="Unread Alerts" value={notifications.length} tone="rose" />
               </section>
@@ -552,58 +640,152 @@ function WaiterDashboard({ userData, handleLogout }) {
                   </select>
                 </div>
                 <div style={styles.orderList}>
-                  {orders.length ? orders.map((order) => (
-                    <div key={order.id} style={styles.orderCard}>
-                      <div style={styles.orderCardTop}>
-                        <div>
-                          <strong style={styles.orderId}>ORD-{order.id}</strong>
-                          {order.session_id && (
-                            <span style={{ fontSize: '11px', color: '#0284c7', fontWeight: 700, marginLeft: '6px' }}>
-                              Session #{order.session_id}
-                            </span>
-                          )}
-                          <div style={styles.smallMuted}>Table {order.table_code}</div>
-                        </div>
-                        <div style={styles.badgeRow}>
-                          <span style={statusBadge(order.status)}>{order.status}</span>
-                          <span style={paymentBadge(order.payment_status)}>{order.payment_status || 'pending'}</span>
-                          {order.bill_prepared_at && (
-                            <span style={{ fontSize: '11px', fontWeight: 700, padding: '3px 8px', borderRadius: '999px', background: '#dbeafe', color: '#1d4ed8' }}>
-                              Bill Prepared
-                            </span>
-                          )}
-                          {order.has_pending_handover && (
-                            <span style={{ fontSize: '11px', fontWeight: 700, padding: '3px 8px', borderRadius: '999px', background: '#fef3c7', color: '#b45309' }}>
-                              Handover Pending
-                            </span>
-                          )}
-                        </div>
-                      </div>
+                  {orders.length ? orders.map((order) => {
+                    const items = order.items || [];
+                    const activeItems = items.filter((it) => it.status !== 'cancelled');
+                    const readyItems = activeItems.filter((it) => it.status === 'ready');
+                    const servedItems = activeItems.filter((it) => it.status === 'served');
+                    const allServed = activeItems.length > 0 && activeItems.every((it) => it.status === 'served');
+                    const hasUnserved = activeItems.some((it) => ['pending', 'preparing', 'ready'].includes(it.status));
+                    const unservedCount = activeItems.filter((it) => ['pending', 'preparing', 'ready'].includes(it.status)).length;
+                    const isPartiallyServed = order.is_partially_served || (servedItems.length > 0 && !allServed);
 
-                      <div style={styles.orderStatsLine}>
-                        <span>{order.items?.length || 0} items</span>
-                        <span>Grand total ETB {(Number(order.total_amount || 0) + Number(order.tip_amount || 0)).toFixed(2)}</span>
-                        <span>Tip ETB {Number(order.tip_amount || 0).toFixed(2)}</span>
-                      </div>
+                    return (
+                      <div
+                        key={order.id}
+                        style={{
+                          ...styles.orderCard,
+                          border: readyItems.length > 0 ? '2px solid #10b981' : '1px solid #e2e8f0',
+                          boxShadow: readyItems.length > 0 ? '0 4px 12px rgba(16,185,129,0.15)' : 'none',
+                        }}
+                      >
+                        <div style={styles.orderCardTop}>
+                          <div>
+                            <strong style={styles.orderId}>ORD-{order.id}</strong>
+                            {order.session_id && (
+                              <span style={{ fontSize: '11px', color: '#0284c7', fontWeight: 700, marginLeft: '6px' }}>
+                                Session #{order.session_id}
+                              </span>
+                            )}
+                            <div style={styles.smallMuted}>Table {order.table_code}</div>
+                          </div>
+                          <div style={styles.badgeRow}>
+                            <span style={statusBadge(order.status)}>{order.status}</span>
 
-                      <div style={styles.orderActionRow}>
-                        {order.status === 'ready' ? (
-                          <button style={styles.smallPrimary} onClick={() => markServed(order.id)}>Mark Served</button>
-                        ) : null}
-                        {order.status === 'served' && order.payment_status !== 'paid' ? (
-                          <button style={styles.smallPrimary} onClick={() => requestBill(order.id)} disabled={isBusy}>
-                            Request Bill
-                          </button>
-                        ) : null}
-                        {(order.status === 'served' || order.status === 'bill_requested') && order.payment_status !== 'paid' ? (
-                          <button style={styles.smallSuccess} onClick={() => openCheckout(order)}>
-                            Open Checkout
-                          </button>
-                        ) : null}
-                        <button style={styles.smallGhost} onClick={() => setDetailsOrder(order)}>Details</button>
+                            {/* Serving progress badge */}
+                            {allServed ? (
+                              <span style={{ fontSize: '11px', fontWeight: 800, padding: '3px 8px', borderRadius: '999px', background: '#dcfce7', color: '#166534' }}>
+                                ✓ All Served ({servedItems.length}/{activeItems.length})
+                              </span>
+                            ) : isPartiallyServed ? (
+                              <span style={{ fontSize: '11px', fontWeight: 800, padding: '3px 8px', borderRadius: '999px', background: '#fef3c7', color: '#b45309' }}>
+                                Partial ({servedItems.length}/{activeItems.length} served)
+                              </span>
+                            ) : (
+                              <span style={{ fontSize: '11px', fontWeight: 700, padding: '3px 8px', borderRadius: '999px', background: '#f1f5f9', color: '#475569' }}>
+                                Unserved (0/{activeItems.length})
+                              </span>
+                            )}
+
+                            {/* Pickup ready alert badge */}
+                            {readyItems.length > 0 && (
+                              <span style={{ fontSize: '11px', fontWeight: 800, padding: '3px 8px', borderRadius: '999px', background: '#fee2e2', color: '#991b1b', border: '1px solid #fecaca' }}>
+                                🔥 {readyItems.length} Ready For Pickup
+                              </span>
+                            )}
+
+                            <span style={paymentBadge(order.payment_status)}>{order.payment_status || 'pending'}</span>
+                            {order.bill_prepared_at && (
+                              <span style={{ fontSize: '11px', fontWeight: 700, padding: '3px 8px', borderRadius: '999px', background: '#dbeafe', color: '#1d4ed8' }}>
+                                Bill Prepared
+                              </span>
+                            )}
+                            {order.has_pending_handover && (
+                              <span style={{ fontSize: '11px', fontWeight: 700, padding: '3px 8px', borderRadius: '999px', background: '#fef3c7', color: '#b45309' }}>
+                                Handover Pending
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Order Items Breakdown & Quick Serving Actions */}
+                        <div style={styles.itemPreviewList}>
+                          {items.map((it) => (
+                            <div key={it.id} style={styles.itemPreviewRow}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1 }}>
+                                <span style={{ fontWeight: '800', minWidth: '24px', color: '#0284c7', fontSize: '12px' }}>
+                                  {it.quantity}×
+                                </span>
+                                <span style={{ fontWeight: '600', color: '#1e293b', fontSize: '13px' }}>
+                                  {it.menu_item_name}
+                                </span>
+                                <span style={{ fontSize: '10px', color: '#64748b', textTransform: 'uppercase', background: '#f1f5f9', padding: '1px 5px', borderRadius: '4px', fontWeight: '700' }}>
+                                  {it.station || 'Kitchen'}
+                                </span>
+                                {it.notes && (
+                                  <span style={{ fontSize: '11px', color: '#b45309', fontStyle: 'italic' }}>
+                                    ({it.notes})
+                                  </span>
+                                )}
+                              </div>
+
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <span style={itemStatusPill(it.status)}>
+                                  {it.status}
+                                </span>
+                                {it.status === 'ready' && (
+                                  <button
+                                    style={styles.itemServeBtn}
+                                    onClick={() => markOrderItemServed(it.id)}
+                                    disabled={isBusy}
+                                    title="Mark this item served to guest"
+                                  >
+                                    <CheckCircle size={11} style={{ marginRight: '2px' }} />
+                                    Serve
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+
+                        <div style={styles.orderStatsLine}>
+                          <span>{items.length} items</span>
+                          <span>Grand total ETB {(Number(order.total_amount || 0) + Number(order.tip_amount || 0)).toFixed(2)}</span>
+                          <span>Tip ETB {Number(order.tip_amount || 0).toFixed(2)}</span>
+                        </div>
+
+                        <div style={styles.orderActionRow}>
+                          {readyItems.length > 0 && (
+                            <button
+                              style={styles.smallSuccess}
+                              onClick={() => bulkMarkOrderItemsServed(readyItems.map((i) => i.id))}
+                              disabled={isBusy}
+                            >
+                              <CheckCircle size={14} style={{ marginRight: '4px' }} />
+                              Serve All Ready ({readyItems.length}) ✓
+                            </button>
+                          )}
+                          {allServed && order.payment_status !== 'paid' && (
+                            <button style={styles.smallPrimary} onClick={() => requestBill(order.id)} disabled={isBusy}>
+                              Request Bill
+                            </button>
+                          )}
+                          {(allServed || order.status === 'bill_requested') && order.payment_status !== 'paid' && (
+                            <button style={styles.smallSecondary} onClick={() => openCheckout(order)}>
+                              Open Checkout
+                            </button>
+                          )}
+                          {hasUnserved && order.payment_status !== 'paid' && (
+                            <div style={styles.blockedSettlementWarning}>
+                              ⚠️ Cannot settle: {unservedCount} item(s) unserved
+                            </div>
+                          )}
+                          <button style={styles.smallGhost} onClick={() => setDetailsOrder(order)}>Details</button>
+                        </div>
                       </div>
-                    </div>
-                  )) : <div style={styles.emptyCard}>No orders found yet.</div>}
+                    );
+                  }) : <div style={styles.emptyCard}>No orders found yet.</div>}
                 </div>
               </section>
             </>
@@ -856,17 +1038,68 @@ function WaiterDashboard({ userData, handleLogout }) {
       {detailsOrder ? (
         <Modal title={`Order Details / ORD-${detailsOrder.id}`} onClose={() => setDetailsOrder(null)}>
           <div style={styles.stack}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc', padding: '10px 14px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+              <div>
+                <strong>Table {detailsOrder.table_code}</strong>
+                {detailsOrder.session_id && <span style={{ marginLeft: 8, color: '#0284c7', fontSize: '12px', fontWeight: 700 }}>Session #{detailsOrder.session_id}</span>}
+              </div>
+              <span style={statusBadge(detailsOrder.status)}>{detailsOrder.status}</span>
+            </div>
+
+            {/* Bulk serve ready items in modal */}
+            {(detailsOrder.items || []).some((it) => it.status === 'ready') && (
+              <button
+                style={{ ...styles.smallSuccess, width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+                onClick={() => bulkMarkOrderItemsServed((detailsOrder.items || []).filter((i) => i.status === 'ready').map((i) => i.id))}
+                disabled={isBusy}
+              >
+                <CheckCircle size={15} />
+                Serve All Ready Items ({(detailsOrder.items || []).filter((i) => i.status === 'ready').length}) ✓
+              </button>
+            )}
+
             {(detailsOrder.items || []).map((item) => (
-              <div key={`${detailsOrder.id}-${item.id}`} style={styles.detailRow}>
-                <div>
-                  <span>{item.menu_item_name} x{item.quantity}</span>
+              <div key={`${detailsOrder.id}-${item.id}`} style={{ ...styles.detailRow, alignItems: 'center' }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    <span style={{ fontWeight: '700', color: '#0284c7' }}>{item.quantity}×</span>
+                    <span>{item.menu_item_name}</span>
+                    <span style={{ fontSize: '10px', color: '#64748b', textTransform: 'uppercase', background: '#f1f5f9', padding: '1px 5px', borderRadius: '4px', fontWeight: '700' }}>
+                      {item.station || 'Kitchen'}
+                    </span>
+                    <span style={itemStatusPill(item.status)}>{item.status}</span>
+                  </div>
                   {item.notes ? (
-                    <div style={{ fontSize: '12px', color: '#64748b', fontStyle: 'italic', marginTop: '2px' }}>
+                    <div style={{ fontSize: '12px', color: '#64748b', fontStyle: 'italic', marginTop: '2px', marginLeft: '24px' }}>
                       📝 Note: {item.notes}
                     </div>
                   ) : null}
+                  {item.ready_at && (
+                    <div style={{ fontSize: '11px', color: '#166534', marginTop: '2px', marginLeft: '24px' }}>
+                      Ready: {new Date(item.ready_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </div>
+                  )}
+                  {item.served_at && (
+                    <div style={{ fontSize: '11px', color: '#0f766e', marginTop: '2px', marginLeft: '24px' }}>
+                      Served: {new Date(item.served_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </div>
+                  )}
                 </div>
-                <strong>ETB {(item.quantity * item.price_at_order).toFixed(2)}</strong>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <strong>ETB {(item.quantity * item.price_at_order).toFixed(2)}</strong>
+                  {item.status === 'ready' && (
+                    <button
+                      style={styles.itemServeBtn}
+                      onClick={() => markOrderItemServed(item.id)}
+                      disabled={isBusy}
+                      title="Deliver & mark served"
+                    >
+                      <CheckCircle size={12} style={{ marginRight: '3px' }} />
+                      Serve
+                    </button>
+                  )}
+                </div>
               </div>
             ))}
             <div style={styles.detailSummaryBox}>
@@ -883,10 +1116,21 @@ function WaiterDashboard({ userData, handleLogout }) {
         </Modal>
       ) : null}
 
-      {checkoutOrder ? (
+      {checkoutOrder ? (() => {
+        const checkoutItems = checkoutOrder.items || [];
+        const unservedInCheckout = checkoutItems.filter((it) => !['served', 'cancelled'].includes(it.status));
+        const hasUnservedInCheckout = unservedInCheckout.length > 0;
+
+        return (
         <Modal title={`Checkout / ORD-${checkoutOrder.id}`} onClose={closeCheckout}>
           {checkoutSummary ? (
             <div style={styles.stack}>
+              {hasUnservedInCheckout && (
+                <div style={{ fontSize: '13px', color: '#991b1b', background: '#fee2e2', border: '1px solid #fecaca', padding: '10px 14px', borderRadius: '8px', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <AlertTriangle size={18} />
+                  Settlement Blocked: This order has {unservedInCheckout.length} item(s) awaiting preparation or delivery. All items must be served or cancelled before payment.
+                </div>
+              )}
               <div style={styles.checkoutSummary}>
                 <div style={styles.detailRow}><span>Sub-total</span><strong>ETB {Number(checkoutSummary.sub_total || 0).toFixed(2)}</strong></div>
                 <div style={styles.detailRow}><span>VAT (15%)</span><strong>ETB {Number(checkoutSummary.vat || 0).toFixed(2)}</strong></div>
@@ -936,7 +1180,7 @@ function WaiterDashboard({ userData, handleLogout }) {
                     💵 <strong>Cash Collection & Handover</strong><br/>
                     Collect cash from the customer, then submit handover request to the cashier. The cashier verifies funds to finalize settlement.
                   </div>
-                  <button style={styles.primaryButton} onClick={confirmCashPayment} disabled={isBusy}>
+                  <button style={styles.primaryButton} onClick={confirmCashPayment} disabled={isBusy || hasUnservedInCheckout}>
                     {isBusy ? <LoaderCircle size={16} /> : <Wallet size={16} />}
                     {isBusy ? 'Submitting Handover...' : 'Record Cash & Submit Handover'}
                   </button>
@@ -944,7 +1188,7 @@ function WaiterDashboard({ userData, handleLogout }) {
               ) : paymentChoice === 'Digital' ? (
                 <div style={styles.stack}>
                   {!digitalSession ? (
-                    <button style={styles.primaryButton} onClick={generateDigitalSession} disabled={isBusy}>
+                    <button style={styles.primaryButton} onClick={generateDigitalSession} disabled={isBusy || hasUnservedInCheckout}>
                       {isBusy ? <LoaderCircle size={16} /> : <CreditCard size={16} />}
                       {isBusy ? 'Preparing...' : 'Generate Payment QR'}
                     </button>
@@ -990,7 +1234,7 @@ function WaiterDashboard({ userData, handleLogout }) {
                   <button 
                     style={styles.primaryButton} 
                     onClick={confirmRoomChargePayment} 
-                    disabled={isBusy || !selectedRoomResId}
+                    disabled={isBusy || !selectedRoomResId || hasUnservedInCheckout}
                   >
                     {isBusy ? <LoaderCircle size={16} /> : <Hotel size={16} />}
                     {isBusy ? 'Posting to Room Folio...' : 'Post Charge to Room Folio'}
@@ -1002,7 +1246,8 @@ function WaiterDashboard({ userData, handleLogout }) {
             <div style={styles.emptyCard}>Loading payment summary...</div>
           )}
         </Modal>
-      ) : null}
+        );
+      })() : null}
     </div>
   );
 }
@@ -1050,6 +1295,26 @@ function MiniSummary({ label, value }) {
     </div>
   );
 }
+
+const itemStatusPill = (status) => {
+  const stylesMap = {
+    pending: { color: '#92400e', background: '#fef3c7' },
+    preparing: { color: '#1d4ed8', background: '#dbeafe' },
+    ready: { color: '#166534', background: '#dcfce7' },
+    served: { color: '#0f766e', background: '#ccfbf1' },
+    cancelled: { color: '#64748b', background: '#f1f5f9' },
+  };
+  const token = stylesMap[status] || { color: '#334155', background: '#e2e8f0' };
+  return {
+    fontSize: '11px',
+    fontWeight: '700',
+    padding: '2px 8px',
+    borderRadius: '8px',
+    color: token.color,
+    background: token.background,
+    textTransform: 'uppercase',
+  };
+};
 
 const statusBadge = (status) => {
   const palette = {
@@ -1437,6 +1702,56 @@ const styles = {
     gap: 12,
     color: '#475569',
     fontSize: 13,
+  },
+  itemPreviewList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 6,
+    background: '#f8fafc',
+    borderRadius: 10,
+    padding: '10px 12px',
+    marginTop: 8,
+    marginBottom: 8,
+    border: '1px solid #e2e8f0',
+  },
+  itemPreviewRow: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingBottom: 4,
+    borderBottom: '1px solid #f1f5f9',
+  },
+  itemServeBtn: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    border: 'none',
+    borderRadius: 6,
+    padding: '3px 8px',
+    background: '#10b981',
+    color: '#fff',
+    fontSize: '11px',
+    fontWeight: 800,
+    cursor: 'pointer',
+    boxShadow: '0 2px 4px rgba(16,185,129,0.2)',
+  },
+  blockedSettlementWarning: {
+    fontSize: '11px',
+    fontWeight: 700,
+    color: '#b45309',
+    background: '#fef3c7',
+    padding: '6px 10px',
+    borderRadius: 8,
+    display: 'flex',
+    alignItems: 'center',
+  },
+  smallSecondary: {
+    border: 'none',
+    borderRadius: 12,
+    padding: '10px 12px',
+    background: '#0f766e',
+    color: '#fff',
+    cursor: 'pointer',
+    fontWeight: 800,
   },
   orderActionRow: { display: 'flex', flexWrap: 'wrap', gap: 10 },
   smallPrimary: {

@@ -152,7 +152,7 @@ class InventoryWasteManagementTestCase(APITestCase):
         je = JournalEntry.objects.get(id=data["journal_entry"])
         items = list(je.items.all())
         self.assertEqual(len(items), 2)
-        debit_item = next(it for it in items if it.account.code == "5000")
+        debit_item = next(it for it in items if it.account.code in ("5000", "5010"))
         credit_item = next(it for it in items if it.account.code == "1300")
         self.assertEqual(debit_item.amount_debit, Decimal("150.00"))
         self.assertEqual(credit_item.amount_credit, Decimal("150.00"))
@@ -476,7 +476,8 @@ class InventoryWasteManagementTestCase(APITestCase):
         rev_je = JournalEntry.objects.get(id=rev_data["journal_entry"])
         self.assertEqual(rev_je.reversal_of_id, orig_record.journal_entry_id)
         debit_line = rev_je.items.get(account__code="1300")
-        credit_line = rev_je.items.get(account__code="5000")
+        credit_line = rev_je.items.filter(account__code__in=("5000", "5010")).first()
+        self.assertIsNotNone(credit_line)
         self.assertEqual(debit_line.amount_debit, Decimal("150.00"))
         self.assertEqual(credit_line.amount_credit, Decimal("150.00"))
 

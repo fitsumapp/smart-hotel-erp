@@ -310,6 +310,61 @@ UNFOLD = {
                         "link": reverse_lazy("admin:hotel_inventoryitem_changelist"),
                     },
                     {
+                        "title": _("Purchase Requisitions"),
+                        "icon": "assignment",
+                        "link": reverse_lazy("admin:hotel_purchaserequisition_changelist"),
+                    },
+                    {
+                        "title": _("Requests for Quotation (RFQ)"),
+                        "icon": "request_quote",
+                        "link": reverse_lazy("admin:hotel_requestforquotation_changelist"),
+                    },
+                    {
+                        "title": _("Supplier Quotations"),
+                        "icon": "price_check",
+                        "link": reverse_lazy("admin:hotel_supplierquotation_changelist"),
+                    },
+                    {
+                        "title": _("Purchase Orders"),
+                        "icon": "shopping_bag",
+                        "link": reverse_lazy("admin:hotel_purchaseorder_changelist"),
+                    },
+                    {
+                        "title": _("Goods Receipt Notes (GRN)"),
+                        "icon": "markunread_mailbox",
+                        "link": reverse_lazy("admin:hotel_goodsreceiptnote_changelist"),
+                    },
+                    {
+                        "title": _("Supplier Invoices (3-Way)"),
+                        "icon": "receipt",
+                        "link": reverse_lazy("admin:hotel_supplierinvoice_changelist"),
+                    },
+                    {
+                        "title": _("Stock Batches & Expiry"),
+                        "icon": "layers",
+                        "link": reverse_lazy("admin:hotel_stockbatch_changelist"),
+                    },
+                    {
+                        "title": _("Physical Stocktaking"),
+                        "icon": "checklist",
+                        "link": reverse_lazy("admin:hotel_stocktakesession_changelist"),
+                    },
+                    {
+                        "title": _("Stock Locations"),
+                        "icon": "warehouse",
+                        "link": reverse_lazy("admin:hotel_stocklocation_changelist"),
+                    },
+                    {
+                        "title": _("Batch Balances"),
+                        "icon": "scale",
+                        "link": reverse_lazy("admin:hotel_batchlocationbalance_changelist"),
+                    },
+                    {
+                        "title": _("Stock Transfers"),
+                        "icon": "sync_alt",
+                        "link": reverse_lazy("admin:hotel_stocktransfer_changelist"),
+                    },
+                    {
                         "title": _("Inventory Categories"),
                         "icon": "folder",
                         "link": reverse_lazy("admin:hotel_inventorycategory_changelist"),
@@ -432,6 +487,17 @@ CORS_ALLOWED_ORIGINS = env_list(
     "https://hotelerp.acrmatech.com,https://acrmatech.com,http://localhost:3000,http://127.0.0.1:3000"
 )
 CORS_ALLOWED_ORIGIN_REGEXES = env_list("CORS_ALLOWED_ORIGIN_REGEXES")
+if not IS_PRODUCTION:
+    # Allow local development and LAN subnets (RFC 1918) for multi-device/tablet testing
+    CORS_ALLOWED_ORIGIN_REGEXES = list(CORS_ALLOWED_ORIGIN_REGEXES) + [
+        r"^http://localhost(?::\d+)?$",
+        r"^http://127\.0\.0\.1(?::\d+)?$",
+        r"^http://192\.168\.\d+\.\d+(?::\d+)?$",
+        r"^http://10\.\d+\.\d+\.\d+(?::\d+)?$",
+        r"^http://172\.(?:1[6-9]|2\d|3[01])\.\d+\.\d+(?::\d+)?$",
+    ]
+    if "*" not in ALLOWED_HOSTS:
+        ALLOWED_HOSTS = list(ALLOWED_HOSTS) + ["*"]
 from corsheaders.defaults import default_headers
 CORS_ALLOW_HEADERS = list(default_headers) + [
     "x-tenant-schema",

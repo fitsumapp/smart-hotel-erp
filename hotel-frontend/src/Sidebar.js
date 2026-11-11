@@ -8,7 +8,9 @@ import {
   Settings, ChevronDown, CalendarDays,
   ClipboardList, FileBarChart2, Package, TrendingUp,
   Hotel, BookOpen, Moon, BarChart2, Shield, BarChart3,
-  Activity, Layers, BookMarked, X, Sparkles
+  Activity, Layers, BookMarked, X, Sparkles, ChefHat,
+  Truck, FileText, Globe, FileSpreadsheet, Scale, PackageCheck, Receipt,
+  ClipboardCheck
 } from 'lucide-react';
 
 // ── Menu structure with section groupings ─────────────────────────────────────
@@ -50,6 +52,21 @@ const menuGroups = [
         ]
       },
       { id: 'inventory', title: 'Inventory Control', icon: <Package size={17} />, pkg: 'inventory' },
+      { id: 'stocktaking', title: 'Physical Stocktaking', icon: <ClipboardCheck size={17} />, pkg: 'inventory' },
+      {
+        id: 'procurement',
+        title: 'Procurement & Sourcing',
+        icon: <Truck size={17} />,
+        pkg: 'inventory',
+        children: [
+          { id: 'procurement_requisitions', title: 'Requisitions', icon: <FileText size={15} /> },
+          { id: 'procurement_rfqs',         title: 'RFQs & Bidding', icon: <Globe size={15} /> },
+          { id: 'procurement_quotations',   title: 'Vendor Bids', icon: <FileSpreadsheet size={15} /> },
+          { id: 'procurement_awards',       title: 'Award Matrix', icon: <Scale size={15} /> },
+          { id: 'procurement_receiving',    title: 'Goods Receiving (GRN)', icon: <PackageCheck size={15} /> },
+          { id: 'procurement_invoices',     title: '3-Way Match & AP', icon: <Receipt size={15} /> },
+        ]
+      },
     ]
   },
   {
@@ -72,6 +89,7 @@ const menuGroups = [
           { id: 'report_occupancy',title: 'Occupancy & Revenue',  icon: <Hotel         size={15} /> },
           { id: 'report_bookings', title: 'Bookings Report',      icon: <BookMarked    size={15} /> },
           { id: 'report_inventory',title: 'Inventory Report',     icon: <Layers        size={15} /> },
+          { id: 'report_operations_timing', title: 'Kitchen & Bar Performance', icon: <ChefHat size={15} /> },
         ]
       },
     ]
@@ -92,6 +110,8 @@ const iconColors = {
   food_beverage:{ bg: 'rgba(251,146,60,0.14)',  color: '#fb923c' },
   rooms_pkg:    { bg: 'rgba(139,92,246,0.14)',  color: '#a78bfa' },
   inventory:    { bg: 'rgba(251,191,36,0.14)',  color: '#fbbf24' },
+  stocktaking:  { bg: 'rgba(14,165,233,0.14)',  color: '#0ea5e9' },
+  procurement:  { bg: 'rgba(16,185,129,0.14)',  color: '#10b981' },
   finance:      { bg: 'rgba(52,211,153,0.14)',  color: '#34d399' },
   all_reports:  { bg: 'rgba(244,63,94,0.14)',   color: '#fb7185' },
   users:        { bg: 'rgba(96,165,250,0.14)',  color: '#60a5fa' },
@@ -99,7 +119,7 @@ const iconColors = {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-const Sidebar = ({ activeTab, setActiveTab, handleLogout, isOpen, setIsOpen }) => {
+const Sidebar = ({ activeTab, setActiveTab, handleLogout, isOpen, setIsOpen, hotelSettings: propSettings }) => {
   const [hotelSettings, setHotelSettings] = useState(null);
   const [openSubmenu, setOpenSubmenu]     = useState(null);
   const [isMobile, setIsMobile]           = useState(window.innerWidth <= 768);
@@ -114,6 +134,13 @@ const Sidebar = ({ activeTab, setActiveTab, handleLogout, isOpen, setIsOpen }) =
   const userRole  = savedUser ? JSON.parse(savedUser).role?.toLowerCase().trim() : null;
 
   useEffect(() => {
+    if (propSettings) {
+      setHotelSettings(propSettings);
+    }
+  }, [propSettings]);
+
+  useEffect(() => {
+    if (propSettings) return;
     const fetchSettings = () => {
       const token = localStorage.getItem('access_token');
       if (token) {
@@ -128,9 +155,7 @@ const Sidebar = ({ activeTab, setActiveTab, handleLogout, isOpen, setIsOpen }) =
       }
     };
     fetchSettings();
-    const interval = setInterval(fetchSettings, 5000);
-    return () => clearInterval(interval);
-  }, []);
+  }, [propSettings]);
 
   // Auto-open submenu if a child is currently active
   useEffect(() => {
@@ -150,6 +175,11 @@ const Sidebar = ({ activeTab, setActiveTab, handleLogout, isOpen, setIsOpen }) =
   const toggleSubmenu = (id) => setOpenSubmenu(openSubmenu === id ? null : id);
 
   const isChildVisible = (child) => {
+    if (userRole === 'inventory') {
+      if (child.id !== 'report_inventory' && !child.id.startsWith('procurement_')) {
+        return false;
+      }
+    }
     if (['report_police', 'report_occupancy', 'report_bookings'].includes(child.id)) {
       if (hotelSettings?.module_rooms === false) return false;
     }
@@ -166,7 +196,7 @@ const Sidebar = ({ activeTab, setActiveTab, handleLogout, isOpen, setIsOpen }) =
     if (hotelSettings) {
       if ((item.pkg === 'rooms' || item.id === 'rooms_pkg') && hotelSettings.module_rooms === false) return false;
       if ((item.pkg === 'food_beverage' || item.pkg === 'orders' || item.id === 'orders') && hotelSettings.module_pos === false) return false;
-      if ((item.pkg === 'inventory' || item.id === 'inventory') && hotelSettings.module_inventory === false) return false;
+      if ((item.pkg === 'inventory' || item.id === 'inventory' || item.id === 'procurement') && hotelSettings.module_inventory === false) return false;
       if ((item.pkg === 'finance' || item.id === 'finance') && hotelSettings.module_finance === false) return false;
     }
 
@@ -179,7 +209,9 @@ const Sidebar = ({ activeTab, setActiveTab, handleLogout, isOpen, setIsOpen }) =
       const visibleChildren = item.children.filter(isChildVisible);
       if (visibleChildren.length === 0) return false;
     }
-    if (userRole === 'finance' && !['dashboard', 'finance', 'inventory', 'all_reports'].includes(item.id)) return false;
+    if (userRole === 'finance' && !['dashboard', 'finance', 'inventory', 'procurement', 'all_reports'].includes(item.id)) return false;
+    if (userRole === 'hotel_manager' && ['users', 'settings'].includes(item.id)) return false;
+    if (userRole === 'inventory' && !['inventory', 'stocktaking', 'procurement', 'all_reports'].includes(item.id)) return false;
     return true;
   };
 

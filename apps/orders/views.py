@@ -3,7 +3,8 @@
 from users.views import *  # noqa: F401,F403
 import users.views as legacy_views
 from .services import create_order_idempotently, settle_dining_session, build_session_payment_summary
-from hotel.integrity import transition_order, ORDER_STATUS_TRANSITIONS
+from hotel.integrity import transition_order, ORDER_STATUS_TRANSITIONS, recalculate_order_lifecycle
+from apps.audit.services import record_audit_event
 from hotel.models import DiningSession, CashHandover
 from .serializers import DiningSessionSerializer
 from django.core.exceptions import ValidationError
@@ -13,7 +14,7 @@ def finalize_paid_order(*args, **kwargs):
     return legacy_views.finalize_paid_order(*args, **kwargs)
 
 
-from users.permissions import IsAdminOrReadOnly
+from users.permissions import IsAdminOrReadOnly, IsHotelManagerOrAdmin
 from .selectors import select_admin_orders
 
 class CategoryViewSet(viewsets.ModelViewSet):
@@ -37,7 +38,7 @@ class RestaurantTableViewSet(viewsets.ModelViewSet):
 
 
 class DashboardStatsView(APIView):
-    permission_classes = [IsHotelAdmin]
+    permission_classes = [IsHotelManagerOrAdmin]
 
     def get(self, request):
         from django.db.models import Sum, Count, Q
@@ -173,7 +174,7 @@ class CreateOrderView(APIView):
 
 
 PREPARATION_STATUS_TRANSITIONS = {
-    "pending": {"preparing"},
+    "pending": {"preparing", "ready"},
     "preparing": {"ready"},
 }
 
@@ -295,26 +296,44 @@ class UpdateOrderStatusView(APIView):
                     for it in target_items:
                         if it.status == new_status:
                             continue
-                        allowed = PREPARATION_STATUS_TRANSITIONS.get(it.status, set())
+                        # Station-specific transition rules:
+                        # Kitchen items must follow pending -> preparing -> ready (cannot skip preparing!)
+                        # Bar items do not require prep-start and can transition pending -> ready directly
+                        is_bar = it.get_station().lower() == "bar"
+                        if is_bar:
+                            allowed = {"preparing", "ready"} if it.status == "pending" else {"ready"} if it.status == "preparing" else set()
+                        else:
+                            allowed = {"preparing"} if it.status == "pending" else {"ready"} if it.status == "preparing" else set()
+
                         if new_status not in allowed:
                             return Response(
                                 {"error": f"Cannot transition order from {it.status} to {new_status}."},
                                 status=status.HTTP_400_BAD_REQUEST,
                             )
 
+                    now = timezone.now()
                     for it in target_items:
                         it.status = new_status
-                        it.save(update_fields=["status"])
+                        update_fields = ["status"]
+                        if new_status == "preparing":
+                            # Kitchen items record preparation started; Bar items fulfill directly
+                            if it.get_station().lower() != "bar":
+                                if it.preparation_started_at is None:
+                                    it.preparation_started_at = now
+                                    update_fields.append("preparation_started_at")
+                                if it.prepared_by_id_ref is None:
+                                    it.prepared_by_id_ref = request.user.id
+                                    update_fields.append("prepared_by_id_ref")
+                        elif new_status == "ready":
+                            if it.ready_at is None:
+                                it.ready_at = now
+                                update_fields.append("ready_at")
+                            if it.ready_by_id_ref is None:
+                                it.ready_by_id_ref = request.user.id
+                                update_fields.append("ready_by_id_ref")
+                        it.save(update_fields=update_fields)
 
-                    # Recompute overall order status
-                    fresh_items = list(order.items.all())
-                    if all(it.status == "ready" for it in fresh_items):
-                        order.status = "ready"
-                    elif any(it.status in ["preparing", "ready"] for it in fresh_items):
-                        order.status = "preparing"
-                    else:
-                        order.status = "pending"
-                    order.save(update_fields=["status", "updated_at"])
+                    order = recalculate_order_lifecycle(order.id)
 
             if order.status == "ready" and order.waiter_id_ref:
                 Notification.objects.create(
@@ -324,6 +343,16 @@ class UpdateOrderStatusView(APIView):
                         f"is ready. Please serve the customer."
                     ),
                 )
+
+            try:
+                record_audit_event(
+                    action="order_status_updated",
+                    entity_type="order",
+                    entity_id=str(order.id),
+                    after={"status": order.status, "new_status": new_status},
+                )
+            except Exception:
+                pass
 
             return Response({"message": f"Order status updated to {new_status}"})
         except Order.DoesNotExist:
@@ -386,20 +415,241 @@ class MarkOrderServedView(APIView):
 
     def post(self, request, order_id):
         try:
-            owned = Order.objects.get(id=order_id, waiter_id_ref=request.user.id)
-            order, _ = transition_order(order_id=owned.pk, to_status="served")
+            is_supervisor = request.user.role in ["admin", "hotel_manager"] or request.user.is_superuser
+            with transaction.atomic():
+                try:
+                    order = (
+                        Order.objects.select_for_update()
+                        .select_related("table")
+                        .get(id=order_id)
+                    )
+                except Order.DoesNotExist:
+                    return Response({"error": "Order not found"}, status=status.HTTP_404_NOT_FOUND)
 
-            # Notify all cashiers to print receipt and collect payment
-            notify_cashiers(
-                f"Order Served — Print Receipt: Table {order.table.table_code} / ORD-{order.id}"
-            )
+                if not is_supervisor:
+                    if order.waiter_id_ref is not None and order.waiter_id_ref != request.user.id:
+                        return Response(
+                            {"error": "You are not authorized to mark another waiter's order as served."},
+                            status=status.HTTP_403_FORBIDDEN,
+                        )
+
+                items = list(order.items.select_for_update().all())
+                unready = [it for it in items if it.status in ["pending", "preparing"]]
+                if unready:
+                    return Response(
+                        {"error": f"Cannot mark entire order as served: {len(unready)} item(s) are still {unready[0].status}."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
+                now = timezone.now()
+                for it in items:
+                    if it.status == "ready":
+                        it.status = "served"
+                        update_fields = ["status"]
+                        if it.served_at is None:
+                            it.served_at = now
+                            update_fields.append("served_at")
+                        if it.served_by_id_ref is None:
+                            it.served_by_id_ref = request.user.id
+                            update_fields.append("served_by_id_ref")
+                        it.save(update_fields=update_fields)
+
+                order, _ = transition_order(order_id=order.pk, to_status="served", user_id=request.user.id)
+
+                # Notify all cashiers to print receipt and collect payment
+                notify_cashiers(
+                    f"Order Served - Print Receipt: Table {order.table.table_code} / ORD-{order.id}"
+                )
+
+            try:
+                record_audit_event(
+                    action="order_marked_served",
+                    entity_type="order",
+                    entity_id=str(order.id),
+                    after={"status": "served"},
+                )
+            except Exception:
+                pass
 
             return Response({"message": "Order marked as served!"})
+        except ValidationError as val_err:
+            return Response({"error": str(val_err)}, status=status.HTTP_400_BAD_REQUEST)
         except Order.DoesNotExist:
-            return Response({"error": "Order not found"}, status=404)
+            return Response({"error": "Order not found"}, status=status.HTTP_404_NOT_FOUND)
         except Exception as exc:
             logger.exception("Mark order served failed")
-            return Response({"error": "Unable to mark order as served."}, status=500)
+            return Response({"error": "Unable to mark order as served."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class MarkOrderItemServedView(APIView):
+    permission_classes = [IsWaiterOrAdmin]
+
+    def post(self, request, item_id):
+        try:
+            with transaction.atomic():
+                try:
+                    target_item = OrderItem.objects.select_related("order__table").get(id=item_id)
+                except OrderItem.DoesNotExist:
+                    return Response({"error": "Order item not found."}, status=status.HTTP_404_NOT_FOUND)
+
+                # Order-first row-level locking
+                order = (
+                    Order.objects.select_for_update()
+                    .select_related("table")
+                    .get(id=target_item.order_id)
+                )
+                item = OrderItem.objects.select_for_update().get(id=item_id)
+
+                is_supervisor = request.user.role in ["admin", "hotel_manager"] or request.user.is_superuser
+                if not is_supervisor:
+                    if order.waiter_id_ref is not None and order.waiter_id_ref != request.user.id:
+                        return Response(
+                            {"error": "You are not authorized to mark items served for another waiter's order."},
+                            status=status.HTTP_403_FORBIDDEN,
+                        )
+
+                if item.status == "served":
+                    return Response({
+                        "message": "Item is already marked as served.",
+                        "item_id": item.id,
+                        "order_status": order.status,
+                    }, status=status.HTTP_200_OK)
+
+                if item.status == "cancelled":
+                    return Response(
+                        {"error": "Cannot serve a cancelled item."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
+                if item.status in ["pending", "preparing"]:
+                    return Response(
+                        {"error": f"Cannot serve item while it is {item.status}. Item must be marked ready first."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
+                now = timezone.now()
+                item.status = "served"
+                update_fields = ["status"]
+                if item.served_at is None:
+                    item.served_at = now
+                    update_fields.append("served_at")
+                if item.served_by_id_ref is None:
+                    item.served_by_id_ref = request.user.id
+                    update_fields.append("served_by_id_ref")
+                item.save(update_fields=update_fields)
+
+                order = recalculate_order_lifecycle(order.id, user_id=request.user.id)
+
+                if order.status == "served":
+                    notify_cashiers(
+                        f"Order Served - Print Receipt: Table {order.table.table_code} / ORD-{order.id}"
+                    )
+
+            try:
+                record_audit_event(
+                    action="order_item_served",
+                    entity_type="order_item",
+                    entity_id=str(item.id),
+                    after={"status": "served", "order_status": order.status},
+                )
+            except Exception:
+                pass
+
+            return Response({
+                "message": "Item marked as served.",
+                "item_id": item.id,
+                "order_id": order.id,
+                "order_status": order.status,
+            })
+        except Exception as exc:
+            logger.exception("Mark item served failed")
+            return Response({"error": "Unable to mark item as served."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class BulkMarkOrderItemsServedView(APIView):
+    permission_classes = [IsWaiterOrAdmin]
+
+    def post(self, request):
+        try:
+            item_ids = request.data.get("item_ids")
+            if not item_ids or not isinstance(item_ids, list):
+                return Response(
+                    {"error": "item_ids must be a non-empty list of integers."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            is_supervisor = request.user.role in ["admin", "hotel_manager"] or request.user.is_superuser
+
+            with transaction.atomic():
+                items_lookup = list(
+                    OrderItem.objects.filter(id__in=item_ids).select_related("order__table")
+                )
+                if len(items_lookup) != len(set(item_ids)):
+                    return Response(
+                        {"error": "One or more order items not found."},
+                        status=status.HTTP_404_NOT_FOUND,
+                    )
+
+                # Order-first row locking in sorted order
+                order_ids = sorted(list({it.order_id for it in items_lookup}))
+                orders_map = {
+                    o.id: o
+                    for o in Order.objects.select_for_update()
+                    .select_related("table")
+                    .filter(id__in=order_ids)
+                }
+
+                if not is_supervisor:
+                    for ord_obj in orders_map.values():
+                        if ord_obj.waiter_id_ref is not None and ord_obj.waiter_id_ref != request.user.id:
+                            return Response(
+                                {"error": "You are not authorized to mark items served for another waiter's order."},
+                                status=status.HTTP_403_FORBIDDEN,
+                            )
+
+                locked_items = list(OrderItem.objects.select_for_update().filter(id__in=item_ids))
+
+                for it in locked_items:
+                    if it.status == "cancelled":
+                        return Response(
+                            {"error": f"Item #{it.id} is cancelled and cannot be served."},
+                            status=status.HTTP_400_BAD_REQUEST,
+                        )
+                    if it.status in ["pending", "preparing"]:
+                        return Response(
+                            {"error": f"Item #{it.id} is {it.status} and cannot be served until ready."},
+                            status=status.HTTP_400_BAD_REQUEST,
+                        )
+
+                now = timezone.now()
+                served_ids = []
+                for it in locked_items:
+                    if it.status != "served":
+                        it.status = "served"
+                        update_fields = ["status"]
+                        if it.served_at is None:
+                            it.served_at = now
+                            update_fields.append("served_at")
+                        if it.served_by_id_ref is None:
+                            it.served_by_id_ref = request.user.id
+                            update_fields.append("served_by_id_ref")
+                        it.save(update_fields=update_fields)
+                    served_ids.append(it.id)
+
+                for oid in order_ids:
+                    ord_obj = recalculate_order_lifecycle(oid, user_id=request.user.id)
+                    if ord_obj.status == "served":
+                        notify_cashiers(
+                            f"Order Served - Print Receipt: Table {ord_obj.table.table_code} / ORD-{ord_obj.id}"
+                        )
+
+            return Response({
+                "message": f"{len(served_ids)} item(s) marked as served.",
+                "served_item_ids": served_ids,
+            })
+        except Exception as exc:
+            logger.exception("Bulk mark items served failed")
+            return Response({"error": "Unable to mark items as served."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class RequestBillView(APIView):
@@ -412,7 +662,7 @@ class RequestBillView(APIView):
             return Response({"error": "Order not found"}, status=status.HTTP_404_NOT_FOUND)
 
         # Role-based authorization: assigned waiter or supervisory admin/manager
-        if request.user.role in ["admin", "manager"] or request.user.is_superuser:
+        if request.user.role in ["admin", "hotel_manager"] or request.user.is_superuser:
             pass
         elif request.user.role == "waiter":
             if order.waiter_id_ref is not None and order.waiter_id_ref != request.user.id:
@@ -549,7 +799,7 @@ class RecordCashHandoverView(APIView):
         except Order.DoesNotExist:
             return Response({"error": "Order not found"}, status=status.HTTP_404_NOT_FOUND)
 
-        if request.user.role in ["admin", "manager"] or request.user.is_superuser:
+        if request.user.role in ["admin", "hotel_manager"] or request.user.is_superuser:
             pass
         elif request.user.role == "waiter":
             if order.waiter_id_ref and order.waiter_id_ref != request.user.id:
@@ -627,6 +877,37 @@ class ConfirmCashHandoverView(APIView):
                 if order.payment_status == "paid":
                     return Response({"error": "Order is already paid."}, status=status.HTTP_400_BAD_REQUEST)
 
+                # Dining tables cannot be settled while items are still in preparation or awaiting delivery
+                if order.session is not None:
+                    settle_session_req = request.data.get("settle_session", False)
+                    if settle_session_req:
+                        unserved_items = OrderItem.objects.filter(
+                            order__in=order.session.orders.filter(payment_status="pending").exclude(status="cancelled"),
+                            status__in=["pending", "preparing", "ready"]
+                        ).exists()
+                        if unserved_items:
+                            return Response(
+                                {
+                                    "error": (
+                                        "Cannot settle dining session: table still has items in preparation or awaiting delivery. "
+                                        "Please confirm delivery or cancel remaining items first."
+                                    )
+                                },
+                                status=status.HTTP_400_BAD_REQUEST,
+                            )
+                    else:
+                        unserved_items = order.items.filter(status__in=["pending", "preparing", "ready"]).exists()
+                        if unserved_items:
+                            return Response(
+                                {
+                                    "error": (
+                                        "Cannot finalize payment for dining order: items are still in preparation or awaiting delivery. "
+                                        "Please serve or cancel remaining items first."
+                                    )
+                                },
+                                status=status.HTTP_400_BAD_REQUEST,
+                            )
+
                 handover = CashHandover.objects.select_for_update().filter(order=order, status="pending").first()
                 tip_amount = to_decimal(request.data.get("tip_amount", (handover.tip_amount if handover else order.tip_amount) or 0))
                 payment_ref = request.data.get("payment_reference") or (handover.payment_reference if handover else f"CASH-ORD-{order.id}-{timezone.now().strftime('%H%M%S')}")
@@ -663,16 +944,18 @@ class ConfirmCashHandoverView(APIView):
                     payment_reference=handover.payment_reference,
                     tip_amount=handover.tip_amount,
                     cashier=request.user,
+                    enforce_served=True,
                 )
 
                 if order.session and request.data.get("settle_session", False):
-                    for other_ord in order.session.orders.select_for_update().filter(payment_status="pending").exclude(id=order.id):
+                    for other_ord in order.session.orders.select_for_update().filter(payment_status="pending").exclude(id=order.id).order_by("id"):
                         finalize_paid_order(
                             other_ord,
                             payment_method="Cash",
                             payment_reference=f"SESS-{order.session.id}-{other_ord.id}",
                             tip_amount=Decimal("0.00"),
                             cashier=request.user,
+                            enforce_served=True,
                         )
 
             if handover.waiter_id_ref:
@@ -707,6 +990,20 @@ class CompleteOrderView(APIView):
                 )
                 if order.payment_status == "paid":
                     return Response({"error": "Order is already paid."}, status=status.HTTP_400_BAD_REQUEST)
+
+                # Dining tables cannot be settled while items are still in preparation or awaiting delivery
+                if order.session is not None:
+                    unserved_items = order.items.filter(status__in=["pending", "preparing", "ready"]).exists()
+                    if unserved_items:
+                        return Response(
+                            {
+                                "error": (
+                                    "Cannot finalize payment for dining order: items are still in preparation or awaiting delivery. "
+                                    "Please serve or cancel remaining items first."
+                                )
+                            },
+                            status=status.HTTP_400_BAD_REQUEST,
+                        )
 
                 method = request.data.get("payment_method", "Cash")
                 tip = to_decimal(request.data.get("tip_amount", order.tip_amount))
@@ -834,17 +1131,23 @@ class WaiterCashPaymentView(APIView):
         if order.payment_status == "paid":
             return Response({"error": "Order is already paid."}, status=400)
 
-        with transaction.atomic():
-            finalize_paid_order(
-                order,
-                payment_method="Cash",
-                payment_reference=request.data.get(
-                    "payment_reference",
-                    f"CASH-{order.id}-{timezone.now().strftime('%H%M%S')}",
-                ),
-                tip_amount=request.data.get("tip_amount", 0),
-            )
-        return Response({"message": "Cash payment recorded successfully.", "summary": build_payment_summary(order)})
+        try:
+            with transaction.atomic():
+                finalize_paid_order(
+                    order,
+                    payment_method="Cash",
+                    payment_reference=request.data.get(
+                        "payment_reference",
+                        f"CASH-{order.id}-{timezone.now().strftime('%H%M%S')}",
+                    ),
+                    tip_amount=request.data.get("tip_amount", 0),
+                    enforce_served=True,
+                )
+            return Response({"message": "Cash payment recorded successfully.", "summary": build_payment_summary(order)})
+        except ValidationError as val_err:
+            return Response({"error": str(val_err.message if hasattr(val_err, "message") else val_err)}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
 
 class CreateDigitalPaymentSessionView(APIView):
@@ -936,7 +1239,10 @@ class RoomChargeProcessView(APIView):
                     tip_amount=request.data.get("tip_amount", order.tip_amount),
                     cashier=request.user,
                     reservation=reservation,
+                    enforce_served=True,
                 )
+        except ValidationError as val_err:
+            return Response({"error": str(val_err.message if hasattr(val_err, "message") else val_err)}, status=status.HTTP_400_BAD_REQUEST)
         except Order.DoesNotExist:
             return Response({"error": "Order not found"}, status=404)
 
@@ -1030,6 +1336,21 @@ class CashierPendingBillsView(APIView):
             .values_list("session_id", flat=True)
             .distinct()
         )
+
+        enforce_served = request.query_params.get("enforce_served", "").lower() in ["1", "true"]
+        if enforce_served:
+            unserved_session_ids = set(
+                Order.objects.filter(
+                    session_id__in=active_session_ids,
+                    payment_status="pending",
+                )
+                .filter(
+                    Q(status__in=["pending", "preparing", "ready"])
+                    | Q(items__status__in=["pending", "preparing", "ready"])
+                )
+                .values_list("session_id", flat=True)
+            )
+            active_session_ids = [sid for sid in active_session_ids if sid not in unserved_session_ids]
 
         session_orders = list(
             Order.objects.filter(
@@ -1173,8 +1494,8 @@ class AdminOrdersView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        if request.user.role not in ["admin", "finance"] and not request.user.is_superuser:
-            return Response({"error": "Forbidden: Admin or Finance role required."}, status=status.HTTP_403_FORBIDDEN)
+        if request.user.role not in ["admin", "finance", "hotel_manager"] and not request.user.is_superuser:
+            return Response({"error": "Forbidden: Admin, Hotel Manager, or Finance role required."}, status=status.HTTP_403_FORBIDDEN)
 
         orders = select_admin_orders(request.query_params)
         paginator = V1PageNumberPagination()
@@ -1381,6 +1702,7 @@ class SettleDiningSessionView(APIView):
                     tip_amount=request.data.get("tip_amount", 0),
                     cashier=request.user,
                     reservation=reservation_obj,
+                    enforce_served=True,
                 )
                 summary = build_session_payment_summary(session)
                 return Response({

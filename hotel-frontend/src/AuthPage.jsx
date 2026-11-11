@@ -41,7 +41,7 @@ const AuthPage = ({ onLoginSuccess }) => {
       if (isLogin) {
         clearSession();
         const res = await axios.post(`${API_BASE}${endpoint}`, {
-          username: formData.email, password: formData.password
+          username: formData.email.trim(), password: formData.password
         });
         if (res.data.mfa_required) {
           setIsMfa(true);

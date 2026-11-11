@@ -1,3 +1,4 @@
+import { apiErrorMessage } from '../apiClient';
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import {
@@ -129,7 +130,7 @@ export default function OrdersManager({ userData }) {
       await axios.post(UPDATE_STATUS_API(orderId), { status: newStatus }, { headers: getHeaders() });
       fetchOrders(false);
     } catch (err) {
-      alert('Failed to update status: ' + (err.response?.data?.error || err.message));
+      alert(apiErrorMessage(err, 'Failed to update status.'));
     }
   };
 
@@ -170,7 +171,7 @@ export default function OrdersManager({ userData }) {
       setSelectedReservationId('');
       fetchOrders(false);
     } catch (err) {
-      alert('Payment processing failed: ' + (err.response?.data?.error || err.message));
+      alert(apiErrorMessage(err, 'Payment processing failed.'));
     }
   };
 

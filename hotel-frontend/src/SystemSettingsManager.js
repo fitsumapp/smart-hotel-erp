@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import {
   Save, Building2, Receipt, Cpu, ToggleLeft, ToggleRight,
-  ChevronDown, ChevronUp, Settings2, MapPin, Phone, Printer
+  ChevronDown, ChevronUp, Settings2, MapPin, Phone, Printer, Clock, AlertTriangle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { API_BASE_URL } from './apiConfig';
@@ -19,9 +19,15 @@ const SystemSettingsManager = () => {
         service_charge_percentage: 10,
         fiscal_machine_no: '',
         reading_number: '',
-        printer_paper_size: '80mm'
+        printer_paper_size: '80mm',
+        kds_prep_target_minutes: 15,
+        kds_delay_warning_minutes: 20,
+        bar_fulfillment_target_minutes: 5,
+        bar_delay_warning_minutes: 10,
+        near_expiry_warning_days: 30
     });
 
+    const [validationError, setValidationError] = useState('');
     const [openSection, setOpenSection] = useState('receipt'); // Set 'receipt' as default open
 
     useEffect(() => {
@@ -38,8 +44,19 @@ const SystemSettingsManager = () => {
     const API_URL = `${API_BASE_URL}/users/settings/`;
 
     const handleSave = () => {
+        const warningDays = parseInt(settings.near_expiry_warning_days, 10);
+        if (isNaN(warningDays) || warningDays < 1 || warningDays > 365) {
+            setValidationError("Near-expiry warning window must be a positive integer between 1 and 365 days.");
+            alert("Validation Error: Near-expiry warning window must be a positive integer between 1 and 365 days.");
+            return;
+        }
+        setValidationError('');
         const token = localStorage.getItem('access_token');
-        axios.post(API_URL, settings, { headers: { Authorization: `Bearer ${token}` } })
+        const payload = {
+            ...settings,
+            near_expiry_warning_days: warningDays
+        };
+        axios.post(API_URL, payload, { headers: { Authorization: `Bearer ${token}` } })
         .then(() => alert("Settings updated successfully!"))
         .catch(err => alert("Error: " + (err.response?.data ? JSON.stringify(err.response.data) : "Save failed")));
     };
@@ -157,6 +174,110 @@ const SystemSettingsManager = () => {
                             <p style={{ color: '#64748b', fontSize: '12px', marginTop: '10px' }}>
                                 This will adjust the layout, font size, and layout format for all printed POS receipts, Guest Folios, and End of Day (Z/X) reports.
                             </p>
+                        </div>
+                    </div>
+                </AccordionSection>
+
+                {/* 3. KITCHEN & BAR OPERATIONS TIMING */}
+                <AccordionSection
+                    title="Kitchen & Bar Timing Targets"
+                    icon={<Clock size={20} />}
+                    isOpen={openSection === 'timing'}
+                    onToggle={() => toggleSection('timing')}
+                >
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                        <div style={gridStyle}>
+                            <div style={innerCard}>
+                                <h4 style={{ margin: '0 0 12px 0', fontSize: '15px', fontWeight: '800', color: '#0f766e', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    🍳 Kitchen Display System (KDS)
+                                </h4>
+                                <div style={{ marginBottom: '15px' }}>
+                                    <label style={labelStyle}>Target Preparation Time (Minutes)</label>
+                                    <input 
+                                        type="number" 
+                                        min="1"
+                                        style={inputStyle} 
+                                        value={settings.kds_prep_target_minutes ?? 15} 
+                                        onChange={e => setSettings({...settings, kds_prep_target_minutes: parseInt(e.target.value) || 1})} 
+                                    />
+                                    <span style={{ fontSize: '12px', color: '#64748b' }}>Benchmark for normal food preparation</span>
+                                </div>
+                                <div>
+                                    <label style={labelStyle}>Delay Warning Alert (Minutes)</label>
+                                    <input 
+                                        type="number" 
+                                        min="1"
+                                        style={inputStyle} 
+                                        value={settings.kds_delay_warning_minutes ?? 20} 
+                                        onChange={e => setSettings({...settings, kds_delay_warning_minutes: parseInt(e.target.value) || 1})} 
+                                    />
+                                    <span style={{ fontSize: '12px', color: '#ef4444' }}>Threshold triggering urgent delay visual badges</span>
+                                </div>
+                            </div>
+
+                            <div style={innerCard}>
+                                <h4 style={{ margin: '0 0 12px 0', fontSize: '15px', fontWeight: '800', color: '#7c3aed', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    🍷 Bar Display System (BDS)
+                                </h4>
+                                <div style={{ marginBottom: '15px' }}>
+                                    <label style={labelStyle}>Target Fulfillment Time (Minutes)</label>
+                                    <input 
+                                        type="number" 
+                                        min="1"
+                                        style={inputStyle} 
+                                        value={settings.bar_fulfillment_target_minutes ?? 5} 
+                                        onChange={e => setSettings({...settings, bar_fulfillment_target_minutes: parseInt(e.target.value) || 1})} 
+                                    />
+                                    <span style={{ fontSize: '12px', color: '#64748b' }}>Benchmark for direct beverage pouring & fulfillment</span>
+                                </div>
+                                <div>
+                                    <label style={labelStyle}>Delay Warning Alert (Minutes)</label>
+                                    <input 
+                                        type="number" 
+                                        min="1"
+                                        style={inputStyle} 
+                                        value={settings.bar_delay_warning_minutes ?? 10} 
+                                        onChange={e => setSettings({...settings, bar_delay_warning_minutes: parseInt(e.target.value) || 1})} 
+                                    />
+                                    <span style={{ fontSize: '12px', color: '#ef4444' }}>Threshold triggering critical bar delay badges</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </AccordionSection>
+
+                {/* 4. INVENTORY & BATCH SURVEILLANCE */}
+                <AccordionSection
+                    title="Inventory & Expiry Surveillance"
+                    icon={<AlertTriangle size={20} />}
+                    isOpen={openSection === 'inventory'}
+                    onToggle={() => toggleSection('inventory')}
+                >
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                        <div style={innerCard}>
+                            <h4 style={{ margin: '0 0 12px 0', fontSize: '15px', fontWeight: '800', color: '#0f766e', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                📦 Automated Expiry & Batch Surveillance
+                            </h4>
+                            <div style={{ marginBottom: '10px' }}>
+                                <label style={labelStyle}>Near-Expiry Warning Window (Days)</label>
+                                <input 
+                                    id="input-near-expiry-warning-days"
+                                    type="number" 
+                                    min="1"
+                                    max="365"
+                                    style={inputStyle} 
+                                    value={settings.near_expiry_warning_days ?? 30} 
+                                    onChange={e => setSettings({...settings, near_expiry_warning_days: e.target.value === '' ? '' : parseInt(e.target.value, 10)})} 
+                                />
+                                <span style={{ fontSize: '12px', color: '#64748b', display: 'block', marginTop: '6px' }}>
+                                    Surveillance window in days before batch expiration to trigger automated operational routing and near-expiry warning alerts (Default: 30 days, Allowed: 1-365).
+                                </span>
+                                {validationError && (
+                                    <span style={{ fontSize: '12px', color: '#ef4444', display: 'block', marginTop: '6px', fontWeight: '600' }}>
+                                        {validationError}
+                                    </span>
+                                )}
+                            </div>
                         </div>
                     </div>
                 </AccordionSection>

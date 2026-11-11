@@ -3,7 +3,10 @@ import axios from 'axios';
 import {
   Package, LogOut, AlertTriangle, CheckCircle, RefreshCw,
   Plus, Users, DollarSign, ArrowRight, ArrowLeft,
-  ShoppingCart, Truck, Printer, Trash2, X, RotateCcw, Check
+  ShoppingCart, Truck, Printer, Trash2, X, RotateCcw, Check,
+  Layers, Filter, Clock, ShieldAlert, Bell, Zap,
+  PackageX, PackageMinus, MinusCircle, Flame, Utensils, HelpCircle,
+  Hourglass, XCircle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { API_BASE_URL } from '../apiConfig';
@@ -11,7 +14,7 @@ import { apiErrorMessage } from '../apiClient';
 
 const API_BASE = `${API_BASE_URL}/users/`;
 
-const InventoryDashboard = ({ userData, handleLogout }) => {
+const InventoryDashboard = ({ userData, handleLogout, onNavigate }) => {
   const [items, setItems] = useState([]);
   const [categories, setCategories] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
@@ -63,6 +66,28 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
   const [reverseTargetRecord, setReverseTargetRecord] = useState(null);
   const [reversalReason, setReversalReason] = useState('');
   const [reversalSubmitting, setReversalSubmitting] = useState(false);
+  // Batches & Expiry states
+  const [batches, setBatches] = useState([]);
+  const [locations, setLocations] = useState([]);
+  const [batchFilterStatus, setBatchFilterStatus] = useState('all');
+  const [batchFilterItem, setBatchFilterItem] = useState('');
+  const [batchSearch, setBatchSearch] = useState('');
+  const [isVerifyModalOpen, setIsVerifyModalOpen] = useState(false);
+  const [verifyTargetBatch, setVerifyTargetBatch] = useState(null);
+  const [verifyExpiryDate, setVerifyExpiryDate] = useState('');
+  const [verifyNotes, setVerifyNotes] = useState('');
+  const [verifySubmitting, setVerifySubmitting] = useState(false);
+
+  // Persistent Expiry Alerts & Surveillance states
+  const [expiryAlerts, setExpiryAlerts] = useState([]);
+  const [alertsFilter, setAlertsFilter] = useState('active');
+  const [isEvaluatingAlerts, setIsEvaluatingAlerts] = useState(false);
+  const [evalSuccessMessage, setEvalSuccessMessage] = useState(null);
+  const [isDismissAlertModalOpen, setIsDismissAlertModalOpen] = useState(false);
+  const [dismissAlertTarget, setDismissAlertTarget] = useState(null);
+  const [dismissAlertReason, setDismissAlertReason] = useState('');
+  const [dismissAlertSubmitting, setDismissAlertSubmitting] = useState(false);
+
 
   // Waste Approval & Rejection states
   const [approveTargetRecord, setApproveTargetRecord] = useState(null);
@@ -92,7 +117,7 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
   const isAnyModalOpen = Boolean(
     isItemModalOpen || isSupplierModalOpen || isRecipeModalOpen || isCategoryModalOpen ||
     isWasteModalOpen || reverseTargetRecord || approveTargetRecord || rejectTargetRecord ||
-    editItem || editCategory || editSupplier
+    editItem || editCategory || editSupplier || isVerifyModalOpen || isDismissAlertModalOpen
   );
 
   const closeAllModals = useCallback(() => {
@@ -108,8 +133,15 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
     setEditItem(null);
     setEditCategory(null);
     setEditSupplier(null);
+    setIsVerifyModalOpen(false);
+    setVerifyTargetBatch(null);
+    setVerifyExpiryDate('');
+    setVerifyNotes('');
     setCategoryModalError('');
     setEditCategoryModalError('');
+    setIsDismissAlertModalOpen(false);
+    setDismissAlertTarget(null);
+    setDismissAlertReason('');
   }, []);
 
   const dismissModal = useCallback((closeAction) => {
@@ -143,7 +175,7 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
   const [newItem, setNewItem] = useState({ item_code: '', name: '', category: '', unit: 'pcs', min_reorder_level: '5.00', unit_cost: '0.00', selling_price: '0.00', last_supplier: '' });
   const [newSupplier, setNewSupplier] = useState({ name: '', contact_person: '', phone: '', email: '', address: '', tin_number: '', supplied_categories: [], supply_items: '' });
   const [newCategory, setNewCategory] = useState({ name: '', description: '', category_type: 'f_and_b' });
-  const [newGRN, setNewGRN] = useState({ item: '', quantity: '', unit_cost: '', supplier: '', reference_number: '', notes: '' });
+  const [newGRN, setNewGRN] = useState({ item: '', quantity: '', unit_cost: '', supplier: '', location: '', batch_number: '', expiry_date: '', reference_number: '', notes: '' });
   const [newDispatch, setNewDispatch] = useState({ item: '', quantity: '', department: 'Kitchen', room: '', notes: '' });
   const [selectedRecipeMenu, setSelectedRecipeMenu] = useState('');
   const [recipeRows, setRecipeRows] = useState([{ ingredient: '', quantity_required: '' }]);
@@ -177,7 +209,7 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
   const fetchData = useCallback(async () => {
     try {
       const headers = getHeaders();
-      const [itemsRes, catsRes, supsRes, menusRes, recipesRes, ledgerRes, statsRes, roomsRes, wasteRes] = await Promise.all([
+      const [itemsRes, catsRes, supsRes, menusRes, recipesRes, ledgerRes, statsRes, roomsRes, wasteRes, batchesRes, locationsRes, alertsRes] = await Promise.all([
         axios.get(`${API_BASE}inventory-items/`, { headers }),
         axios.get(`${API_BASE}inventory-categories/`, { headers }),
         axios.get(`${API_BASE}suppliers/`, { headers }),
@@ -186,7 +218,10 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
         axios.get(`${API_BASE}stock-transactions/`, { headers }),
         axios.get(`${API_BASE}inventory/dashboard-stats/`, { headers }),
         axios.get(`${API_BASE}rooms/`, { headers }).catch(() => ({ data: [] })),
-        axios.get(`${API_BASE}waste-records/`, { headers }).catch(() => ({ data: [] }))
+        axios.get(`${API_BASE}waste-records/`, { headers }).catch(() => ({ data: [] })),
+        axios.get(`${API_BASE}batches/`, { headers }).catch(() => ({ data: [] })),
+        axios.get(`${API_BASE}locations/`, { headers }).catch(() => ({ data: [] })),
+        axios.get(`${API_BASE}inventory/expiry-alerts/`, { headers }).catch(() => ({ data: [] }))
       ]);
       setItems(itemsRes.data || []);
       setCategories(catsRes.data || []);
@@ -197,6 +232,9 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
       setStats(statsRes.data || null);
       setRooms(roomsRes.data || []);
       setWasteRecords(wasteRes.data || []);
+      setBatches(Array.isArray(batchesRes.data) ? batchesRes.data : (batchesRes.data?.results || []));
+      setLocations(Array.isArray(locationsRes.data) ? locationsRes.data : (locationsRes.data?.results || []));
+      setExpiryAlerts(Array.isArray(alertsRes?.data) ? alertsRes.data : (alertsRes?.data?.results || []));
     } catch (err) {
       console.error('Inventory fetch error:', err);
     } finally {
@@ -331,6 +369,66 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
     }
   };
 
+  
+  const handleVerifyBatch = async (e) => {
+    e.preventDefault();
+    if (!verifyTargetBatch || !verifyExpiryDate) {
+      alert("Please provide a valid verified expiry date.");
+      return;
+    }
+    setVerifySubmitting(true);
+    try {
+      await axios.post(`${API_BASE}batches/${verifyTargetBatch.id}/verify/`, {
+        expiry_date: verifyExpiryDate,
+        verification_notes: verifyNotes || `Verified by ${userData?.username || 'Staff'}`
+      }, { headers: getHeaders() });
+      alert("Batch successfully verified and released into active service!");
+      dismissModal(() => setIsVerifyModalOpen(false));
+      setVerifyTargetBatch(null);
+      setVerifyExpiryDate('');
+      setVerifyNotes('');
+      fetchData();
+    } catch (err) {
+      alert(apiErrorMessage(err, "Failed to verify batch."));
+    } finally {
+      setVerifySubmitting(false);
+    }
+  };
+
+  const handleEvaluateAlerts = async () => {
+    setIsEvaluatingAlerts(true);
+    setEvalSuccessMessage(null);
+    try {
+      const res = await axios.post(`${API_BASE}inventory/expiry-alerts/evaluate/`, {}, { headers: getHeaders() });
+      setEvalSuccessMessage(`Expiry scan complete: ${res.data?.active_total || 0} active alerts (${res.data?.created || 0} new, ${res.data?.resolved || 0} resolved).`);
+      fetchData();
+    } catch (err) {
+      console.error('Failed to evaluate expiry alerts:', err);
+      alert(apiErrorMessage(err, "Failed to run expiry alert evaluation."));
+    } finally {
+      setIsEvaluatingAlerts(false);
+    }
+  };
+
+  const handleDismissAlertSubmit = async (e) => {
+    e.preventDefault();
+    if (!dismissAlertTarget) return;
+    setDismissAlertSubmitting(true);
+    try {
+      await axios.post(`${API_BASE}inventory/expiry-alerts/${dismissAlertTarget.id}/dismiss/`, {
+        reason: dismissAlertReason.trim() || `Acknowledged by ${userData?.username || 'Staff'}`
+      }, { headers: getHeaders() });
+      dismissModal(() => setIsDismissAlertModalOpen(false));
+      setDismissAlertTarget(null);
+      setDismissAlertReason('');
+      fetchData();
+    } catch (err) {
+      alert(apiErrorMessage(err, "Failed to dismiss alert."));
+    } finally {
+      setDismissAlertSubmitting(false);
+    }
+  };
+
   const handleReceiveGRN = async (e) => {
     e.preventDefault();
     try {
@@ -340,12 +438,15 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
         quantity: parseFloat(newGRN.quantity),
         unit_cost: parseFloat(newGRN.unit_cost),
         supplier: newGRN.supplier || null,
+        location: newGRN.location ? parseInt(newGRN.location) : (locations.find(l => l.code === 'STORE-MAIN')?.id || null),
+        batch_number_input: newGRN.batch_number ? newGRN.batch_number.trim() : '',
+        expiry_date_input: newGRN.expiry_date || null,
         reference_number: newGRN.reference_number,
         notes: newGRN.notes
       };
       await axios.post(`${API_BASE}stock-transactions/`, payload, { headers: getHeaders() });
       alert("Stock Received Successfully!");
-      setNewGRN({ item: '', quantity: '', unit_cost: '', supplier: '', reference_number: '', notes: '' });
+      setNewGRN({ item: '', quantity: '', unit_cost: '', supplier: '', location: '', batch_number: '', expiry_date: '', reference_number: '', notes: '' });
       fetchData();
     } catch (err) {
       alert(apiErrorMessage(err, "Failed to record GRN."));
@@ -567,6 +668,748 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
     }
 
     switch (activeTab) {
+      case 'batches':
+        const todayStr = new Date().toISOString().split('T')[0];
+        const activeLots = batches.filter(b => b.status === 'active');
+        const quarantineLots = batches.filter(b => b.status === 'unverified_quarantine');
+        const expiredLots = batches.filter(b => b.status === 'expired' || (b.expiry_date && b.expiry_date < todayStr));
+        const nearExpiryLots = batches.filter(b => {
+          if (b.status === 'expired' || !b.expiry_date || b.expiry_date < todayStr) return false;
+          const exp = new Date(b.expiry_date);
+          const now = new Date(todayStr);
+          const diffDays = Math.ceil((exp - now) / (1000 * 60 * 60 * 24));
+          return diffDays <= 30;
+        });
+
+        const filteredBatches = batches.filter(b => {
+          if (batchFilterStatus === 'active' && b.status !== 'active') return false;
+          if (batchFilterStatus === 'unverified_quarantine' && b.status !== 'unverified_quarantine') return false;
+          if (batchFilterStatus === 'expired' && !(b.status === 'expired' || (b.expiry_date && b.expiry_date < todayStr))) return false;
+          if (batchFilterStatus === 'near_expiry') {
+            if (b.status === 'expired' || !b.expiry_date || b.expiry_date < todayStr) return false;
+            const exp = new Date(b.expiry_date);
+            const now = new Date(todayStr);
+            const diffDays = Math.ceil((exp - now) / (1000 * 60 * 60 * 24));
+            if (diffDays > 30) return false;
+          }
+          if (batchFilterItem && String(b.item) !== String(batchFilterItem)) return false;
+          if (batchSearch) {
+            const q = batchSearch.toLowerCase();
+            const matchNum = (b.batch_number || '').toLowerCase().includes(q);
+            const matchName = (b.item_name || '').toLowerCase().includes(q);
+            const matchCode = (b.item_code || '').toLowerCase().includes(q);
+            if (!matchNum && !matchName && !matchCode) return false;
+          }
+          return true;
+        });
+
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '25px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '15px' }}>
+              <div>
+                <h2 style={{ margin: 0, color: '#0f172a', fontWeight: '800', fontSize: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <Layers size={22} color="#0f766e" /> Stock Batches & Expiry Management
+                </h2>
+                <p style={{ margin: '4px 0 0 0', color: '#64748b', fontSize: '13px' }}>
+                  FEFO/FIFO lot tracking, expiration date safeguards, and perishable quarantine inspection.
+                </p>
+              </div>
+              <button
+                id="btn-stockin-batch-shortcut"
+                onClick={() => { setActiveTab('actions'); setSelectedReport(null); }}
+                style={btnPrimaryStyle}
+              >
+                <Plus size={16} /> Receive New Batch
+              </button>
+            </div>
+
+            <div style={statsGrid} className="inventory-stats-grid">
+              <StatCard
+                icon={<Layers size={22} color="#0284c7" />}
+                title="Active Lots"
+                value={activeLots.length}
+                color="#0284c7"
+              />
+              <StatCard
+                icon={<Clock size={22} color="#f59e0b" />}
+                title="Near-Expiry (<= 30d)"
+                value={nearExpiryLots.length}
+                color="#f59e0b"
+              />
+              <StatCard
+                icon={<AlertTriangle size={22} color="#ef4444" />}
+                title="Expired Lots"
+                value={expiredLots.length}
+                color="#ef4444"
+              />
+              <StatCard
+                icon={<ShieldAlert size={22} color="#8b5cf6" />}
+                title="Quarantine Review"
+                value={quarantineLots.length}
+                color="#8b5cf6"
+              />
+            </div>
+
+            {expiredLots.length > 0 && (
+              <div id="banner-expired-lots" style={{
+                backgroundColor: 'rgba(239, 68, 68, 0.08)',
+                border: '1px solid #fca5a5',
+                borderRadius: '12px',
+                padding: '16px 20px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '14px',
+                color: '#991b1b'
+              }}>
+                <AlertTriangle size={24} color="#ef4444" style={{ flexShrink: 0 }} />
+                <div style={{ flex: 1 }}>
+                  <strong style={{ fontSize: '14px' }}>Critical Food Safety Notice: {expiredLots.length} Expired Batch(es) Locked</strong>
+                  <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: '#b91c1c' }}>
+                    Expired inventory items are strictly prohibited from guest service. The system has automatically locked these lots from POS billing and KDS preparation. Please route expired stock to Waste & Loss.
+                  </p>
+                </div>
+                <button
+                  id="btn-expired-to-waste"
+                  onClick={() => { setActiveTab('waste'); }}
+                  style={{
+                    backgroundColor: '#ef4444',
+                    color: '#ffffff',
+                    border: 'none',
+                    borderRadius: '8px',
+                    padding: '8px 14px',
+                    fontSize: '12px',
+                    fontWeight: '700',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Go to Waste
+                </button>
+              </div>
+            )}
+
+            {nearExpiryLots.length > 0 && (
+              <div id="banner-near-expiry-lots" style={{
+                backgroundColor: 'rgba(245, 158, 11, 0.08)',
+                border: '1px solid #fcd34d',
+                borderRadius: '12px',
+                padding: '14px 18px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px',
+                color: '#92400e'
+              }}>
+                <Clock size={20} color="#f59e0b" style={{ flexShrink: 0 }} />
+                <div style={{ flex: 1, fontSize: '13px' }}>
+                  <strong>Expiry Risk: {nearExpiryLots.length} batch(es) expire within 30 days.</strong> The centralized FEFO engine will prioritize these lots automatically during dining session settlements and BOM deductions.
+                </div>
+              </div>
+            )}
+
+            {/* PERSISTENT EXPIRY ALERTS & RISK REGISTER */}
+            {(() => {
+              const activeAlerts = expiryAlerts.filter(a => a.status === 'active');
+              const expiredAlerts = activeAlerts.filter(a => a.alert_type === 'expired');
+              const nearExpiryAlerts = activeAlerts.filter(a => ['near_expiry_1', 'near_expiry_7', 'near_expiry_14', 'near_expiry_30'].includes(a.alert_type));
+              const unknownAlerts = activeAlerts.filter(a => a.alert_type === 'unknown_expiry');
+              const inactiveAlerts = expiryAlerts.filter(a => a.status !== 'active');
+
+              const displayedAlerts = expiryAlerts.filter(a => {
+                if (alertsFilter === 'active') return a.status === 'active';
+                if (alertsFilter === 'expired') return a.status === 'active' && a.alert_type === 'expired';
+                if (alertsFilter === 'near_expiry') return a.status === 'active' && ['near_expiry_1', 'near_expiry_7', 'near_expiry_14', 'near_expiry_30'].includes(a.alert_type);
+                if (alertsFilter === 'unknown_expiry') return a.status === 'active' && a.alert_type === 'unknown_expiry';
+                if (alertsFilter === 'inactive') return a.status !== 'active';
+                return true;
+              });
+
+              return (
+                <div style={{
+                  backgroundColor: '#ffffff',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '16px',
+                  padding: '20px',
+                  boxShadow: '0 2px 8px rgba(15,23,42,0.03)'
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
+                    <div>
+                      <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '800', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <Bell size={18} color="#0f766e" /> Persistent Expiry Alerts & Surveillance Feed
+                      </h3>
+                      <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: '#64748b' }}>
+                        Automated multi-tier monitoring (1d, 7d, 14d, 30d warnings, expired lots, and unknown perishable shelf lives).
+                      </p>
+                    </div>
+
+                    <button
+                      id="btn-evaluate-expiry-alerts"
+                      type="button"
+                      disabled={isEvaluatingAlerts}
+                      onClick={handleEvaluateAlerts}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        backgroundColor: '#0f766e',
+                        color: '#ffffff',
+                        border: 'none',
+                        borderRadius: '8px',
+                        padding: '8px 16px',
+                        fontSize: '12px',
+                        fontWeight: '700',
+                        cursor: isEvaluatingAlerts ? 'not-allowed' : 'pointer'
+                      }}
+                    >
+                      <Zap size={14} /> {isEvaluatingAlerts ? 'Scanning Batches...' : 'Run Expiry Scan'}
+                    </button>
+                  </div>
+
+                  {evalSuccessMessage && (
+                    <div style={{
+                      backgroundColor: '#f0fdf4',
+                      border: '1px solid #86efac',
+                      borderRadius: '8px',
+                      padding: '10px 14px',
+                      fontSize: '12px',
+                      color: '#166534',
+                      marginBottom: '16px',
+                      fontWeight: '600'
+                    }}>
+                      ✓ {evalSuccessMessage}
+                    </div>
+                  )}
+
+                  {/* Sub-KPIs */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '12px', marginBottom: '16px' }}>
+                    <div style={{ backgroundColor: '#f8fafc', padding: '10px 14px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+                      <div style={{ fontSize: '11px', color: '#64748b', fontWeight: '700' }}>Active Alerts</div>
+                      <div style={{ fontSize: '18px', fontWeight: '900', color: activeAlerts.length > 0 ? '#0f766e' : '#0f172a' }}>{activeAlerts.length}</div>
+                    </div>
+                    <div style={{ backgroundColor: '#fef2f2', padding: '10px 14px', borderRadius: '10px', border: '1px solid #fecaca' }}>
+                      <div style={{ fontSize: '11px', color: '#991b1b', fontWeight: '700' }}>Expired (Locked)</div>
+                      <div style={{ fontSize: '18px', fontWeight: '900', color: '#dc2626' }}>{expiredAlerts.length}</div>
+                    </div>
+                    <div style={{ backgroundColor: '#fffbeb', padding: '10px 14px', borderRadius: '10px', border: '1px solid #fde68a' }}>
+                      <div style={{ fontSize: '11px', color: '#92400e', fontWeight: '700' }}>Near-Expiry (&le;30d)</div>
+                      <div style={{ fontSize: '18px', fontWeight: '900', color: '#b45309' }}>{nearExpiryAlerts.length}</div>
+                    </div>
+                    <div style={{ backgroundColor: '#faf5ff', padding: '10px 14px', borderRadius: '10px', border: '1px solid #e9d5ff' }}>
+                      <div style={{ fontSize: '11px', color: '#6b21a8', fontWeight: '700' }}>Unknown Perishable</div>
+                      <div style={{ fontSize: '18px', fontWeight: '900', color: '#7e22ce' }}>{unknownAlerts.length}</div>
+                    </div>
+                    <div style={{ backgroundColor: '#f8fafc', padding: '10px 14px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+                      <div style={{ fontSize: '11px', color: '#64748b', fontWeight: '700' }}>Resolved / Dismissed</div>
+                      <div style={{ fontSize: '18px', fontWeight: '900', color: '#64748b' }}>{inactiveAlerts.length}</div>
+                    </div>
+                  </div>
+
+                  {/* Filter Pills */}
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '16px' }}>
+                    {[
+                      { id: 'active', label: `Active (${activeAlerts.length})` },
+                      { id: 'expired', label: `Expired (${expiredAlerts.length})` },
+                      { id: 'near_expiry', label: `Near Expiry (${nearExpiryAlerts.length})` },
+                      { id: 'unknown_expiry', label: `Unknown (${unknownAlerts.length})` },
+                      { id: 'inactive', label: `Resolved (${inactiveAlerts.length})` },
+                      { id: 'all', label: `All Records (${expiryAlerts.length})` }
+                    ].map(tab => (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        onClick={() => setAlertsFilter(tab.id)}
+                        style={{
+                          padding: '5px 12px',
+                          borderRadius: '16px',
+                          border: alertsFilter === tab.id ? '1px solid #0f766e' : '1px solid #cbd5e1',
+                          backgroundColor: alertsFilter === tab.id ? '#0f766e' : '#ffffff',
+                          color: alertsFilter === tab.id ? '#ffffff' : '#475569',
+                          fontSize: '11px',
+                          fontWeight: '700',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        {tab.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Table of Alerts */}
+                  {displayedAlerts.length === 0 ? (
+                    <div style={{ padding: '30px', textAlign: 'center', color: '#64748b', fontSize: '13px', backgroundColor: '#f8fafc', borderRadius: '10px' }}>
+                      No alerts matching the selected filter. Stock batches are currently compliant.
+                    </div>
+                  ) : (
+                    <div style={{ overflowX: 'auto' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '12px' }}>
+                        <thead>
+                          <tr style={{ backgroundColor: '#f8fafc', borderBottom: '1px solid #e2e8f0', color: '#475569', fontWeight: '700' }}>
+                            <th style={{ padding: '10px 14px' }}>Alert Tier</th>
+                            <th style={{ padding: '10px 14px' }}>Item</th>
+                            <th style={{ padding: '10px 14px' }}>Batch #</th>
+                            <th style={{ padding: '10px 14px' }}>Location</th>
+                            <th style={{ padding: '10px 14px', textAlign: 'right' }}>On-Hand</th>
+                            <th style={{ padding: '10px 14px' }}>Expiry & Countdown</th>
+                            <th style={{ padding: '10px 14px' }}>Status</th>
+                            <th style={{ padding: '10px 14px', textAlign: 'center' }}>Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {displayedAlerts.map((alt, idx) => {
+                            let badgeBg = '#f1f5f9';
+                            let badgeColor = '#475569';
+                            let tierLabel = alt.alert_type_display || alt.alert_type;
+
+                            if (alt.alert_type === 'expired') {
+                              badgeBg = '#fee2e2'; badgeColor = '#b91c1c';
+                            } else if (alt.alert_type === 'near_expiry_1') {
+                              badgeBg = '#ffedd5'; badgeColor = '#c2410c';
+                            } else if (alt.alert_type === 'near_expiry_7') {
+                              badgeBg = '#fef3c7'; badgeColor = '#b45309';
+                            } else if (alt.alert_type === 'near_expiry_14' || alt.alert_type === 'near_expiry_30') {
+                              badgeBg = '#e0f2fe'; badgeColor = '#0369a1';
+                            } else if (alt.alert_type === 'unknown_expiry') {
+                              badgeBg = '#f3e8ff'; badgeColor = '#7e22ce';
+                            }
+
+                            return (
+                              <tr key={alt.id} style={{ borderBottom: '1px solid #f1f5f9', backgroundColor: idx % 2 === 0 ? '#ffffff' : '#fafafa' }}>
+                                <td style={{ padding: '10px 14px' }}>
+                                  <span style={{
+                                    display: 'inline-block',
+                                    padding: '3px 8px',
+                                    borderRadius: '6px',
+                                    fontSize: '11px',
+                                    fontWeight: '800',
+                                    backgroundColor: badgeBg,
+                                    color: badgeColor
+                                  }}>
+                                    {tierLabel}
+                                  </span>
+                                </td>
+                                <td style={{ padding: '10px 14px', fontWeight: '700', color: '#1e293b' }}>
+                                  {alt.item_name}
+                                  <div style={{ fontSize: '10px', color: '#64748b' }}>{alt.item_code}</div>
+                                </td>
+                                <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontWeight: '700', color: '#0f172a' }}>
+                                  {alt.batch_number}
+                                </td>
+                                <td style={{ padding: '10px 14px', color: '#334155' }}>
+                                  {alt.location_name || 'Warehouse'}
+                                </td>
+                                <td style={{ padding: '10px 14px', textAlign: 'right', fontWeight: '700' }}>
+                                  {Number(alt.current_quantity).toFixed(2)} {alt.item_unit || 'units'}
+                                </td>
+                                <td style={{ padding: '10px 14px' }}>
+                                  {alt.expiry_date ? (
+                                    <div>
+                                      <div style={{ fontWeight: '600' }}>{alt.expiry_date}</div>
+                                      <div style={{ fontSize: '10px', color: alt.days_left <= 0 ? '#dc2626' : (alt.days_left <= 7 ? '#d97706' : '#2563eb'), fontWeight: '700' }}>
+                                        {alt.days_left < 0 ? `Expired ${Math.abs(alt.days_left)}d ago` : (alt.days_left === 0 ? 'Expires today' : `${alt.days_left}d remaining`)}
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <span style={{ color: '#7e22ce', fontWeight: '700', fontSize: '11px' }}>Perishable - Undated</span>
+                                  )}
+                                </td>
+                                <td style={{ padding: '10px 14px' }}>
+                                  <span style={{
+                                    display: 'inline-block',
+                                    padding: '2px 6px',
+                                    borderRadius: '4px',
+                                    fontSize: '10px',
+                                    fontWeight: '800',
+                                    backgroundColor: alt.status === 'active' ? '#fef3c7' : (alt.status === 'dismissed' ? '#f1f5f9' : '#dcfce7'),
+                                    color: alt.status === 'active' ? '#92400e' : (alt.status === 'dismissed' ? '#475569' : '#166534')
+                                  }}>
+                                    {alt.status.toUpperCase()}
+                                  </span>
+                                  {alt.resolution_reason && (
+                                    <div style={{ fontSize: '10px', color: '#64748b', marginTop: '2px', maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={alt.resolution_reason}>
+                                      {alt.resolution_reason}
+                                    </div>
+                                  )}
+                                </td>
+                                <td style={{ padding: '10px 14px', textAlign: 'center' }}>
+                                  <div style={{ display: 'flex', justifyContent: 'center', gap: '6px' }}>
+                                    {alt.status === 'active' ? (
+                                      <>
+                                        <button
+                                          type="button"
+                                          title="Route batch to Waste & Loss"
+                                          onClick={() => {
+                                            setNewWaste(prev => ({
+                                              ...prev,
+                                              item: alt.item,
+                                              batch: alt.batch,
+                                              entered_quantity: alt.current_quantity,
+                                              entered_unit: alt.item_unit || 'kg',
+                                              waste_category: 'food_spoilage_or_expiry',
+                                              waste_source: 'direct_loss',
+                                              storage_area: alt.location_name || '',
+                                              notes: `Wasted via Expiry Alert #${alt.id} (${alt.alert_type} - Batch ${alt.batch_number})`
+                                            }));
+                                            setActiveTab('waste');
+                                          }}
+                                          style={{
+                                            backgroundColor: '#ef4444',
+                                            color: '#ffffff',
+                                            border: 'none',
+                                            borderRadius: '6px',
+                                            padding: '4px 8px',
+                                            fontSize: '11px',
+                                            fontWeight: '700',
+                                            cursor: 'pointer'
+                                          }}
+                                        >
+                                          Route Waste
+                                        </button>
+
+                                        <button
+                                          type="button"
+                                          title="Dismiss alert with audit reason"
+                                          onClick={() => {
+                                            setDismissAlertTarget(alt);
+                                            setDismissAlertReason('');
+                                            setIsDismissAlertModalOpen(true);
+                                          }}
+                                          style={{
+                                            backgroundColor: '#ffffff',
+                                            color: '#475569',
+                                            border: '1px solid #cbd5e1',
+                                            borderRadius: '6px',
+                                            padding: '4px 8px',
+                                            fontSize: '11px',
+                                            fontWeight: '600',
+                                            cursor: 'pointer'
+                                          }}
+                                        >
+                                          Dismiss
+                                        </button>
+                                      </>
+                                    ) : (
+                                      <span style={{ fontSize: '11px', color: '#94a3b8' }}>Archived</span>
+                                    )}
+
+                                    <button
+                                      type="button"
+                                      title="Highlight batch in table below"
+                                      onClick={() => {
+                                        setBatchSearch(alt.batch_number);
+                                      }}
+                                      style={{
+                                        backgroundColor: '#f1f5f9',
+                                        color: '#334155',
+                                        border: '1px solid #e2e8f0',
+                                        borderRadius: '6px',
+                                        padding: '4px 8px',
+                                        fontSize: '11px',
+                                        cursor: 'pointer'
+                                      }}
+                                    >
+                                      Locate
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
+
+            <div style={{
+              display: 'flex',
+              gap: '12px',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              backgroundColor: '#f8fafc',
+              padding: '14px',
+              borderRadius: '10px',
+              border: '1px solid #e2e8f0'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Filter size={16} color="#64748b" />
+                <span style={{ fontSize: '13px', fontWeight: '700', color: '#475569' }}>Filter:</span>
+              </div>
+              <select
+                id="batch-status-filter"
+                style={{ ...inputStyle, width: 'auto', minWidth: '180px' }}
+                value={batchFilterStatus}
+                onChange={e => setBatchFilterStatus(e.target.value)}
+              >
+                <option value="all">All Batches ({batches.length})</option>
+                <option value="active">Active ({activeLots.length})</option>
+                <option value="near_expiry">Near-Expiry (&le; 30d) ({nearExpiryLots.length})</option>
+                <option value="expired">Expired ({expiredLots.length})</option>
+                <option value="unverified_quarantine">Quarantine Review ({quarantineLots.length})</option>
+              </select>
+
+              <select
+                id="batch-item-filter"
+                style={{ ...inputStyle, width: 'auto', minWidth: '220px' }}
+                value={batchFilterItem}
+                onChange={e => setBatchFilterItem(e.target.value)}
+              >
+                <option value="">All Inventory Items</option>
+                {items.map(it => (
+                  <option key={it.id} value={it.id}>{it.name} ({it.item_code})</option>
+                ))}
+              </select>
+
+              <input
+                id="batch-search-input"
+                type="text"
+                placeholder="Search batch # or item..."
+                style={{ ...inputStyle, flex: 1, minWidth: '200px' }}
+                value={batchSearch}
+                onChange={e => setBatchSearch(e.target.value)}
+              />
+
+              {(batchFilterStatus !== 'all' || batchFilterItem || batchSearch) && (
+                <button
+                  id="btn-reset-batch-filters"
+                  onClick={() => { setBatchFilterStatus('all'); setBatchFilterItem(''); setBatchSearch(''); }}
+                  style={{ ...btnSecondaryStyle, padding: '8px 12px', fontSize: '12px' }}
+                >
+                  Reset
+                </button>
+              )}
+            </div>
+
+            <div style={cardStyle}>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={tableStyle} id="table-stock-batches">
+                  <thead>
+                    <tr style={thStyle}>
+                      <th style={thStyle}>Batch / Lot #</th>
+                      <th style={thStyle}>Item Details</th>
+                      <th style={thStyle}>Remaining Qty</th>
+                      <th style={thStyle}>Unit Cost</th>
+                      <th style={thStyle}>Received Date</th>
+                      <th style={thStyle}>Expiry Date</th>
+                      <th style={thStyle}>Status</th>
+                      <th style={thStyle}>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredBatches.length === 0 ? (
+                      <tr>
+                        <td colSpan="8" style={{ ...tdStyle, textAlign: 'center', padding: '40px', color: '#94a3b8' }}>
+                          No stock batches found matching the selected filter criteria.
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredBatches.map(b => {
+                        const isExpired = b.status === 'expired' || (b.expiry_date && b.expiry_date < todayStr);
+                        let daysLeft = null;
+                        if (b.expiry_date) {
+                          const exp = new Date(b.expiry_date);
+                          const now = new Date(todayStr);
+                          daysLeft = Math.ceil((exp - now) / (1000 * 60 * 60 * 24));
+                        }
+
+                        return (
+                          <tr key={b.id} style={trStyle} className={`batch-row batch-status-${b.status}`}>
+                            <td style={{ ...tdStyle, fontWeight: '800', color: '#0f172a' }}>
+                              <span style={{ fontFamily: 'monospace', fontSize: '13px' }}>{b.batch_number}</span>
+                              {b.supplier_batch_number && (
+                                <div style={{ fontSize: '10px', color: '#64748b', fontWeight: '400' }}>
+                                  Supplier Lot: {b.supplier_batch_number}
+                                </div>
+                              )}
+                            </td>
+                            <td style={tdStyle}>
+                              <strong>{b.item_name}</strong>
+                              <div style={{ fontSize: '11px', color: '#64748b' }}>Code: {b.item_code}</div>
+                            </td>
+                            <td style={{ ...tdStyle, fontWeight: '700' }}>
+                              <span style={{ color: parseFloat(b.current_quantity) > 0 ? '#0f766e' : '#94a3b8' }}>
+                                {parseFloat(b.current_quantity).toFixed(2)} {b.item_unit}
+                              </span>
+                              <div style={{ fontSize: '10px', color: '#94a3b8' }}>
+                                Initial: {parseFloat(b.initial_quantity).toFixed(2)} {b.item_unit}
+                              </div>
+                            </td>
+                            <td style={tdStyle}>{parseFloat(b.unit_cost || 0).toFixed(2)} ETB</td>
+                            <td style={tdStyle}>{b.received_date || '-'}</td>
+                            <td style={tdStyle}>
+                              {b.expiry_date ? (
+                                <div>
+                                  <span style={{
+                                    fontWeight: '700',
+                                    color: isExpired ? '#ef4444' : (daysLeft <= 30 ? '#d97706' : '#15803d')
+                                  }}>
+                                    {b.expiry_date}
+                                  </span>
+                                  {isExpired ? (
+                                    <span style={{
+                                      display: 'inline-block',
+                                      marginLeft: '6px',
+                                      backgroundColor: '#fee2e2',
+                                      color: '#b91c1c',
+                                      padding: '1px 6px',
+                                      borderRadius: '4px',
+                                      fontSize: '10px',
+                                      fontWeight: '800'
+                                    }}>
+                                      EXPIRED
+                                    </span>
+                                  ) : (daysLeft <= 30 ? (
+                                    <span style={{
+                                      display: 'inline-block',
+                                      marginLeft: '6px',
+                                      backgroundColor: '#fef3c7',
+                                      color: '#92400e',
+                                      padding: '1px 6px',
+                                      borderRadius: '4px',
+                                      fontSize: '10px',
+                                      fontWeight: '800'
+                                    }}>
+                                      {daysLeft}d left
+                                    </span>
+                                  ) : (
+                                    <span style={{
+                                      display: 'inline-block',
+                                      marginLeft: '6px',
+                                      color: '#059669',
+                                      fontSize: '11px'
+                                    }}>
+                                      ({daysLeft}d)
+                                    </span>
+                                  ))}
+                                </div>
+                              ) : (
+                                <span style={{ color: '#94a3b8', fontStyle: 'italic', fontSize: '12px' }}>
+                                  {b.is_legacy ? 'Legacy (Unspecified)' : 'Non-perishable'}
+                                </span>
+                              )}
+                            </td>
+                            <td style={tdStyle}>
+                              {b.status === 'active' && (
+                                <span style={{
+                                  backgroundColor: '#dcfce7',
+                                  color: '#15803d',
+                                  border: '1px solid #bbf7d0',
+                                  padding: '3px 10px',
+                                  borderRadius: '20px',
+                                  fontSize: '11px',
+                                  fontWeight: '800'
+                                }}>
+                                  Active
+                                </span>
+                              )}
+                              {b.status === 'unverified_quarantine' && (
+                                <span style={{
+                                  backgroundColor: '#fef3c7',
+                                  color: '#92400e',
+                                  border: '1px solid #fde68a',
+                                  padding: '3px 10px',
+                                  borderRadius: '20px',
+                                  fontSize: '11px',
+                                  fontWeight: '800',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px'
+                                }}>
+                                  <ShieldAlert size={12} /> Quarantine
+                                </span>
+                              )}
+                              {b.status === 'expired' && (
+                                <span style={{
+                                  backgroundColor: '#fee2e2',
+                                  color: '#b91c1c',
+                                  border: '1px solid #fecaca',
+                                  padding: '3px 10px',
+                                  borderRadius: '20px',
+                                  fontSize: '11px',
+                                  fontWeight: '800'
+                                }}>
+                                  Expired
+                                </span>
+                              )}
+                              {b.status === 'depleted' && (
+                                <span style={{
+                                  backgroundColor: '#f1f5f9',
+                                  color: '#64748b',
+                                  border: '1px solid #e2e8f0',
+                                  padding: '3px 10px',
+                                  borderRadius: '20px',
+                                  fontSize: '11px',
+                                  fontWeight: '700'
+                                }}>
+                                  Depleted
+                                </span>
+                              )}
+                            </td>
+                            <td style={tdStyle}>
+                              {b.status === 'unverified_quarantine' ? (
+                                <button
+                                  id={`btn-verify-batch-${b.id}`}
+                                  onClick={() => {
+                                    setVerifyTargetBatch(b);
+                                    setVerifyExpiryDate('');
+                                    setVerifyNotes('');
+                                    setIsVerifyModalOpen(true);
+                                  }}
+                                  style={{
+                                    backgroundColor: '#0f766e',
+                                    color: '#ffffff',
+                                    border: 'none',
+                                    borderRadius: '6px',
+                                    padding: '5px 10px',
+                                    fontSize: '11px',
+                                    fontWeight: '700',
+                                    cursor: 'pointer'
+                                  }}
+                                >
+                                  Verify Expiry
+                                </button>
+                              ) : isExpired ? (
+                                <button
+                                  id={`btn-waste-batch-${b.id}`}
+                                  onClick={() => {
+                                    setActiveTab('waste');
+                                    setNewWaste({
+                                      ...newWaste,
+                                      item: String(b.item),
+                                      entered_quantity: String(b.current_quantity),
+                                      waste_category: 'food_spoilage_or_expiry',
+                                      notes: `Expired batch ${b.batch_number} written off.`
+                                    });
+                                  }}
+                                  style={{
+                                    backgroundColor: '#ef4444',
+                                    color: '#ffffff',
+                                    border: 'none',
+                                    borderRadius: '6px',
+                                    padding: '5px 10px',
+                                    fontSize: '11px',
+                                    fontWeight: '700',
+                                    cursor: 'pointer'
+                                  }}
+                                >
+                                  Route to Waste
+                                </button>
+                              ) : (
+                                <span style={{ color: '#94a3b8', fontSize: '12px' }}>-</span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        );
+
+
       case 'overview':
         return (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '25px' }}>
@@ -923,6 +1766,20 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
 
                 <div style={formRowStyle}>
                   <div style={formGroupStyle}>
+                    <label style={labelStyle}>Target Storage Location</label>
+                    <select
+                      id="grn-location-select"
+                      style={inputStyle}
+                      value={newGRN.location}
+                      onChange={e => setNewGRN({ ...newGRN, location: e.target.value })}
+                    >
+                      <option value="">Default: Central Store (STORE-MAIN)</option>
+                      {locations.map(loc => (
+                        <option key={loc.id} value={loc.id}>{loc.name} ({loc.code})</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div style={formGroupStyle}>
                     <label style={labelStyle}>Supplier</label>
                     <select style={inputStyle} value={newGRN.supplier} onChange={e => setNewGRN({ ...newGRN, supplier: e.target.value })}>
                       <option value="">-- Choose Supplier --</option>
@@ -931,10 +1788,66 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
                       ))}
                     </select>
                   </div>
+                </div>
+
+                <div style={formRowStyle}>
                   <div style={formGroupStyle}>
-                    <label style={labelStyle}>Reference/Invoice #</label>
-                    <input type="text" style={inputStyle} value={newGRN.reference_number} placeholder="e.g. INV-9021" onChange={e => setNewGRN({ ...newGRN, reference_number: e.target.value })} />
+                    <label style={labelStyle}>
+                      Batch / Lot #
+                      <button
+                        type="button"
+                        id="btn-auto-batch"
+                        onClick={() => {
+                          const code = selectedGRNItem ? selectedGRNItem.item_code : 'GEN';
+                          const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+                          const rnd = Math.random().toString(36).substring(2, 6).toUpperCase();
+                          setNewGRN({ ...newGRN, batch_number: `BAT-${code}-${dateStr}-${rnd}` });
+                        }}
+                        style={{
+                          marginLeft: '8px',
+                          background: 'none',
+                          border: 'none',
+                          color: '#0f766e',
+                          cursor: 'pointer',
+                          fontSize: '11px',
+                          fontWeight: '700',
+                          textDecoration: 'underline'
+                        }}
+                      >
+                        Auto-Generate
+                      </button>
+                    </label>
+                    <input
+                      id="grn-batch-input"
+                      type="text"
+                      style={inputStyle}
+                      value={newGRN.batch_number}
+                      placeholder="e.g. BAT-20261103-01"
+                      onChange={e => setNewGRN({ ...newGRN, batch_number: e.target.value })}
+                    />
                   </div>
+                  <div style={formGroupStyle}>
+                    <label style={labelStyle}>
+                      Expiration Date
+                      {selectedGRNItem?.is_perishable && (
+                        <span style={{ color: '#ef4444', fontWeight: '800', marginLeft: '6px' }}>
+                          * Perishable Item
+                        </span>
+                      )}
+                    </label>
+                    <input
+                      id="grn-expiry-input"
+                      type="date"
+                      style={inputStyle}
+                      value={newGRN.expiry_date}
+                      onChange={e => setNewGRN({ ...newGRN, expiry_date: e.target.value })}
+                    />
+                  </div>
+                </div>
+
+                <div style={formGroupStyle}>
+                  <label style={labelStyle}>Reference/Invoice #</label>
+                  <input type="text" style={inputStyle} value={newGRN.reference_number} placeholder="e.g. INV-9021" onChange={e => setNewGRN({ ...newGRN, reference_number: e.target.value })} />
                 </div>
 
                 <div style={formGroupStyle}>
@@ -1105,17 +2018,226 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
 
         const getCategoryBadge = (cat) => {
           switch (cat) {
-            case 'food_spoilage_or_expiry':
-              return { label: 'Spoilage / Expiry', bg: 'rgba(239, 68, 68, 0.1)', color: '#dc2626', border: '#fca5a5' };
-            case 'unissued_prep_loss':
-              return { label: 'Prep / Trimming Loss', bg: 'rgba(245, 158, 11, 0.1)', color: '#d97706', border: '#fcd34d' };
             case 'breakage_or_damage':
-              return { label: 'Breakage / Damage', bg: 'rgba(225, 29, 72, 0.1)', color: '#e11d48', border: '#fda4af' };
+            case 'breakage':
+            case 'damage':
+              return {
+                label: 'Breakage / Damage',
+                bg: 'rgba(239, 68, 68, 0.08)',
+                color: '#dc2626',
+                border: 'rgba(239, 68, 68, 0.2)',
+                icon: <PackageX size={12} color="#dc2626" style={{ flexShrink: 0 }} />
+              };
+            case 'expired':
+            case 'expiry':
+              return {
+                label: 'Expired',
+                bg: 'rgba(245, 158, 11, 0.08)',
+                color: '#d97706',
+                border: 'rgba(245, 158, 11, 0.2)',
+                icon: <Clock size={12} color="#d97706" style={{ flexShrink: 0 }} />
+              };
+            case 'spoilage':
+              return {
+                label: 'Spoilage',
+                bg: 'rgba(249, 115, 22, 0.08)',
+                color: '#ea580c',
+                border: 'rgba(249, 115, 22, 0.2)',
+                icon: <Flame size={12} color="#ea580c" style={{ flexShrink: 0 }} />
+              };
+            case 'food_spoilage_or_expiry':
+              return {
+                label: 'Spoilage / Expiry',
+                bg: 'rgba(245, 158, 11, 0.08)',
+                color: '#d97706',
+                border: 'rgba(245, 158, 11, 0.2)',
+                icon: <Clock size={12} color="#d97706" style={{ flexShrink: 0 }} />
+              };
+            case 'unissued_prep_loss':
+            case 'prep_loss':
+              return {
+                label: 'Prep / Trimming Loss',
+                bg: 'rgba(249, 115, 22, 0.08)',
+                color: '#ea580c',
+                border: 'rgba(249, 115, 22, 0.2)',
+                icon: <Utensils size={12} color="#ea580c" style={{ flexShrink: 0 }} />
+              };
+            case 'operational_use':
+            case 'operational':
+              return {
+                label: 'Operational Use',
+                bg: 'rgba(37, 99, 235, 0.08)',
+                color: '#2563eb',
+                border: 'rgba(37, 99, 235, 0.2)',
+                icon: <Package size={12} color="#2563eb" style={{ flexShrink: 0 }} />
+              };
             case 'spillage':
-              return { label: 'Spillage', bg: 'rgba(14, 165, 233, 0.1)', color: '#0284c7', border: '#7dd3fc' };
+              return {
+                label: 'Spillage',
+                bg: 'rgba(14, 165, 233, 0.08)',
+                color: '#0284c7',
+                border: 'rgba(14, 165, 233, 0.2)',
+                icon: <AlertTriangle size={12} color="#0284c7" style={{ flexShrink: 0 }} />
+              };
+            case 'other':
             default:
-              return { label: 'Other Loss', bg: 'rgba(100, 116, 139, 0.1)', color: '#475569', border: '#cbd5e1' };
+              return {
+                label: cat && cat !== 'other' ? cat.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : 'Other Loss',
+                bg: 'rgba(100, 116, 139, 0.08)',
+                color: '#475569',
+                border: 'rgba(100, 116, 139, 0.2)',
+                icon: <HelpCircle size={12} color="#475569" style={{ flexShrink: 0 }} />
+              };
           }
+        };
+
+        const getSourceStockEffectBadge = (record) => {
+          const source = record.waste_source || '';
+          const isDeducted = Boolean(record.stock_deducted);
+          const isReversed = Boolean(record.is_reversed);
+          const status = record.status || '';
+
+          // 1. Primary semantic badge
+          let primaryLabel = 'Direct Loss';
+          let primaryStyle = {
+            bg: 'rgba(239, 68, 68, 0.08)',
+            color: '#b91c1c',
+            border: 'rgba(239, 68, 68, 0.2)'
+          };
+
+          switch (source) {
+            case 'direct_loss':
+              primaryLabel = 'Direct Loss';
+              if (isDeducted) {
+                primaryStyle = { bg: 'rgba(239, 68, 68, 0.08)', color: '#b91c1c', border: 'rgba(239, 68, 68, 0.2)' };
+              } else if (status === 'pending_review') {
+                primaryStyle = { bg: 'rgba(245, 158, 11, 0.08)', color: '#b45309', border: 'rgba(245, 158, 11, 0.2)' };
+              } else {
+                primaryStyle = { bg: 'rgba(100, 116, 139, 0.08)', color: '#475569', border: 'rgba(100, 116, 139, 0.2)' };
+              }
+              break;
+
+            case 'kitchen_prep_waste':
+              primaryLabel = 'Kitchen Prep';
+              primaryStyle = { bg: 'rgba(124, 58, 237, 0.08)', color: '#6d28d9', border: 'rgba(124, 58, 237, 0.2)' };
+              break;
+
+            case 'internal_consumption':
+            case 'internal_use':
+              primaryLabel = 'Internal Use';
+              primaryStyle = { bg: 'rgba(37, 99, 235, 0.08)', color: '#1d4ed8', border: 'rgba(37, 99, 235, 0.2)' };
+              break;
+
+            case 'adjustment':
+              primaryLabel = 'Adjustment';
+              primaryStyle = { bg: 'rgba(13, 148, 136, 0.08)', color: '#0f766e', border: 'rgba(13, 148, 136, 0.2)' };
+              break;
+
+            case 'non_stock_loss':
+              primaryLabel = 'Non-Stock Loss';
+              primaryStyle = { bg: 'rgba(100, 116, 139, 0.08)', color: '#475569', border: 'rgba(100, 116, 139, 0.2)' };
+              break;
+
+            default:
+              primaryLabel = source
+                ? source.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+                : 'Direct Loss';
+              primaryStyle = { bg: 'rgba(100, 116, 139, 0.08)', color: '#475569', border: 'rgba(100, 116, 139, 0.2)' };
+              break;
+          }
+
+          // 2. Secondary stock movement information
+          let secondaryText = 'No stock deduction';
+          let secondaryIcon = <MinusCircle size={11} color="#94a3b8" style={{ flexShrink: 0 }} />;
+
+          if (isReversed) {
+            secondaryText = 'Deduction reversed';
+            secondaryIcon = <RotateCcw size={11} color="#94a3b8" style={{ flexShrink: 0 }} />;
+          } else if (source === 'kitchen_prep_waste') {
+            const ref = record.source_dispatch_reference || record.source_dispatch;
+            secondaryText = ref ? `Issued stock (#${ref})` : 'From issued stock';
+            secondaryIcon = <Layers size={11} color="#7c3aed" style={{ flexShrink: 0 }} />;
+          } else if (source === 'adjustment') {
+            secondaryText = isDeducted ? 'Stock adjusted' : 'Pending adjustment';
+            secondaryIcon = <RefreshCw size={11} color="#0f766e" style={{ flexShrink: 0 }} />;
+          } else if (source === 'non_stock_loss') {
+            secondaryText = 'No stock deduction';
+            secondaryIcon = <MinusCircle size={11} color="#94a3b8" style={{ flexShrink: 0 }} />;
+          } else if (isDeducted) {
+            secondaryText = 'Stock deducted';
+            secondaryIcon = <PackageMinus size={11} color="#dc2626" style={{ flexShrink: 0 }} />;
+          } else if (status === 'pending_review') {
+            secondaryText = 'Pending deduction';
+            secondaryIcon = <Clock size={11} color="#d97706" style={{ flexShrink: 0 }} />;
+          } else if (status === 'rejected') {
+            secondaryText = 'No stock deduction';
+            secondaryIcon = <X size={11} color="#94a3b8" style={{ flexShrink: 0 }} />;
+          } else {
+            secondaryText = 'No stock deduction';
+            secondaryIcon = <MinusCircle size={11} color="#94a3b8" style={{ flexShrink: 0 }} />;
+          }
+
+          return { primaryLabel, primaryStyle, secondaryText, secondaryIcon };
+        };
+
+        const getWasteStatusBadge = (record) => {
+          if (record.is_reversed) {
+            return {
+              label: 'Reversed',
+              bg: 'rgba(239, 68, 68, 0.08)',
+              color: '#b91c1c',
+              border: 'rgba(239, 68, 68, 0.2)',
+              icon: <RotateCcw size={12} color="#b91c1c" style={{ flexShrink: 0 }} />,
+              secondaryText: record.reversal_reason || 'Deduction reversed',
+              secondaryTitle: record.reversal_reason || undefined,
+              secondaryColor: '#64748b'
+            };
+          }
+
+          if (record.status === 'pending_review') {
+            const thresholdText = parseFloat(record.unit_cost_snapshot || 0) <= 0
+              ? 'Zero Unit Cost'
+              : '> 1,000 ETB';
+            return {
+              label: 'Pending Review',
+              bg: 'rgba(245, 158, 11, 0.08)',
+              color: '#d97706',
+              border: 'rgba(245, 158, 11, 0.2)',
+              icon: <Hourglass size={12} color="#d97706" style={{ flexShrink: 0 }} />,
+              secondaryText: thresholdText,
+              secondaryTitle: `Held for manager review (${thresholdText})`,
+              secondaryColor: '#b45309'
+            };
+          }
+
+          if (record.status === 'rejected') {
+            return {
+              label: 'Rejected',
+              bg: 'rgba(239, 68, 68, 0.08)',
+              color: '#dc2626',
+              border: 'rgba(239, 68, 68, 0.2)',
+              icon: <XCircle size={12} color="#dc2626" style={{ flexShrink: 0 }} />,
+              secondaryText: record.rejection_reason || 'Rejected by reviewer',
+              secondaryTitle: record.rejection_reason || undefined,
+              secondaryColor: '#dc2626'
+            };
+          }
+
+          // Approved
+          const reviewerText = record.reviewed_by_username
+            ? `By: ${record.reviewed_by_username}${record.is_self_reviewed ? ' (Exception)' : ''}`
+            : null;
+
+          return {
+            label: 'Approved',
+            bg: 'rgba(16, 185, 129, 0.08)',
+            color: '#059669',
+            border: 'rgba(16, 185, 129, 0.2)',
+            icon: <CheckCircle size={12} color="#059669" style={{ flexShrink: 0 }} />,
+            secondaryText: reviewerText,
+            secondaryTitle: reviewerText || undefined,
+            secondaryColor: '#64748b'
+          };
         };
 
         return (
@@ -1243,11 +2365,11 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
                       <th style={thStyle}>Date & Time</th>
                       <th style={thStyle}>Item</th>
                       <th style={thStyle}>Waste Quantity</th>
-                      <th style={thStyle}>Category</th>
-                      <th style={thStyle}>Source & Stock Effect</th>
+                      <th style={{ ...thStyle, width: '140px', minWidth: '140px' }}>Category</th>
+                      <th style={{ ...thStyle, width: '160px', minWidth: '160px' }}>Source & Stock Effect</th>
                       <th style={thStyle}>Financial Loss</th>
                       <th style={thStyle}>Location & Staff</th>
-                      <th style={thStyle}>Status</th>
+                      <th style={{ ...thStyle, width: '160px', minWidth: '150px' }}>Status</th>
                       <th style={{ ...thStyle, textAlign: 'center' }}>Action</th>
                     </tr>
                   </thead>
@@ -1261,7 +2383,8 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
                     ) : (
                       filteredWaste.map(w => {
                         const catBadge = getCategoryBadge(w.waste_category);
-                        const isDirect = w.waste_source === 'direct_loss';
+                        const sourceEffect = getSourceStockEffectBadge(w);
+                        const statusInfo = getWasteStatusBadge(w);
                         const showNormalized = w.entered_unit !== w.item_unit || parseFloat(w.entered_quantity) !== parseFloat(w.base_quantity);
                         const canReverse = !w.is_reversed && !w.reversal_of && w.status === 'approved' && (userData?.role === 'admin' || userData?.role === 'inventory');
                         const isSubmitter = Boolean(userData?.username && userData.username === w.reported_by_username);
@@ -1269,14 +2392,14 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
 
                         return (
                           <tr key={w.id} style={{ ...trStyle, opacity: w.is_reversed ? 0.65 : 1 }}>
-                            <td style={{ ...tdStyle, fontSize: '12px', color: '#64748b', whiteSpace: 'nowrap' }}>
+                            <td style={{ ...tdStyle, verticalAlign: 'middle', fontSize: '12px', color: '#64748b', whiteSpace: 'nowrap' }}>
                               {new Date(w.recorded_at).toLocaleString()}
                             </td>
-                            <td style={tdStyle}>
+                            <td style={{ ...tdStyle, verticalAlign: 'middle' }}>
                               <div style={{ fontWeight: '700', color: '#0f172a' }}>{w.item_name}</div>
                               <div style={{ fontSize: '11px', color: '#64748b' }}>{w.item_code}</div>
                             </td>
-                            <td style={tdStyle}>
+                            <td style={{ ...tdStyle, verticalAlign: 'middle' }}>
                               <div style={{ fontWeight: '800', color: w.is_reversed ? '#64748b' : '#dc2626' }}>
                                 -{parseFloat(w.entered_quantity).toFixed(2)} {w.entered_unit}
                               </div>
@@ -1286,44 +2409,64 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
                                 </div>
                               )}
                             </td>
-                            <td style={tdStyle}>
+                            <td style={{ ...tdStyle, verticalAlign: 'middle', width: '140px', minWidth: '140px' }}>
                               <span style={{
-                                ...badgeStyle,
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                padding: '6px 9px',
+                                borderRadius: '7px',
+                                fontSize: '11.5px',
+                                fontWeight: '600',
+                                lineHeight: 1.1,
+                                whiteSpace: 'nowrap',
                                 backgroundColor: catBadge.bg,
                                 color: catBadge.color,
-                                border: `1px solid ${catBadge.border}`
+                                border: `1px solid ${catBadge.border}`,
                               }}>
-                                {catBadge.label}
+                                {catBadge.icon}
+                                <span>{catBadge.label}</span>
                               </span>
                             </td>
-                            <td style={tdStyle}>
-                              {isDirect ? (
+                            <td style={{ ...tdStyle, verticalAlign: 'middle', width: '160px', minWidth: '160px' }}>
+                              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '4px' }}>
                                 <span style={{
-                                  ...badgeStyle,
-                                  backgroundColor: w.stock_deducted ? 'rgba(220, 38, 38, 0.08)' : 'rgba(245, 158, 11, 0.08)',
-                                  color: w.stock_deducted ? '#dc2626' : '#d97706',
-                                  border: `1px solid ${w.stock_deducted ? '#fca5a5' : '#fde68a'}`
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  padding: '3px 8px',
+                                  borderRadius: '6px',
+                                  fontSize: '11px',
+                                  fontWeight: '700',
+                                  lineHeight: 1.2,
+                                  whiteSpace: 'nowrap',
+                                  backgroundColor: sourceEffect.primaryStyle.bg,
+                                  color: sourceEffect.primaryStyle.color,
+                                  border: `1px solid ${sourceEffect.primaryStyle.border}`,
                                 }}>
-                                  {w.stock_deducted ? 'Direct Loss (Stock Deducted)' : 'Direct Loss (Pending Stock Deduction)'}
+                                  {sourceEffect.primaryLabel}
                                 </span>
-                              ) : (
-                                <span style={{
-                                  ...badgeStyle,
-                                  backgroundColor: 'rgba(124, 58, 237, 0.08)',
-                                  color: '#7c3aed',
-                                  border: '1px solid #c4b5fd'
+                                <div style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  fontSize: '11px',
+                                  color: '#64748b',
+                                  fontWeight: '500',
+                                  lineHeight: 1.2,
+                                  whiteSpace: 'nowrap',
                                 }}>
-                                  Kitchen Prep (Issuance #{w.source_dispatch || '—'})
-                                </span>
-                              )}
+                                  {sourceEffect.secondaryIcon}
+                                  <span>{sourceEffect.secondaryText}</span>
+                                </div>
+                              </div>
                             </td>
-                            <td style={{ ...tdStyle, fontWeight: '700', color: w.is_reversed ? '#64748b' : '#0f172a' }}>
+                            <td style={{ ...tdStyle, verticalAlign: 'middle', fontWeight: '700', color: w.is_reversed ? '#64748b' : '#0f172a' }}>
                               {parseFloat(w.total_cost_loss || 0).toFixed(2)} ETB
                               {parseFloat(w.unit_cost_snapshot || 0) <= 0 && (
                                 <div style={{ fontSize: '10px', color: '#d97706', fontWeight: '600' }}>⚠️ 0.00 Unit Cost</div>
                               )}
                             </td>
-                            <td style={tdStyle}>
+                            <td style={{ ...tdStyle, verticalAlign: 'middle' }}>
                               <div style={{ fontSize: '12px', fontWeight: '600', color: '#334155' }}>
                                 {w.reported_by_username || 'system'}
                               </div>
@@ -1333,72 +2476,45 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
                                 </div>
                               )}
                             </td>
-                            <td style={tdStyle}>
-                              {w.is_reversed ? (
-                                <div>
-                                  <span style={{
-                                    ...badgeStyle,
-                                    backgroundColor: 'rgba(239, 68, 68, 0.1)',
-                                    color: '#ef4444',
-                                    border: '1px solid #ef4444'
-                                  }}>
-                                    Reversed
-                                  </span>
-                                  {w.reversal_reason && (
-                                    <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px', maxWidth: '160px' }} title={w.reversal_reason}>
-                                      {w.reversal_reason}
-                                    </div>
-                                  )}
-                                </div>
-                              ) : w.status === 'pending_review' ? (
-                                <div>
-                                  <span style={{
-                                    ...badgeStyle,
-                                    backgroundColor: 'rgba(245, 158, 11, 0.1)',
-                                    color: '#d97706',
-                                    border: '1px solid #fcd34d'
-                                  }}>
-                                    ⏳ Pending Review
-                                  </span>
-                                  <div style={{ fontSize: '10px', color: '#b45309', marginTop: '3px' }}>
-                                    {parseFloat(w.unit_cost_snapshot || 0) <= 0 ? 'Zero Unit Cost' : '> 1,000 ETB'}
+                            <td style={{ ...tdStyle, verticalAlign: 'middle', width: '160px', minWidth: '150px' }}>
+                              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '4px' }}>
+                                <span style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '5px',
+                                  padding: '4px 8px',
+                                  borderRadius: '6px',
+                                  fontSize: '11px',
+                                  fontWeight: '700',
+                                  lineHeight: 1.1,
+                                  whiteSpace: 'nowrap',
+                                  backgroundColor: statusInfo.bg,
+                                  color: statusInfo.color,
+                                  border: `1px solid ${statusInfo.border}`,
+                                }}>
+                                  {statusInfo.icon}
+                                  <span>{statusInfo.label}</span>
+                                </span>
+                                {statusInfo.secondaryText && (
+                                  <div
+                                    style={{
+                                      fontSize: '11px',
+                                      color: statusInfo.secondaryColor,
+                                      fontWeight: '500',
+                                      lineHeight: 1.2,
+                                      whiteSpace: 'nowrap',
+                                      overflow: 'hidden',
+                                      textOverflow: 'ellipsis',
+                                      maxWidth: '150px',
+                                    }}
+                                    title={statusInfo.secondaryTitle || statusInfo.secondaryText}
+                                  >
+                                    {statusInfo.secondaryText}
                                   </div>
-                                </div>
-                              ) : w.status === 'rejected' ? (
-                                <div>
-                                  <span style={{
-                                    ...badgeStyle,
-                                    backgroundColor: 'rgba(100, 116, 139, 0.1)',
-                                    color: '#64748b',
-                                    border: '1px solid #cbd5e1'
-                                  }}>
-                                    ✕ Rejected
-                                  </span>
-                                  {w.rejection_reason && (
-                                    <div style={{ fontSize: '10px', color: '#dc2626', marginTop: '3px', maxWidth: '160px' }} title={w.rejection_reason}>
-                                      {w.rejection_reason}
-                                    </div>
-                                  )}
-                                </div>
-                              ) : (
-                                <div>
-                                  <span style={{
-                                    ...badgeStyle,
-                                    backgroundColor: 'rgba(16, 185, 129, 0.1)',
-                                    color: '#10b981',
-                                    border: '1px solid #10b981'
-                                  }}>
-                                    ✓ Approved
-                                  </span>
-                                  {w.reviewed_by_username && (
-                                    <div style={{ fontSize: '10px', color: '#64748b', marginTop: '2px' }}>
-                                      By: {w.reviewed_by_username} {w.is_self_reviewed && '(Exception)'}
-                                    </div>
-                                  )}
-                                </div>
-                              )}
+                                )}
+                              </div>
                             </td>
-                            <td style={{ ...tdStyle, textAlign: 'center' }}>
+                            <td style={{ ...tdStyle, verticalAlign: 'middle', textAlign: 'center' }}>
                               {w.status === 'pending_review' ? (
                                 <div style={{ display: 'inline-flex', gap: '6px' }}>
                                   <button
@@ -2583,6 +3699,16 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
       {/* Tabs */}
       <div style={tabBar} className="no-print inventory-tab-bar">
         <button onClick={() => { setActiveTab('overview'); setSelectedReport(null); }} style={tabBtn} className={activeTab === 'overview' ? 'tab-btn-active' : ''}>Overview</button>
+        <button id="tab-btn-batches" onClick={() => { setActiveTab('batches'); setSelectedReport(null); }} style={tabBtn} className={activeTab === 'batches' ? 'tab-btn-active' : ''}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+            Batches & Expiry
+            {((batches.filter(b => b.status === 'expired' || (b.expiry_date && b.expiry_date < new Date().toISOString().split('T')[0])).length > 0) || (batches.filter(b => b.status === 'unverified_quarantine').length > 0)) && (
+              <span style={{ backgroundColor: '#ef4444', color: '#fff', fontSize: '10px', fontWeight: '800', padding: '1px 6px', borderRadius: '10px' }}>
+                !
+              </span>
+            )}
+          </span>
+        </button>
         <button onClick={() => { setActiveTab('actions'); setSelectedReport(null); }} style={tabBtn} className={activeTab === 'actions' ? 'tab-btn-active' : ''}>Stock Actions</button>
         <button onClick={() => { setActiveTab('waste'); setSelectedReport(null); }} style={tabBtn} className={activeTab === 'waste' ? 'tab-btn-active' : ''}>Waste & Loss</button>
         <button onClick={() => { setActiveTab('recipes'); setSelectedReport(null); }} style={tabBtn} className={activeTab === 'recipes' ? 'tab-btn-active' : ''}>Recipes BOM</button>
@@ -2598,6 +3724,158 @@ const InventoryDashboard = ({ userData, handleLogout }) => {
       </main>
 
       {/* MODALS */}
+
+            {/* Verify Quarantine Batch Modal */}
+      <AnimatePresence>
+        {isVerifyModalOpen && verifyTargetBatch && (
+          <div style={modalOverlayStyle} onClick={() => dismissModal(() => setIsVerifyModalOpen(false))}>
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              style={{ ...modalContentStyle, width: '520px' }}
+              onClick={e => e.stopPropagation()}
+            >
+              <ModalHeader
+                title="Verify Quarantined Batch"
+                onClose={() => dismissModal(() => setIsVerifyModalOpen(false))}
+              />
+              <div style={{ padding: '0 24px 20px 24px' }}>
+                <div style={{
+                  backgroundColor: '#fef3c7',
+                  border: '1px solid #fde68a',
+                  borderRadius: '8px',
+                  padding: '12px 14px',
+                  marginBottom: '16px',
+                  fontSize: '12px',
+                  color: '#92400e'
+                }}>
+                  <strong>Physical Food Safety Inspection Required:</strong> This legacy batch has unknown expiration. Inspect packaging and manufacturer stamps before activating.
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', fontSize: '13px', marginBottom: '16px', color: '#475569' }}>
+                  <div><strong>Batch #:</strong> <span style={{ fontFamily: 'monospace' }}>{verifyTargetBatch.batch_number}</span></div>
+                  <div><strong>Item:</strong> {verifyTargetBatch.item_name}</div>
+                  <div><strong>On-Hand:</strong> {parseFloat(verifyTargetBatch.current_quantity).toFixed(2)} {verifyTargetBatch.item_unit}</div>
+                  <div><strong>Status:</strong> Quarantined</div>
+                </div>
+
+                <form onSubmit={handleVerifyBatch} style={formStyle}>
+                  <div style={formGroupStyle}>
+                    <label style={labelStyle}>Verified Expiration Date (Future Date) *</label>
+                    <input
+                      id="input-verify-expiry-date"
+                      required
+                      type="date"
+                      min={new Date().toISOString().split('T')[0]}
+                      style={inputStyle}
+                      value={verifyExpiryDate}
+                      onChange={e => setVerifyExpiryDate(e.target.value)}
+                    />
+                  </div>
+                  <div style={formGroupStyle}>
+                    <label style={labelStyle}>Inspection & Verification Notes</label>
+                    <textarea
+                      id="input-verify-notes"
+                      rows="3"
+                      style={{ ...inputStyle, resize: 'vertical' }}
+                      placeholder="e.g. Verified factory packaging intact, manufacturer expiry stamp legible."
+                      value={verifyNotes}
+                      onChange={e => setVerifyNotes(e.target.value)}
+                    />
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
+                    <button
+                      type="button"
+                      onClick={() => dismissModal(() => setIsVerifyModalOpen(false))}
+                      style={btnSecondaryStyle}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      id="btn-confirm-verify-batch"
+                      type="submit"
+                      disabled={verifySubmitting}
+                      style={{ ...btnPrimaryStyle, opacity: verifySubmitting ? 0.7 : 1 }}
+                    >
+                      {verifySubmitting ? 'Verifying...' : 'Confirm & Release to Active Stock'}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Dismiss Expiry Alert Modal */}
+      <AnimatePresence>
+        {isDismissAlertModalOpen && dismissAlertTarget && (
+          <div style={modalOverlayStyle} onClick={() => dismissModal(() => setIsDismissAlertModalOpen(false))}>
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              style={{ ...modalContentStyle, width: '480px' }}
+              onClick={e => e.stopPropagation()}
+            >
+              <ModalHeader
+                title="Acknowledge & Dismiss Expiry Alert"
+                onClose={() => dismissModal(() => setIsDismissAlertModalOpen(false))}
+              />
+              <div style={{ padding: '0 24px 20px 24px' }}>
+                <div style={{
+                  backgroundColor: '#f8fafc',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '10px',
+                  padding: '12px 14px',
+                  marginBottom: '16px',
+                  fontSize: '12px',
+                  color: '#334155'
+                }}>
+                  <div style={{ fontWeight: '800', marginBottom: '4px', color: '#0f172a' }}>
+                    {dismissAlertTarget.item_name} ({dismissAlertTarget.item_code})
+                  </div>
+                  <div><strong>Batch #:</strong> <span style={{ fontFamily: 'monospace' }}>{dismissAlertTarget.batch_number}</span></div>
+                  <div><strong>Alert Tier:</strong> {dismissAlertTarget.alert_type_display || dismissAlertTarget.alert_type}</div>
+                  <div><strong>On-Hand:</strong> {dismissAlertTarget.current_quantity} {dismissAlertTarget.item_unit}</div>
+                </div>
+
+                <form onSubmit={handleDismissAlertSubmit} style={formStyle}>
+                  <div style={formGroupStyle}>
+                    <label style={labelStyle}>Reason for Dismissal / Acknowledgment *</label>
+                    <textarea
+                      required
+                      rows="3"
+                      style={{ ...inputStyle, resize: 'vertical' }}
+                      placeholder="e.g. Inspected and approved for immediate use in today's banquet menu."
+                      value={dismissAlertReason}
+                      onChange={e => setDismissAlertReason(e.target.value)}
+                    />
+                  </div>
+
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '12px' }}>
+                    <button
+                      type="button"
+                      onClick={() => dismissModal(() => setIsDismissAlertModalOpen(false))}
+                      style={btnSecondaryStyle}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={dismissAlertSubmitting}
+                      style={{ ...btnPrimaryStyle, opacity: dismissAlertSubmitting ? 0.7 : 1 }}
+                    >
+                      {dismissAlertSubmitting ? 'Dismissing...' : 'Confirm Dismissal'}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* Item Modal */}
       <AnimatePresence>

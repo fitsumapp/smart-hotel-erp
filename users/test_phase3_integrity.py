@@ -17,7 +17,7 @@ from hotel.integrity import (
 )
 from hotel.inventory import reconcile_stock
 from hotel.models import (
-    Category, InventoryCategory, InventoryItem, MenuItem, Order,
+    Account, Category, InventoryCategory, InventoryItem, MenuItem, Order,
     Reservation, RestaurantTable, Room,
 )
 from users.models import User
@@ -42,6 +42,8 @@ class Phase3ServiceIntegrityTests(TestCase):
             item_code="P3-STOCK", name="Stock", category=inventory_category,
             current_stock=Decimal("10.00"), opening_stock=Decimal("10.00"), unit_cost=Decimal("2.00"),
         )
+        Account.objects.get_or_create(code="1300", defaults={"name": "Inventory Asset", "account_type": "asset"})
+        Account.objects.get_or_create(code="5000", defaults={"name": "COGS", "account_type": "expense"})
 
     def reservation(self, status="pending"):
         return Reservation.objects.create(
@@ -58,7 +60,7 @@ class Phase3ServiceIntegrityTests(TestCase):
             reservation.save(update_fields=["status", "updated_at"])
 
     def test_order_state_machine_rejects_invalid_transition(self):
-        order = Order.objects.create(table=self.table)
+        order = Order.objects.create(table=self.table, status="cancelled")
         with self.assertRaises(ValidationError):
             transition_order(order_id=order.pk, to_status="ready")
 
