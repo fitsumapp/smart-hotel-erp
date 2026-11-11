@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import axios from 'axios';
 import {
   Shield, TrendingUp, Hotel, Printer,
-  RefreshCw, Calendar, CheckCircle, BookMarked, Layers, Activity, ChefHat, Clock, AlertTriangle, Wine
+  RefreshCw, Calendar, CheckCircle, BookMarked, Layers, Activity, ChefHat
 } from 'lucide-react';
 import { API_BASE_URL } from '../apiConfig';
 

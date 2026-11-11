@@ -17,27 +17,6 @@ const getApiList = (payload) => {
   return [];
 };
 
-const getApiErrorMessages = (payload) => {
-  const root = payload?.error_details?.details || payload?.details || payload;
-  const messages = [];
-
-  const collect = (value, label = '') => {
-    if (!value) return;
-    if (Array.isArray(value)) {
-      value.forEach(item => collect(item, label));
-      return;
-    }
-    if (typeof value === 'object') {
-      Object.entries(value).forEach(([key, nested]) => collect(nested, key));
-      return;
-    }
-    messages.push(label ? `${label}: ${value}` : String(value));
-  };
-
-  collect(root);
-  return messages.length ? messages.join('\n') : 'Request could not be completed.';
-};
-
 const UserManager = () => {
   const [users, setUsers] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);

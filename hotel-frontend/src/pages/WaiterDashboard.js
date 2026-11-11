@@ -259,15 +259,6 @@ function WaiterDashboard({ userData, handleLogout }) {
     }
   };
 
-  const markServed = async (orderId) => {
-    try {
-      await axios.post(`${API_BASE}orders/${orderId}/mark-served/`, {}, { headers: headers() });
-      await loadAllData();
-    } catch (err) {
-      alert(err.response?.data?.error || 'Failed to mark order as served.');
-    }
-  };
-
   const markOrderItemServed = async (itemId) => {
     setIsBusy(true);
     try {

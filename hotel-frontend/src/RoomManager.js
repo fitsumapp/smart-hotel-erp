@@ -1927,25 +1927,6 @@ const modalOverlay = { position: 'fixed', top: 0, left: 0, width: '100%', height
 const modalContent = { backgroundColor: '#fff', padding: '25px', borderRadius: '24px', width: 'min(1100px, 100%)', border: '1px solid rgba(148,163,184,0.16)', boxShadow: '0 30px 80px rgba(15,23,42,0.18)', maxHeight: '92vh', overflow: 'hidden', color: '#0f172a' };
 const reservationModalContent = { backgroundColor: '#fff', padding: '25px', borderRadius: '24px', width: 'min(760px, 100%)', border: '1px solid rgba(148,163,184,0.16)', boxShadow: '0 30px 80px rgba(15,23,42,0.18)', maxHeight: '92vh', overflowY: 'auto', display: 'grid', gap: '18px', color: '#0f172a' };
 const reservationFormGrid = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' };
-const auditBoard = { display: 'grid', gap: '18px', color: '#0f172a' };
-const auditCard = { 
-  backgroundColor: '#fff', 
-  border: '1px solid rgba(148,163,184,0.16)', 
-  borderRadius: '20px', 
-  padding: '20px',
-  boxShadow: '0 12px 28px rgba(15,23,42,0.04)'
-};
-const auditStatsGrid = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', marginTop: '18px' };
-const auditMiniCard = { 
-  backgroundColor: '#f8fafc', 
-  border: '1px solid #cbd5e1', 
-  borderRadius: '16px', 
-  padding: '16px', 
-  display: 'flex', 
-  flexDirection: 'column', 
-  gap: '8px', 
-  color: '#334155' 
-};
 const tabsWrapperSmall = { display: 'flex', gap: '10px', overflowX: 'auto', marginBottom: '20px', paddingBottom: '8px', borderBottom: '1px solid #e2e8f0' };
 const tabBtnStyleSmall = { background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: '11px', fontWeight: '600', whiteSpace: 'nowrap' };
 const activeTabStyleSmall = { ...tabBtnStyleSmall, color: '#0f766e', borderBottom: '2px solid #0f766e' };
