@@ -679,3 +679,99 @@ class ProcurementManagementTestCase(APITestCase):
         app_inv_res = self.client.post(f"/api/users/procurement/invoices/{inv_id}/approve/", format="json")
         self.assertEqual(app_inv_res.status_code, status.HTTP_200_OK)
         self.assertEqual(app_inv_res.data["match_status"], "approved")
+
+    def test_13_grn_frontend_payload_compatibility_and_validation(self):
+        """Validates frontend payload key compatibility (received_quantity/rejected_quantity),
+        over-receiving protection, rejection handling, and invalid quantity validation."""
+        item = InventoryItem.objects.create(
+            item_code="PROC-ITEM-PAYLOAD",
+            name="Payload Test Olive Oil",
+            category=self.category,
+            unit="bottles",
+            is_perishable=False,
+            current_stock=Decimal("0.00"),
+            unit_cost=Decimal("100.00"),
+        )
+        req = request_purchase_requisition(
+            requester=self.chef,
+            department="kitchen",
+            items=[{"item_id": item.id, "quantity_requested": 20, "estimated_unit_cost": Decimal("100.00")}],
+        )
+        approve_purchase_requisition(requisition_id=req.id, approver=self.admin)
+        po = convert_requisition_to_purchase_order(requisition_id=req.id, issuer=self.admin, supplier_id=self.supplier.id)
+        po_item = po.items.first()
+
+        # 1. Validation: negative quantity -> ValidationError
+        with self.assertRaises(ValidationError) as ctx:
+            receive_goods_receipt_note(
+                purchase_order_id=po.id,
+                receiver=self.storekeeper,
+                receipt_items=[{"po_item_id": po_item.id, "received_quantity": -5}],
+            )
+        self.assertIn("cannot be negative", str(ctx.exception).lower())
+
+        # 2. Validation: invalid non-numeric quantity -> ValidationError
+        with self.assertRaises(ValidationError) as ctx:
+            receive_goods_receipt_note(
+                purchase_order_id=po.id,
+                receiver=self.storekeeper,
+                receipt_items=[{"po_item_id": po_item.id, "received_quantity": "invalid_num"}],
+            )
+        self.assertIn("invalid quantity format", str(ctx.exception).lower())
+
+        # 3. Validation: zero units received and zero rejected -> ValidationError
+        with self.assertRaises(ValidationError) as ctx:
+            receive_goods_receipt_note(
+                purchase_order_id=po.id,
+                receiver=self.storekeeper,
+                receipt_items=[{"po_item_id": po_item.id, "received_quantity": 0, "rejected_quantity": 0}],
+            )
+        self.assertIn("at least one unit must be received or rejected", str(ctx.exception).lower())
+
+        # 4. Validation: over-receiving (ordered 20, attempt 25) -> ValidationError
+        with self.assertRaises(ValidationError) as ctx:
+            receive_goods_receipt_note(
+                purchase_order_id=po.id,
+                receiver=self.storekeeper,
+                receipt_items=[{"po_item_id": po_item.id, "received_quantity": 25}],
+            )
+        self.assertIn("exceeds remaining outstanding quantity", str(ctx.exception).lower())
+
+        # 5. Partial receipt with rejection using frontend payload keys: receive 10, reject 2
+        grn_partial = receive_goods_receipt_note(
+            purchase_order_id=po.id,
+            receiver=self.storekeeper,
+            receipt_items=[{
+                "po_item_id": po_item.id,
+                "received_quantity": "10.0000",
+                "rejected_quantity": "2.0000",
+                "rejection_reason": "Broken seal on delivery",
+            }],
+        )
+        po.refresh_from_db()
+        po_item.refresh_from_db()
+        self.assertEqual(po.status, "partially_received")
+        self.assertEqual(po_item.quantity_received, Decimal("10.00"))
+        grn_item = grn_partial.items.first()
+        self.assertEqual(grn_item.quantity_received, Decimal("10.00"))
+        self.assertEqual(grn_item.quantity_rejected, Decimal("2.00"))
+        self.assertEqual(grn_item.rejection_reason, "Broken seal on delivery")
+
+        # 6. API call: receive remaining 10 using POST /api/users/procurement/orders/{id}/receive-grn/
+        self.client.force_authenticate(user=self.storekeeper)
+        api_res = self.client.post(
+            f"/api/users/procurement/orders/{po.id}/receive-grn/",
+            {
+                "location_id": self.main_store.id,
+                "items": [{
+                    "po_item_id": po_item.id,
+                    "received_quantity": 10,
+                }],
+            },
+            format="json",
+        )
+        self.assertEqual(api_res.status_code, status.HTTP_201_CREATED)
+        po.refresh_from_db()
+        po_item.refresh_from_db()
+        self.assertEqual(po.status, "received")
+        self.assertEqual(po_item.quantity_received, Decimal("20.00"))

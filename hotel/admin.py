@@ -20,6 +20,7 @@ from .models import (
     GoodsReceiptNote, GoodsReceiptNoteItem,
     SupplierInvoice, SupplierInvoiceItem,
     StocktakeSession, StocktakeItem,
+    UnfulfilledStockDeduction,
 )
 
 
@@ -346,6 +347,15 @@ class StockTransactionAdmin(ModelAdmin):
 class RecipeBOMAdmin(ModelAdmin):
     list_display = ["menu_item", "ingredient", "quantity_required"]
     search_fields = ["menu_item__name", "ingredient__name"]
+
+
+@admin.register(UnfulfilledStockDeduction)
+class UnfulfilledStockDeductionAdmin(ModelAdmin):
+    list_display = ["id", "order", "menu_item", "ingredient", "quantity_required", "quantity_available", "shortage_quantity", "status", "created_at"]
+    list_filter = ["status", "created_at"]
+    search_fields = ["order__id", "menu_item__name", "ingredient__name", "failure_reason"]
+    readonly_fields = ["order", "order_item", "menu_item", "ingredient", "location", "quantity_required", "quantity_available", "shortage_quantity", "unit_cost_snapshot", "failure_reason", "created_at", "updated_at"]
+    list_per_page = 25
 
 
 @admin.register(StockLocation)

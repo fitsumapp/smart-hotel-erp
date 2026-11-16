@@ -10,7 +10,7 @@ Enforces:
 7. Final AP settlement and Purchase Price Variance (PPV): Dr 2010, Dr/Cr 5040, Cr 2000.
 """
 import datetime
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from uuid import uuid4
 
 from django.core.exceptions import PermissionDenied, ValidationError
@@ -486,16 +486,40 @@ def receive_goods_receipt_note(
 
         inv_item = po_item.item
 
-        qty_recv_raw = it_data.get("quantity_received", 0)
-        qty_rej_raw = it_data.get("quantity_rejected", 0)
-        qty_recv = Decimal(str(qty_recv_raw))
-        qty_rej = Decimal(str(qty_rej_raw))
+        # Backward-compatible quantity extraction: supports 'quantity_received' (backend) & 'received_quantity' (frontend)
+        qty_recv_raw = it_data.get("quantity_received")
+        if qty_recv_raw is None or qty_recv_raw == "":
+            qty_recv_raw = it_data.get("received_quantity", 0)
+        if qty_recv_raw is None or qty_recv_raw == "":
+            qty_recv_raw = 0
+
+        # Backward-compatible rejection extraction: supports 'quantity_rejected' (backend) & 'rejected_quantity' (frontend)
+        qty_rej_raw = it_data.get("quantity_rejected")
+        if qty_rej_raw is None or qty_rej_raw == "":
+            qty_rej_raw = it_data.get("rejected_quantity", 0)
+        if qty_rej_raw is None or qty_rej_raw == "":
+            qty_rej_raw = 0
+
+        try:
+            qty_recv = Decimal(str(qty_recv_raw))
+            qty_rej = Decimal(str(qty_rej_raw))
+        except (InvalidOperation, ValueError, TypeError):
+            raise ValidationError(f"Invalid quantity format for '{inv_item.name}'. Must be a valid numeric value.")
 
         if qty_recv < Decimal("0.00") or qty_rej < Decimal("0.00"):
             raise ValidationError(f"Received and rejected quantities for '{inv_item.name}' cannot be negative.")
 
         if qty_recv + qty_rej <= Decimal("0.00"):
             raise ValidationError(f"At least one unit must be received or rejected for '{inv_item.name}'.")
+
+        # Over-receiving protection: check against outstanding balance on PO item
+        remaining_ordered = po_item.quantity_ordered - po_item.quantity_received
+        if qty_recv > remaining_ordered:
+            raise ValidationError(
+                f"Cannot receive {qty_recv} {inv_item.unit} for '{inv_item.name}': "
+                f"exceeds remaining outstanding quantity of {remaining_ordered} "
+                f"(Ordered: {po_item.quantity_ordered}, Already received: {po_item.quantity_received})."
+            )
 
         unit_cost = po_item.unit_price
         line_total = (qty_recv * unit_cost).quantize(Decimal("0.01"))

@@ -346,7 +346,7 @@ def record_stock_change(
     supplier_batch_val = ledger_values.pop("supplier_batch_number", None)
     expiry_date_val = ledger_values.pop("expiry_date", None)
 
-    location = resolve_stock_location(location_val)
+    location = resolve_stock_location(location_val) if location_val is not None else None
 
     payload_hash = None
     if idempotency_key:
@@ -398,12 +398,16 @@ def record_stock_change(
             f"Insufficient stock for {item.name}. Available: {item.current_stock} {item.unit}, requested: {quantity} {item.unit}."
         )
 
+    if is_incoming and location is None:
+        location = resolve_stock_location(None)
+
     # Legacy unbatched stock fallback:
     # If the item has positive aggregate stock but zero batches exist in the system
     # (e.g. created in unit tests or directly via InventoryItem.objects.create),
     # seed the initial legacy batch so allocation can proceed safely.
     if not StockBatch.objects.filter(item=item).exists() and item.current_stock > Decimal("0.00"):
         legacy_status = "unverified_quarantine" if item.is_perishable else "active"
+        seed_location = location or resolve_stock_location(None)
         legacy_batch = StockBatch.objects.create(
             item=item,
             batch_number=f"LEGACY-INITIAL-{item.item_code}",
@@ -416,10 +420,10 @@ def record_stock_change(
             is_legacy=True,
         )
         BatchLocationBalance.objects.get_or_create(
-            batch=legacy_batch, location=location, defaults={"quantity": item.current_stock}
+            batch=legacy_batch, location=seed_location, defaults={"quantity": item.current_stock}
         )
         ItemLocationBalance.objects.get_or_create(
-            item=item, location=location, defaults={"quantity": item.current_stock}
+            item=item, location=seed_location, defaults={"quantity": item.current_stock}
         )
 
     consumption_records = []
@@ -507,11 +511,21 @@ def record_stock_change(
                                 f"Batch '{manual_batch.batch_number}' status is '{manual_batch.status}' and cannot be consumed."
                             )
 
-                    blb = BatchLocationBalance.objects.select_for_update().filter(batch=manual_batch, location=location).first()
+                    if location:
+                        blb = BatchLocationBalance.objects.select_for_update().filter(batch=manual_batch, location=location).first()
+                    else:
+                        blb = manual_batch.location_balances.select_for_update().filter(quantity__gt=Decimal("0.00")).first()
+                        if blb:
+                            location = blb.location
+                        else:
+                            location = resolve_stock_location(None)
+                            blb = BatchLocationBalance.objects.select_for_update().filter(batch=manual_batch, location=location).first()
+
                     avail = min(manual_batch.current_quantity, blb.quantity if blb else Decimal("0.00"))
+                    loc_name = getattr(location, "name", "Storage Location")
                     if avail < quantity:
                         raise ValidationError(
-                            f"Insufficient stock in batch {manual_batch.batch_number} at {location.name}. "
+                            f"Insufficient stock in batch {manual_batch.batch_number} at {loc_name}. "
                             f"Available: {avail} {item.unit}, requested: {quantity} {item.unit}."
                         )
 
@@ -992,11 +1006,21 @@ def record_waste_entry(
                 f"Insufficient stock for {item.name}. Available: {item.current_stock} {item.unit}, requested waste: {base_qty} {item.unit}."
             )
         if not requires_approval:
+            target_waste_location = None
+            if storage_area:
+                from django.db.models import Q
+                from hotel.models import StockLocation
+                target_waste_location = StockLocation.objects.filter(
+                    Q(name__iexact=storage_area) | Q(code__iexact=storage_area) | Q(name__icontains=storage_area),
+                    is_active=True
+                ).first()
+
             updated_item, stx = record_stock_change(
                 item_id=item.pk,
                 transaction_type="loss",
                 quantity=base_qty,
                 unit_cost=unit_cost_snapshot,
+                location=target_waste_location,
                 notes=f"Waste Loss [{waste_category}]: {notes}".strip(),
                 destination_dept=storage_area or "Waste / Scrap",
                 logged_by_username=logged_by_username,

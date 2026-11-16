@@ -503,6 +503,7 @@ CORS_ALLOW_HEADERS = list(default_headers) + [
     "x-tenant-schema",
     "cache-control",
     "pragma",
+    "idempotency-key",
 ]
 
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")

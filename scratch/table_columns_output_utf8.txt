@@ -1,0 +1,333 @@
+﻿--- 1. BATCH & EXPIRY TABLES ---
+
+==================== TABLE: hotel_stockbatch ====================
+  id (bigint) nullable=NO default=None
+  batch_number (character varying) nullable=NO default=None
+  supplier_batch_number (character varying) nullable=YES default=None
+  initial_quantity (numeric) nullable=NO default=None
+  current_quantity (numeric) nullable=NO default=None
+  unit_cost (numeric) nullable=NO default=None
+  received_date (date) nullable=NO default=None
+  expiry_date (date) nullable=YES default=None
+  is_legacy (boolean) nullable=NO default=None
+  status (character varying) nullable=NO default=None
+  verified_at (timestamp with time zone) nullable=YES default=None
+  verification_notes (text) nullable=NO default=None
+  created_at (timestamp with time zone) nullable=NO default=None
+  item_id (bigint) nullable=NO default=None
+  supplier_id (bigint) nullable=YES default=None
+  verified_by_id (bigint) nullable=YES default=None
+
+==================== TABLE: hotel_batchlocationbalance ====================
+  id (bigint) nullable=NO default=None
+  quantity (numeric) nullable=NO default=None
+  batch_id (bigint) nullable=NO default=None
+  location_id (bigint) nullable=NO default=None
+
+==================== TABLE: hotel_stockbatchconsumption ====================
+  id (bigint) nullable=NO default=None
+  quantity_consumed (numeric) nullable=NO default=None
+  unit_cost (numeric) nullable=NO default=None
+  total_cost (numeric) nullable=NO default=None
+  created_at (timestamp with time zone) nullable=NO default=None
+  batch_id (bigint) nullable=NO default=None
+  transaction_id (bigint) nullable=NO default=None
+
+==================== TABLE: hotel_inventoryitem ====================
+  id (bigint) nullable=NO default=None
+  item_code (character varying) nullable=NO default=None
+  name (character varying) nullable=NO default=None
+  unit (character varying) nullable=NO default=None
+  current_stock (numeric) nullable=NO default=None
+  min_reorder_level (numeric) nullable=NO default=None
+  unit_cost (numeric) nullable=NO default=None
+  last_stocked_at (timestamp with time zone) nullable=NO default=None
+  created_at (timestamp with time zone) nullable=NO default=None
+  category_id (bigint) nullable=NO default=None
+  last_supplier_id (bigint) nullable=YES default=None
+  selling_price (numeric) nullable=NO default=None
+  opening_stock (numeric) nullable=NO default=None
+  units_per_pack (numeric) nullable=NO default=None
+  is_perishable (boolean) nullable=NO default=None
+  shelf_life_days (integer) nullable=YES default=None
+
+==================== TABLE: hotel_notification ====================
+  id (bigint) nullable=NO default=None
+  user_id_ref (integer) nullable=NO default=None
+  message (text) nullable=NO default=None
+  is_read (boolean) nullable=NO default=None
+  created_at (timestamp with time zone) nullable=NO default=None
+--- 2. PROCUREMENT TABLES ---
+
+==================== TABLE: hotel_purchaserequisition ====================
+  id (bigint) nullable=NO default=None
+  requisition_number (character varying) nullable=NO default=None
+  department (character varying) nullable=NO default=None
+  status (character varying) nullable=NO default=None
+  requested_at (timestamp with time zone) nullable=NO default=None
+  approved_at (timestamp with time zone) nullable=YES default=None
+  rejection_reason (text) nullable=NO default=None
+  total_estimated_amount (numeric) nullable=NO default=None
+  notes (text) nullable=NO default=None
+  created_at (timestamp with time zone) nullable=NO default=None
+  updated_at (timestamp with time zone) nullable=NO default=None
+  approval_tier_id (bigint) nullable=YES default=None
+  approved_by_id (bigint) nullable=YES default=None
+  requested_by_id (bigint) nullable=NO default=None
+
+==================== TABLE: hotel_purchaserequisitionitem ====================
+  id (bigint) nullable=NO default=None
+  quantity_requested (numeric) nullable=NO default=None
+  estimated_unit_cost (numeric) nullable=NO default=None
+  notes (text) nullable=NO default=None
+  item_id (bigint) nullable=NO default=None
+  requisition_id (bigint) nullable=NO default=None
+
+==================== TABLE: hotel_purchaseorder ====================
+  id (bigint) nullable=NO default=None
+  po_number (character varying) nullable=NO default=None
+  status (character varying) nullable=NO default=None
+  issued_at (timestamp with time zone) nullable=YES default=None
+  delivery_due_date (date) nullable=YES default=None
+  payment_terms (character varying) nullable=NO default=None
+  subtotal (numeric) nullable=NO default=None
+  tax_amount (numeric) nullable=NO default=None
+  total_amount (numeric) nullable=NO default=None
+  notes (text) nullable=NO default=None
+  cancellation_reason (text) nullable=NO default=None
+  created_at (timestamp with time zone) nullable=NO default=None
+  updated_at (timestamp with time zone) nullable=NO default=None
+  delivery_location_id (bigint) nullable=NO default=None
+  issued_by_id (bigint) nullable=YES default=None
+  supplier_id (bigint) nullable=NO default=None
+  requisition_id (bigint) nullable=YES default=None
+  originating_quotation_id (bigint) nullable=YES default=None
+
+==================== TABLE: hotel_purchaseorderitem ====================
+  id (bigint) nullable=NO default=None
+  quantity_ordered (numeric) nullable=NO default=None
+  quantity_received (numeric) nullable=NO default=None
+  unit_price (numeric) nullable=NO default=None
+  line_total (numeric) nullable=NO default=None
+  notes (text) nullable=NO default=None
+  item_id (bigint) nullable=NO default=None
+  purchase_order_id (bigint) nullable=NO default=None
+  originating_quote_item_id (bigint) nullable=YES default=None
+
+==================== TABLE: hotel_requestforquotation ====================
+  id (bigint) nullable=NO default=None
+  rfq_number (character varying) nullable=NO default=None
+  title (character varying) nullable=NO default=None
+  is_public_bidding (boolean) nullable=NO default=None
+  status (character varying) nullable=NO default=None
+  submission_deadline (timestamp with time zone) nullable=NO default=None
+  terms_and_conditions (text) nullable=NO default=None
+  created_at (timestamp with time zone) nullable=NO default=None
+  updated_at (timestamp with time zone) nullable=NO default=None
+  created_by_id (bigint) nullable=NO default=None
+  delivery_location_id (bigint) nullable=NO default=None
+
+==================== TABLE: hotel_requestforquotationitem ====================
+  id (bigint) nullable=NO default=None
+  target_quantity (numeric) nullable=NO default=None
+  specifications (text) nullable=NO default=None
+  item_id (bigint) nullable=NO default=None
+  requisition_item_id (bigint) nullable=YES default=None
+  rfq_id (bigint) nullable=NO default=None
+
+==================== TABLE: hotel_supplierquotation ====================
+  id (bigint) nullable=NO default=None
+  quotation_number (character varying) nullable=NO default=None
+  supplier_reference (character varying) nullable=NO default=None
+  sole_source_justification (text) nullable=NO default=None
+  quotation_date (date) nullable=NO default=None
+  valid_until (date) nullable=NO default=None
+  delivery_lead_time_days (integer) nullable=NO default=None
+  payment_terms (character varying) nullable=NO default=None
+  warranty_terms (character varying) nullable=NO default=None
+  currency (character varying) nullable=NO default=None
+  exchange_rate (numeric) nullable=NO default=None
+  subtotal (numeric) nullable=NO default=None
+  tax_amount (numeric) nullable=NO default=None
+  shipping_and_handling (numeric) nullable=NO default=None
+  customs_and_duties (numeric) nullable=NO default=None
+  total_quoted_amount (numeric) nullable=NO default=None
+  total_landed_cost_etb (numeric) nullable=NO default=None
+  status (character varying) nullable=NO default=None
+  evaluated_at (timestamp with time zone) nullable=YES default=None
+  evaluation_notes (text) nullable=NO default=None
+  accepted_at (timestamp with time zone) nullable=YES default=None
+  acceptance_justification (text) nullable=NO default=None
+  rejection_reason (text) nullable=NO default=None
+  rejected_at (timestamp with time zone) nullable=YES default=None
+  created_at (timestamp with time zone) nullable=NO default=None
+  updated_at (timestamp with time zone) nullable=NO default=None
+  accepted_by_id (bigint) nullable=YES default=None
+  created_by_id (bigint) nullable=NO default=None
+  evaluated_by_id (bigint) nullable=YES default=None
+  requisition_id (bigint) nullable=YES default=None
+  rfq_id (bigint) nullable=YES default=None
+  supplier_id (bigint) nullable=NO default=None
+
+==================== TABLE: hotel_supplierquotationitem ====================
+  id (bigint) nullable=NO default=None
+  quoted_quantity (numeric) nullable=NO default=None
+  quoted_unit_price (numeric) nullable=NO default=None
+  discount_percentage (numeric) nullable=NO default=None
+  line_total (numeric) nullable=NO default=None
+  offered_brand_or_spec (character varying) nullable=NO default=None
+  lead_time_days (integer) nullable=YES default=None
+  award_status (character varying) nullable=NO default=None
+  is_converted_to_po (boolean) nullable=NO default=None
+  converted_quantity (numeric) nullable=NO default=None
+  notes (text) nullable=NO default=None
+  converted_purchase_order_id (bigint) nullable=YES default=None
+  item_id (bigint) nullable=NO default=None
+  quotation_id (bigint) nullable=NO default=None
+  rfq_item_id (bigint) nullable=YES default=None
+
+==================== TABLE: hotel_goodsreceiptnote ====================
+  id (bigint) nullable=NO default=None
+  grn_number (character varying) nullable=NO default=None
+  delivery_note_number (character varying) nullable=NO default=None
+  status (character varying) nullable=NO default=None
+  received_at (timestamp with time zone) nullable=NO default=None
+  total_received_cost (numeric) nullable=NO default=None
+  notes (text) nullable=NO default=None
+  created_at (timestamp with time zone) nullable=NO default=None
+  updated_at (timestamp with time zone) nullable=NO default=None
+  journal_entry_id (bigint) nullable=YES default=None
+  location_id (bigint) nullable=NO default=None
+  received_by_id (bigint) nullable=NO default=None
+  supplier_id (bigint) nullable=NO default=None
+  purchase_order_id (bigint) nullable=NO default=None
+
+==================== TABLE: hotel_goodsreceiptnoteitem ====================
+  id (bigint) nullable=NO default=None
+  quantity_received (numeric) nullable=NO default=None
+  quantity_rejected (numeric) nullable=NO default=None
+  rejection_reason (character varying) nullable=NO default=None
+  batch_number (character varying) nullable=NO default=None
+  supplier_batch_number (character varying) nullable=NO default=None
+  expiry_date (date) nullable=YES default=None
+  unit_cost (numeric) nullable=NO default=None
+  total_cost (numeric) nullable=NO default=None
+  notes (text) nullable=NO default=None
+  batch_id (bigint) nullable=YES default=None
+  grn_id (bigint) nullable=NO default=None
+  item_id (bigint) nullable=NO default=None
+  po_item_id (bigint) nullable=NO default=None
+
+==================== TABLE: hotel_supplierinvoice ====================
+  id (bigint) nullable=NO default=None
+  internal_number (character varying) nullable=NO default=None
+  vendor_invoice_number (character varying) nullable=NO default=None
+  invoice_date (date) nullable=NO default=None
+  due_date (date) nullable=NO default=None
+  subtotal (numeric) nullable=NO default=None
+  tax_amount (numeric) nullable=NO default=None
+  total_amount (numeric) nullable=NO default=None
+  match_status (character varying) nullable=NO default=None
+  matched_at (timestamp with time zone) nullable=YES default=None
+  approved_at (timestamp with time zone) nullable=YES default=None
+  variance_notes (text) nullable=NO default=None
+  is_paid (boolean) nullable=NO default=None
+  created_at (timestamp with time zone) nullable=NO default=None
+  updated_at (timestamp with time zone) nullable=NO default=None
+  approved_by_id (bigint) nullable=YES default=None
+  journal_entry_id (bigint) nullable=YES default=None
+  matched_by_id (bigint) nullable=YES default=None
+  purchase_order_id (bigint) nullable=NO default=None
+  supplier_id (bigint) nullable=NO default=None
+
+==================== TABLE: hotel_supplierinvoiceitem ====================
+  id (bigint) nullable=NO default=None
+  billed_quantity (numeric) nullable=NO default=None
+  billed_unit_price (numeric) nullable=NO default=None
+  line_total (numeric) nullable=NO default=None
+  price_variance (numeric) nullable=NO default=None
+  is_matched (boolean) nullable=NO default=None
+  grn_item_id (bigint) nullable=YES default=None
+  invoice_id (bigint) nullable=NO default=None
+  item_id (bigint) nullable=NO default=None
+  po_item_id (bigint) nullable=NO default=None
+
+==================== TABLE: hotel_procurementapprovalpolicy ====================
+  id (bigint) nullable=NO default=None
+  name (character varying) nullable=NO default=None
+  description (text) nullable=NO default=None
+  is_active (boolean) nullable=NO default=None
+  currency (character varying) nullable=NO default=None
+  price_tolerance_percentage (numeric) nullable=NO default=None
+  created_at (timestamp with time zone) nullable=NO default=None
+  updated_at (timestamp with time zone) nullable=NO default=None
+
+==================== TABLE: hotel_procurementapprovaltier ====================
+  id (bigint) nullable=NO default=None
+  tier_level (integer) nullable=NO default=None
+  name (character varying) nullable=NO default=None
+  min_amount (numeric) nullable=NO default=None
+  max_amount (numeric) nullable=YES default=None
+  required_role (character varying) nullable=NO default=None
+  created_at (timestamp with time zone) nullable=NO default=None
+  policy_id (bigint) nullable=NO default=None
+--- 3. STOCKTAKING TABLES ---
+
+==================== TABLE: hotel_stocktakesession ====================
+  id (bigint) nullable=NO default=None
+  session_number (character varying) nullable=NO default=None
+  title (character varying) nullable=NO default=None
+  counting_mode (character varying) nullable=NO default=None
+  is_mode_locked (boolean) nullable=NO default=None
+  status (character varying) nullable=NO default=None
+  snapshot_at (timestamp with time zone) nullable=NO default=None
+  counted_at (timestamp with time zone) nullable=YES default=None
+  reviewed_at (timestamp with time zone) nullable=YES default=None
+  variance_approval_notes (text) nullable=NO default=None
+  total_theoretical_value (numeric) nullable=NO default=None
+  total_counted_value (numeric) nullable=NO default=None
+  total_variance_value (numeric) nullable=NO default=None
+  created_at (timestamp with time zone) nullable=NO default=None
+  updated_at (timestamp with time zone) nullable=NO default=None
+  category_id (bigint) nullable=YES default=None
+  counted_by_id (bigint) nullable=YES default=None
+  created_by_id (bigint) nullable=NO default=None
+  journal_entry_id (bigint) nullable=YES default=None
+  location_id (bigint) nullable=NO default=None
+  reviewed_by_id (bigint) nullable=YES default=None
+
+==================== TABLE: hotel_stocktakeitem ====================
+  id (bigint) nullable=NO default=None
+  theoretical_quantity (numeric) nullable=NO default=None
+  counted_quantity (numeric) nullable=YES default=None
+  recounted_quantity (numeric) nullable=YES default=None
+  final_quantity (numeric) nullable=YES default=None
+  unit_cost_snapshot (numeric) nullable=NO default=None
+  variance_quantity (numeric) nullable=NO default=None
+  variance_value (numeric) nullable=NO default=None
+  requires_recount (boolean) nullable=NO default=None
+  notes (text) nullable=NO default=None
+  counted_at (timestamp with time zone) nullable=YES default=None
+  batch_id (bigint) nullable=YES default=None
+  item_id (bigint) nullable=NO default=None
+  session_id (bigint) nullable=NO default=None
+
+==================== TABLE: hotel_stocktransaction ====================
+  id (bigint) nullable=NO default=None
+  transaction_type (character varying) nullable=NO default=None
+  quantity (numeric) nullable=NO default=None
+  unit_cost (numeric) nullable=NO default=None
+  reference_number (character varying) nullable=YES default=None
+  notes (text) nullable=YES default=None
+  logged_by_username (character varying) nullable=NO default=None
+  timestamp (timestamp with time zone) nullable=NO default=None
+  item_id (bigint) nullable=NO default=None
+  supplier_id (bigint) nullable=YES default=None
+  destination_dept (character varying) nullable=YES default=None
+  destination_room (character varying) nullable=YES default=None
+  reversal_of_id (bigint) nullable=YES default=None
+  adjustment_direction (character varying) nullable=YES default=None
+  idempotency_key (character varying) nullable=YES default=None
+  payload_hash (character varying) nullable=YES default=None
+  batch_id (bigint) nullable=YES default=None
+  location_id (bigint) nullable=YES default=None

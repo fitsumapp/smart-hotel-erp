@@ -1,0 +1,228 @@
+{
+  "results": [
+    {
+      "test": "Waste RECORD (direct_loss)",
+      "status": "PASS",
+      "details": "id=11, status=approved"
+    },
+    {
+      "test": "Waste RECORD (kitchen_prep)",
+      "status": "FAIL",
+      "details": "Status 400, body={\"error\": \"Quantity for discrete unit 'bottle' must be a whole number (no fractional or decimal values).\"}"
+    },
+    {
+      "test": "Waste APPROVE",
+      "status": "FAIL",
+      "details": "Status 400, body={\"error\": \"Waste record #11 is already 'approved' and cannot be approved.\"}"
+    },
+    {
+      "test": "Waste REVERSE",
+      "status": "PASS",
+      "details": "Status 201"
+    },
+    {
+      "test": "Idempotency NO-DUP",
+      "status": "PASS",
+      "details": "r1=201, r2=400, no extra TX or stock change"
+    },
+    {
+      "test": "Batch-Item Integrity",
+      "status": "FAIL",
+      "details": "11 mismatches found"
+    },
+    {
+      "test": "Location-Item Integrity",
+      "status": "FAIL",
+      "details": "7 mismatches"
+    },
+    {
+      "test": "BatchLoc-Batch Integrity",
+      "status": "FAIL",
+      "details": "6 mismatches"
+    },
+    {
+      "test": "GL Reconciliation",
+      "status": "FAIL",
+      "details": "GL=117960.00, Batch=195480.00, Master=297090.00, variance=-77520.00"
+    },
+    {
+      "test": "New Key Creates TX",
+      "status": "PASS",
+      "details": "count 45->46"
+    }
+  ],
+  "batch_issues": [
+    {
+      "item": "PER-MILK-01",
+      "name": "Fresh Whole Milk 1L",
+      "item_stock": "175.00",
+      "batch_sum": "245.00",
+      "diff": "-70.00"
+    },
+    {
+      "item": "BEEF-001",
+      "name": "Prime Beef Tenderloin",
+      "item_stock": "10.00",
+      "batch_sum": "0",
+      "diff": "10.00"
+    },
+    {
+      "item": "POT-001",
+      "name": "Russet Potatoes",
+      "item_stock": "50.00",
+      "batch_sum": "0",
+      "diff": "50.00"
+    },
+    {
+      "item": "STK-BROWSER-01",
+      "name": "Staging Basmati Rice 25kg",
+      "item_stock": "50.00",
+      "batch_sum": "0",
+      "diff": "50.00"
+    },
+    {
+      "item": "STK-BROWSER-02",
+      "name": "Staging Olive Oil 5L",
+      "item_stock": "20.00",
+      "batch_sum": "0",
+      "diff": "20.00"
+    },
+    {
+      "item": "ITM-DAIRY-MILK",
+      "name": "Pasteurized Full Cream Milk 1L",
+      "item_stock": "120.00",
+      "batch_sum": "65.00",
+      "diff": "55.00"
+    },
+    {
+      "item": "ITM-MEAT-BEEF",
+      "name": "Prime Beef Tenderloin",
+      "item_stock": "45.00",
+      "batch_sum": "18.00",
+      "diff": "27.00"
+    },
+    {
+      "item": "REMED-ITM-01",
+      "name": "Test Item 01",
+      "item_stock": "50.00",
+      "batch_sum": "0",
+      "diff": "50.00"
+    },
+    {
+      "item": "REMED-ITM-1793900106",
+      "name": "Test Item 01",
+      "item_stock": "50.00",
+      "batch_sum": "15.00",
+      "diff": "35.00"
+    },
+    {
+      "item": "REMED-ITM-1793900629",
+      "name": "Test Item 01",
+      "item_stock": "50.00",
+      "batch_sum": "25.00",
+      "diff": "25.00"
+    },
+    {
+      "item": "CORD-LIME-01",
+      "name": "Fresh Lime Cordial",
+      "item_stock": "135.00",
+      "batch_sum": "121.00",
+      "diff": "14.00"
+    }
+  ],
+  "loc_issues": [
+    {
+      "item": "BEEF-001",
+      "name": "Prime Beef Tenderloin",
+      "item_stock": "10.00",
+      "loc_sum": "0",
+      "diff": "10.00"
+    },
+    {
+      "item": "POT-001",
+      "name": "Russet Potatoes",
+      "item_stock": "50.00",
+      "loc_sum": "0",
+      "diff": "50.00"
+    },
+    {
+      "item": "REMED-ITM-01",
+      "name": "Test Item 01",
+      "item_stock": "50.00",
+      "loc_sum": "0",
+      "diff": "50.00"
+    },
+    {
+      "item": "REMED-ITM-1793900106",
+      "name": "Test Item 01",
+      "item_stock": "50.00",
+      "loc_sum": "0",
+      "diff": "50.00"
+    },
+    {
+      "item": "MB-SODA-01",
+      "name": "Artisan Sparkling Soda",
+      "item_stock": "48.00",
+      "loc_sum": "68.00",
+      "diff": "-20.00"
+    },
+    {
+      "item": "REMED-ITM-1793900629",
+      "name": "Test Item 01",
+      "item_stock": "50.00",
+      "loc_sum": "0",
+      "diff": "50.00"
+    },
+    {
+      "item": "BEV-JUICE-01",
+      "name": "Mango Juice 1L",
+      "item_stock": "91.00",
+      "loc_sum": "100.00",
+      "diff": "-9.00"
+    }
+  ],
+  "blb_issues": [
+    {
+      "batch": "REMED-BATCH-DISMISS-1793900106",
+      "item": "REMED-ITM-1793900106",
+      "batch_qty": "15.00",
+      "blb_sum": "0",
+      "diff": "15.00"
+    },
+    {
+      "batch": "REMED-BATCH-DISMISS-1793900629",
+      "item": "REMED-ITM-1793900629",
+      "batch_qty": "15.00",
+      "blb_sum": "0",
+      "diff": "15.00"
+    },
+    {
+      "batch": "REMED-BATCH-THRESH-25D-1793900629",
+      "item": "REMED-ITM-1793900629",
+      "batch_qty": "10.00",
+      "blb_sum": "0",
+      "diff": "10.00"
+    },
+    {
+      "batch": "BATCH-LIME-001",
+      "item": "CORD-LIME-01",
+      "batch_qty": "80.00",
+      "blb_sum": "94.00",
+      "diff": "-14.00"
+    },
+    {
+      "batch": "BATCH-MB-SODA-01",
+      "item": "MB-SODA-01",
+      "batch_qty": "48.00",
+      "blb_sum": "68.00",
+      "diff": "-20.00"
+    },
+    {
+      "batch": "BATCH-JUICE-001",
+      "item": "BEV-JUICE-01",
+      "batch_qty": "87.00",
+      "blb_sum": "96.00",
+      "diff": "-9.00"
+    }
+  ]
+}

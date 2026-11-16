@@ -88,6 +88,18 @@ const InventoryDashboard = ({ userData, handleLogout, onNavigate }) => {
   const [dismissAlertReason, setDismissAlertReason] = useState('');
   const [dismissAlertSubmitting, setDismissAlertSubmitting] = useState(false);
 
+  // Stock Ledger Pagination & Filtering states
+  const [ledgerPage, setLedgerPage] = useState(1);
+  const [ledgerPageSize, setLedgerPageSize] = useState(50);
+  const [ledgerTotalCount, setLedgerTotalCount] = useState(0);
+  const [ledgerFilterType, setLedgerFilterType] = useState('');
+  const [ledgerFilterLocation, setLedgerFilterLocation] = useState('');
+  const [ledgerFilterStartDate, setLedgerFilterStartDate] = useState('');
+  const [ledgerFilterEndDate, setLedgerFilterEndDate] = useState('');
+  const [ledgerSearch, setLedgerSearch] = useState('');
+  const [ledgerSummary, setLedgerSummary] = useState(null);
+  const [ledgerLoading, setLedgerLoading] = useState(false);
+
 
   // Waste Approval & Rejection states
   const [approveTargetRecord, setApproveTargetRecord] = useState(null);
@@ -228,7 +240,9 @@ const InventoryDashboard = ({ userData, handleLogout, onNavigate }) => {
       setSuppliers(supsRes.data || []);
       setMenuItems(menusRes.data || []);
       setRecipes(recipesRes.data || []);
-      setLedger(ledgerRes.data || []);
+      const ledgerList = Array.isArray(ledgerRes.data) ? ledgerRes.data : (ledgerRes.data?.results || []);
+      setLedger(ledgerList);
+      setLedgerTotalCount(ledgerRes.data?.count ?? ledgerList.length);
       setStats(statsRes.data || null);
       setRooms(roomsRes.data || []);
       setWasteRecords(wasteRes.data || []);
@@ -245,6 +259,34 @@ const InventoryDashboard = ({ userData, handleLogout, onNavigate }) => {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  const fetchFilteredLedger = useCallback(async (page = 1, pageSize = 50) => {
+    setLedgerLoading(true);
+    try {
+      const headers = getHeaders();
+      const params = { page, page_size: pageSize };
+      if (ledgerFilterType) params.transaction_type = ledgerFilterType;
+      if (ledgerFilterLocation) params.location = ledgerFilterLocation;
+      if (ledgerFilterStartDate) params.start_date = ledgerFilterStartDate;
+      if (ledgerFilterEndDate) params.end_date = ledgerFilterEndDate;
+      if (ledgerSearch.trim()) params.search = ledgerSearch.trim();
+
+      const [ledgerRes, summaryRes] = await Promise.all([
+        axios.get(`${API_BASE}stock-transactions/`, { headers, params }),
+        axios.get(`${API_BASE}stock-transactions/summary/`, { headers, params }).catch(() => ({ data: null }))
+      ]);
+
+      const list = Array.isArray(ledgerRes.data) ? ledgerRes.data : (ledgerRes.data?.results || []);
+      setLedger(list);
+      setLedgerTotalCount(ledgerRes.data?.count ?? list.length);
+      setLedgerPage(page);
+      if (summaryRes?.data) setLedgerSummary(summaryRes.data);
+    } catch (err) {
+      console.error('Failed to fetch filtered ledger:', err);
+    } finally {
+      setLedgerLoading(false);
+    }
+  }, [ledgerFilterType, ledgerFilterLocation, ledgerFilterStartDate, ledgerFilterEndDate, ledgerSearch]);
 
   // -- API Submissions --
 
@@ -2751,19 +2793,141 @@ const InventoryDashboard = ({ userData, handleLogout, onNavigate }) => {
           </div>
         );
 
-      case 'ledger':
+      case 'ledger': {
+        const totalPages = Math.ceil(ledgerTotalCount / ledgerPageSize) || 1;
         return (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '25px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
                 <h2 style={{ margin: 0, color: '#0f172a', fontSize: '20px', fontWeight: '800' }}>Stock Ledger & Audit Trail</h2>
-                <p style={{ margin: 0, color: '#64748b', fontSize: '13px' }}>Chronological timeline of all purchases, dispatches, adjustments, and auto-deductions.</p>
+                <p style={{ margin: 0, color: '#64748b', fontSize: '13px' }}>Chronological timeline of all purchases, dispatches, transfers, adjustments, and auto-deductions.</p>
               </div>
-              <button onClick={printReport} style={btnSecondaryStyle}>
-                <Printer size={16} style={{ marginRight: '6px' }} /> Print Stock Audit
-              </button>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button onClick={() => fetchFilteredLedger(ledgerPage, ledgerPageSize)} style={btnSecondaryStyle} disabled={ledgerLoading}>
+                  <RefreshCw size={15} style={{ marginRight: '6px', animation: ledgerLoading ? 'spin 1s linear infinite' : 'none' }} /> Refresh
+                </button>
+                <button onClick={printReport} style={btnSecondaryStyle}>
+                  <Printer size={16} style={{ marginRight: '6px' }} /> Print Stock Audit
+                </button>
+              </div>
             </div>
 
+            {/* Summary KPI Strip */}
+            {ledgerSummary && (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: '12px' }}>
+                <div style={{ backgroundColor: '#ffffff', borderRadius: '12px', padding: '14px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+                  <div style={{ fontSize: '11px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase' }}>Filtered Transactions</div>
+                  <div style={{ fontSize: '20px', fontWeight: '800', color: '#0f172a', marginTop: '4px' }}>{ledgerSummary.total_count}</div>
+                </div>
+                <div style={{ backgroundColor: '#f0fdf4', borderRadius: '12px', padding: '14px', border: '1px solid #bbf7d0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+                  <div style={{ fontSize: '11px', fontWeight: '700', color: '#166534', textTransform: 'uppercase' }}>Total Inflow Qty</div>
+                  <div style={{ fontSize: '20px', fontWeight: '800', color: '#15803d', marginTop: '4px' }}>+{parseFloat(ledgerSummary.total_inflow_qty || 0).toFixed(2)}</div>
+                </div>
+                <div style={{ backgroundColor: '#fef2f2', borderRadius: '12px', padding: '14px', border: '1px solid #fecaca', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+                  <div style={{ fontSize: '11px', fontWeight: '700', color: '#991b1b', textTransform: 'uppercase' }}>Total Outflow Qty</div>
+                  <div style={{ fontSize: '20px', fontWeight: '800', color: '#b91c1c', marginTop: '4px' }}>-{parseFloat(ledgerSummary.total_outflow_qty || 0).toFixed(2)}</div>
+                </div>
+                <div style={{ backgroundColor: '#f8fafc', borderRadius: '12px', padding: '14px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+                  <div style={{ fontSize: '11px', fontWeight: '700', color: '#475569', textTransform: 'uppercase' }}>Net Stock Movement</div>
+                  <div style={{ fontSize: '20px', fontWeight: '800', color: parseFloat(ledgerSummary.net_quantity_change || 0) >= 0 ? '#15803d' : '#b91c1c', marginTop: '4px' }}>
+                    {parseFloat(ledgerSummary.net_quantity_change || 0) >= 0 ? '+' : ''}{parseFloat(ledgerSummary.net_quantity_change || 0).toFixed(2)}
+                  </div>
+                </div>
+                <div style={{ backgroundColor: '#f5f3ff', borderRadius: '12px', padding: '14px', border: '1px solid #ddd6fe', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+                  <div style={{ fontSize: '11px', fontWeight: '700', color: '#5b21b6', textTransform: 'uppercase' }}>Transaction Valuation</div>
+                  <div style={{ fontSize: '20px', fontWeight: '800', color: '#6d28d9', marginTop: '4px' }}>{parseFloat(ledgerSummary.total_valuation || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })} ETB</div>
+                </div>
+              </div>
+            )}
+
+            {/* Filter Controls Toolbar */}
+            <div style={{ ...cardStyle, padding: '16px', display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'center' }}>
+              <div style={{ flex: '1 1 200px', minWidth: '180px' }}>
+                <input
+                  type="text"
+                  placeholder="Search item, ref #, notes..."
+                  value={ledgerSearch}
+                  onChange={(e) => setLedgerSearch(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') fetchFilteredLedger(1, ledgerPageSize); }}
+                  style={{ ...inputStyle, width: '100%' }}
+                />
+              </div>
+
+              <div style={{ flex: '0 1 160px' }}>
+                <select
+                  value={ledgerFilterType}
+                  onChange={(e) => setLedgerFilterType(e.target.value)}
+                  style={{ ...inputStyle, width: '100%' }}
+                >
+                  <option value="">All Types</option>
+                  <option value="purchase">Stock-In (Purchase)</option>
+                  <option value="issuance">Dispatch</option>
+                  <option value="transfer_in">Transfer In</option>
+                  <option value="transfer_out">Transfer Out</option>
+                  <option value="sale_deduction">Auto-Deduct (Sales)</option>
+                  <option value="loss">Waste / Loss</option>
+                  <option value="adjustment">Adjustment</option>
+                </select>
+              </div>
+
+              <div style={{ flex: '0 1 160px' }}>
+                <select
+                  value={ledgerFilterLocation}
+                  onChange={(e) => setLedgerFilterLocation(e.target.value)}
+                  style={{ ...inputStyle, width: '100%' }}
+                >
+                  <option value="">All Locations</option>
+                  {locations.map(loc => (
+                    <option key={loc.id} value={loc.id}>{loc.name} ({loc.code})</option>
+                  ))}
+                </select>
+              </div>
+
+              <div style={{ flex: '0 1 135px' }}>
+                <input
+                  type="date"
+                  value={ledgerFilterStartDate}
+                  onChange={(e) => setLedgerFilterStartDate(e.target.value)}
+                  title="Start Date"
+                  style={{ ...inputStyle, width: '100%' }}
+                />
+              </div>
+
+              <div style={{ flex: '0 1 135px' }}>
+                <input
+                  type="date"
+                  value={ledgerFilterEndDate}
+                  onChange={(e) => setLedgerFilterEndDate(e.target.value)}
+                  title="End Date"
+                  style={{ ...inputStyle, width: '100%' }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  onClick={() => fetchFilteredLedger(1, ledgerPageSize)}
+                  style={{ ...btnPrimaryStyle, padding: '9px 16px' }}
+                >
+                  <Filter size={14} style={{ marginRight: '6px' }} /> Filter
+                </button>
+                <button
+                  onClick={() => {
+                    setLedgerSearch('');
+                    setLedgerFilterType('');
+                    setLedgerFilterLocation('');
+                    setLedgerFilterStartDate('');
+                    setLedgerFilterEndDate('');
+                    fetchFilteredLedger(1, ledgerPageSize);
+                  }}
+                  style={{ ...btnSecondaryStyle, padding: '9px 12px' }}
+                  title="Reset Filters"
+                >
+                  Reset
+                </button>
+              </div>
+            </div>
+
+            {/* Table Card */}
             <div style={cardStyle}>
               <div style={{ overflowX: 'auto' }}>
                 <table style={tableStyle}>
@@ -2771,62 +2935,132 @@ const InventoryDashboard = ({ userData, handleLogout, onNavigate }) => {
                     <tr style={theadStyle}>
                       <th style={thStyle}>Timestamp</th>
                       <th style={thStyle}>Item Name</th>
+                      <th style={thStyle}>Location</th>
                       <th style={thStyle}>Type</th>
                       <th style={thStyle}>Quantity</th>
                       <th style={thStyle}>Cost/Val</th>
-                      <th style={thStyle}>Ref Invoice #</th>
+                      <th style={thStyle}>Ref / Order #</th>
                       <th style={thStyle}>Logged By</th>
                       <th style={thStyle}>Notes</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {ledger.map(tx => {
-                      const typeLabel = tx.transaction_type === 'purchase' ? 'Stock-In' :
-                                        tx.transaction_type === 'issuance' ? 'Dispatch' :
-                                        tx.transaction_type === 'sale_deduction' ? 'Auto-Deduct' :
-                                        tx.transaction_type === 'loss' ? 'Waste / Loss' : 'Adjustment';
-                      const isAddition = tx.transaction_type === 'purchase' || (tx.transaction_type === 'adjustment' && parseFloat(tx.quantity) > 0);
+                    {ledger.length === 0 ? (
+                      <tr>
+                        <td colSpan={9} style={{ textAlign: 'center', padding: '40px', color: '#94a3b8' }}>
+                          No stock transactions matching the selected criteria.
+                        </td>
+                      </tr>
+                    ) : (
+                      ledger.map(tx => {
+                        const typeLabel =
+                          tx.transaction_type === 'purchase' ? 'Stock-In' :
+                          tx.transaction_type === 'issuance' ? 'Dispatch' :
+                          tx.transaction_type === 'transfer_in' ? 'Transfer In' :
+                          tx.transaction_type === 'transfer_out' ? 'Transfer Out' :
+                          tx.transaction_type === 'sale_deduction' ? 'Auto-Deduct' :
+                          tx.transaction_type === 'loss' ? 'Waste / Loss' : 'Adjustment';
 
-                      return (
-                        <tr key={tx.id} style={trStyle}>
-                          <td style={{ ...tdStyle, color: '#64748b', fontSize: '12px' }}>
-                            {new Date(tx.timestamp).toLocaleString()}
-                          </td>
-                          <td style={{ ...tdStyle, fontWeight: '700', color: '#1e293b' }}>{tx.item_name}</td>
-                          <td style={tdStyle}>
-                            <span style={{
-                              ...badgeStyle,
-                              backgroundColor: tx.transaction_type === 'purchase' ? 'rgba(16,185,129,0.1)' :
-                                               tx.transaction_type === 'issuance' ? 'rgba(14,165,233,0.1)' :
-                                               tx.transaction_type === 'loss' ? 'rgba(239,68,68,0.1)' : 'rgba(245,158,11,0.1)',
-                              color: tx.transaction_type === 'purchase' ? '#10b981' :
-                                     tx.transaction_type === 'issuance' ? '#0ea5e9' :
-                                     tx.transaction_type === 'loss' ? '#ef4444' : '#f59e0b',
-                              border: `1px solid ${tx.transaction_type === 'purchase' ? '#10b981' :
-                                                   tx.transaction_type === 'issuance' ? '#0ea5e9' :
-                                                   tx.transaction_type === 'loss' ? '#ef4444' : '#f59e0b'}`
-                            }}>
-                              {typeLabel}
-                            </span>
-                          </td>
-                          <td style={{ ...tdStyle, fontWeight: '700', color: isAddition ? '#10b981' : '#ef4444' }}>
-                            {isAddition ? '+' : '-'}{parseFloat(tx.quantity).toFixed(2)} {tx.item_unit}
-                          </td>
-                          <td style={tdStyle}>{(parseFloat(tx.quantity) * parseFloat(tx.unit_cost)).toFixed(2)} ETB</td>
-                          <td style={tdStyle}>{tx.reference_number || '—'}</td>
-                          <td style={{ ...tdStyle, color: '#64748b' }}>{tx.logged_by_username || 'system'}</td>
-                          <td style={{ ...tdStyle, fontSize: '12px', color: '#64748b', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={tx.notes}>
-                            {tx.notes || '—'}
-                          </td>
-                        </tr>
-                      );
-                    })}
+                        const isAddition =
+                          tx.transaction_type === 'purchase' ||
+                          tx.transaction_type === 'transfer_in' ||
+                          (tx.transaction_type === 'adjustment' && parseFloat(tx.quantity) > 0 && tx.adjustment_direction !== 'decrease');
+
+                        const badgeColor =
+                          tx.transaction_type === 'purchase' ? { bg: 'rgba(16,185,129,0.1)', color: '#10b981', border: '#10b981' } :
+                          tx.transaction_type === 'transfer_in' ? { bg: 'rgba(20,184,166,0.1)', color: '#0d9488', border: '#0d9488' } :
+                          tx.transaction_type === 'transfer_out' ? { bg: 'rgba(168,85,247,0.1)', color: '#9333ea', border: '#9333ea' } :
+                          tx.transaction_type === 'issuance' ? { bg: 'rgba(14,165,233,0.1)', color: '#0ea5e9', border: '#0ea5e9' } :
+                          tx.transaction_type === 'sale_deduction' ? { bg: 'rgba(99,102,241,0.1)', color: '#6366f1', border: '#6366f1' } :
+                          tx.transaction_type === 'loss' ? { bg: 'rgba(239,68,68,0.1)', color: '#ef4444', border: '#ef4444' } :
+                          { bg: 'rgba(245,158,11,0.1)', color: '#f59e0b', border: '#f59e0b' };
+
+                        return (
+                          <tr key={tx.id} style={trStyle}>
+                            <td style={{ ...tdStyle, color: '#64748b', fontSize: '12px', whiteSpace: 'nowrap' }}>
+                              {new Date(tx.timestamp).toLocaleString()}
+                            </td>
+                            <td style={{ ...tdStyle, fontWeight: '700', color: '#1e293b' }}>{tx.item_name}</td>
+                            <td style={{ ...tdStyle, color: '#475569', fontSize: '12px' }}>
+                              {tx.location_name ? `${tx.location_name}` : (tx.location_code || '—')}
+                            </td>
+                            <td style={tdStyle}>
+                              <span style={{
+                                ...badgeStyle,
+                                backgroundColor: badgeColor.bg,
+                                color: badgeColor.color,
+                                border: `1px solid ${badgeColor.border}`
+                              }}>
+                                {typeLabel}
+                              </span>
+                            </td>
+                            <td style={{ ...tdStyle, fontWeight: '700', color: isAddition ? '#10b981' : '#ef4444', whiteSpace: 'nowrap' }}>
+                              {isAddition ? '+' : '-'}{parseFloat(tx.quantity).toFixed(2)} {tx.item_unit}
+                            </td>
+                            <td style={{ ...tdStyle, whiteSpace: 'nowrap' }}>
+                              {(parseFloat(tx.quantity) * parseFloat(tx.unit_cost)).toFixed(2)} ETB
+                            </td>
+                            <td style={{ ...tdStyle, fontFamily: 'monospace', fontSize: '12px' }}>
+                              {tx.reference_number || '—'}
+                            </td>
+                            <td style={{ ...tdStyle, color: '#64748b', fontSize: '12px' }}>
+                              {tx.logged_by_username || 'system'}
+                            </td>
+                            <td style={{ ...tdStyle, fontSize: '12px', color: '#64748b', maxWidth: '220px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={tx.notes}>
+                              {tx.notes || '—'}
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
                   </tbody>
                 </table>
+              </div>
+
+              {/* Pagination Controls */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 20px', borderTop: '1px solid #e2e8f0', flexWrap: 'wrap', gap: '10px' }}>
+                <div style={{ fontSize: '13px', color: '#64748b' }}>
+                  Showing {ledgerTotalCount > 0 ? (ledgerPage - 1) * ledgerPageSize + 1 : 0} to {Math.min(ledgerPage * ledgerPageSize, ledgerTotalCount)} of {ledgerTotalCount} records
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <select
+                    value={ledgerPageSize}
+                    onChange={(e) => {
+                      const sz = Number(e.target.value);
+                      setLedgerPageSize(sz);
+                      fetchFilteredLedger(1, sz);
+                    }}
+                    style={{ ...inputStyle, padding: '5px 10px', fontSize: '12px' }}
+                  >
+                    <option value={25}>25 per page</option>
+                    <option value={50}>50 per page</option>
+                    <option value={100}>100 per page</option>
+                  </select>
+
+                  <button
+                    onClick={() => fetchFilteredLedger(ledgerPage - 1, ledgerPageSize)}
+                    disabled={ledgerPage <= 1 || ledgerLoading}
+                    style={{ ...btnSecondaryStyle, padding: '6px 12px', opacity: ledgerPage <= 1 ? 0.5 : 1 }}
+                  >
+                    Previous
+                  </button>
+                  <span style={{ fontSize: '13px', fontWeight: '700', color: '#0f172a', padding: '0 6px' }}>
+                    Page {ledgerPage} of {totalPages}
+                  </span>
+                  <button
+                    onClick={() => fetchFilteredLedger(ledgerPage + 1, ledgerPageSize)}
+                    disabled={ledgerPage >= totalPages || ledgerLoading}
+                    style={{ ...btnSecondaryStyle, padding: '6px 12px', opacity: ledgerPage >= totalPages ? 0.5 : 1 }}
+                  >
+                    Next
+                  </button>
+                </div>
               </div>
             </div>
           </div>
         );
+      }
 
       case 'categories':
         return (

@@ -11,7 +11,7 @@ def transaction_delta(entry):
         if original.transaction_type == "adjustment":
             original_incoming = (getattr(original, "adjustment_direction", "") != "decrease")
         else:
-            original_incoming = original.transaction_type in ("purchase",)
+            original_incoming = original.transaction_type in ("purchase", "transfer_in")
         return -entry.quantity if original_incoming else entry.quantity
 
     if entry.transaction_type == "adjustment":
@@ -20,7 +20,7 @@ def transaction_delta(entry):
             return -entry.quantity
         return entry.quantity
 
-    return entry.quantity if entry.transaction_type == "purchase" else -entry.quantity
+    return entry.quantity if entry.transaction_type in ("purchase", "transfer_in") else -entry.quantity
 
 
 def expected_stock(item):

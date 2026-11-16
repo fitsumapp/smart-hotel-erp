@@ -4,7 +4,7 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     MaintenanceLogDetailView, MaintenanceLogView, RoomHistoryView, RoomViewSet,
     HousekeepingTaskListView, HousekeepingTaskDetailView, HousekeepingTaskInspectView,
-    MinibarItemsView, MinibarCandidateInventoryView, MinibarConsumeView,
+    MinibarItemsView, MinibarCandidateInventoryView, MinibarConsumeView, MinibarReplenishView,
     LostAndFoundListView, LostAndFoundClaimView, PublicSiteInfoView,
     NightAuditStatusView, NightAuditExecuteView,
 )
@@ -26,6 +26,7 @@ urlpatterns = [
     path("minibar/items/", MinibarItemsView.as_view(), name="minibar-items"),
     path("minibar/candidates/", MinibarCandidateInventoryView.as_view(), name="minibar-candidates"),
     path("minibar/consume/", MinibarConsumeView.as_view(), name="minibar-consume"),
+    path("minibar/replenish/", MinibarReplenishView.as_view(), name="minibar-replenish"),
     path("lost-and-found/", LostAndFoundListView.as_view(), name="lost-and-found-list"),
     path("lost-and-found/<int:pk>/claim/", LostAndFoundClaimView.as_view(), name="lost-and-found-claim"),
 ] + router.urls

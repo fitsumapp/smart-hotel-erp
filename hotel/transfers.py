@@ -22,6 +22,7 @@ from hotel.models import (
     ItemLocationBalance,
     StockBatch,
     StockLocation,
+    StockTransaction,
     StockTransfer,
     StockTransferItem,
 )
@@ -77,7 +78,7 @@ def request_stock_transfer(
             except InventoryItem.DoesNotExist:
                 raise ValidationError(f"Inventory item ID '{item_val}' does not exist.")
 
-        qty_raw = it_data.get("quantity_requested") or it_data.get("quantity")
+        qty_raw = it_data.get("quantity_requested") or it_data.get("requested_quantity") or it_data.get("quantity")
         if qty_raw is None:
             raise ValidationError(f"Quantity requested is required for item '{inv_item.name}'.")
         qty_req = Decimal(str(qty_raw))
@@ -127,9 +128,19 @@ def dispatch_stock_transfer(
 
     transfer_items = list(transfer.items.select_for_update().select_related("item").all())
     for it in transfer_items:
-        disp_info = dispatch_map.get(it.item_id) or dispatch_map.get(it.id)
-        if disp_info and "quantity_dispatched" in disp_info:
-            qty_to_dispatch = Decimal(str(disp_info["quantity_dispatched"]))
+        disp_info = (
+            dispatch_map.get(it.item_id)
+            or dispatch_map.get(it.id)
+            or dispatch_map.get(str(it.item_id))
+            or dispatch_map.get(str(it.id))
+        )
+        if disp_info:
+            qty_raw = (
+                disp_info.get("quantity_dispatched")
+                or disp_info.get("dispatched_quantity")
+                or disp_info.get("quantity")
+            )
+            qty_to_dispatch = Decimal(str(qty_raw)) if qty_raw is not None else it.quantity_requested
         else:
             qty_to_dispatch = it.quantity_requested
 
@@ -184,17 +195,35 @@ def dispatch_stock_transfer(
         blb.quantity -= qty_to_dispatch
         blb.save(update_fields=["quantity"])
 
-        ilb = ItemLocationBalance.objects.select_for_update().filter(
-            item=it.item, location=source_loc
-        ).first()
-        if ilb:
-            ilb.quantity = max(Decimal("0.00"), ilb.quantity - qty_to_dispatch)
-            ilb.save(update_fields=["quantity"])
+        ilb, _ = ItemLocationBalance.objects.select_for_update().get_or_create(
+            item=it.item, location=source_loc, defaults={"quantity": Decimal("0.00")}
+        )
+        if ilb.quantity < qty_to_dispatch:
+            raise ValidationError(
+                f"Insufficient location balance for '{it.item.name}' at {source_loc.name}. "
+                f"Available: {ilb.quantity} {it.item.unit}, requested dispatch: {qty_to_dispatch} {it.item.unit}."
+            )
+        ilb.quantity -= qty_to_dispatch
+        ilb.save(update_fields=["quantity"])
 
         it.batch = chosen_batch
         it.quantity_dispatched = qty_to_dispatch
         it.unit_cost = chosen_batch.unit_cost
         it.save(update_fields=["batch", "quantity_dispatched", "unit_cost"])
+
+        # Create authoritative StockTransaction for transfer dispatch
+        StockTransaction.objects.create(
+            item=it.item,
+            transaction_type="transfer_out",
+            quantity=qty_to_dispatch,
+            unit_cost=chosen_batch.unit_cost,
+            location=source_loc,
+            batch=chosen_batch,
+            reference_number=transfer.transfer_number,
+            notes=f"Dispatched on Transfer #{transfer.transfer_number} to {transfer.destination_location.name}.",
+            logged_by_username=getattr(dispatcher, "username", "system"),
+            idempotency_key=f"TRF-DISP-{transfer.transfer_number}-{it.id}",
+        )
 
     transfer.status = "in_transit"
     transfer.dispatched_by = dispatcher
@@ -245,10 +274,17 @@ def receive_stock_transfer(
     transfer_items = list(transfer.items.select_for_update().select_related("item").all())
 
     for it in transfer_items:
-        r_info = receipt_map.get(str(it.id)) or receipt_map.get(str(it.item_id))
+        r_info = (
+            receipt_map.get(str(it.id))
+            or receipt_map.get(str(it.item_id))
+            or receipt_map.get(it.id)
+            or receipt_map.get(it.item_id)
+        )
         if r_info:
-            qty_recv = Decimal(str(r_info.get("quantity_received", it.quantity_dispatched)))
-            qty_dam = Decimal(str(r_info.get("quantity_damaged", 0.00)))
+            qty_recv_raw = r_info.get("quantity_received", r_info.get("received_quantity", it.quantity_dispatched))
+            qty_dam_raw = r_info.get("quantity_damaged", r_info.get("damaged_quantity", Decimal("0.00")))
+            qty_recv = Decimal(str(qty_recv_raw))
+            qty_dam = Decimal(str(qty_dam_raw))
         else:
             qty_recv = it.quantity_dispatched
             qty_dam = Decimal("0.00")
@@ -276,6 +312,20 @@ def receive_stock_transfer(
             ilb.quantity += qty_recv
             ilb.save(update_fields=["quantity"])
 
+        # Create authoritative StockTransaction for transfer arrival at destination
+        StockTransaction.objects.create(
+            item=it.item,
+            transaction_type="transfer_in",
+            quantity=it.quantity_dispatched,
+            unit_cost=it.unit_cost,
+            location=dest_loc,
+            batch=it.batch,
+            reference_number=transfer.transfer_number,
+            notes=f"Transfer #{transfer.transfer_number} received at {dest_loc.name} (Dispatched: {it.quantity_dispatched}, Intact: {qty_recv}, Damaged: {qty_dam}).",
+            logged_by_username=getattr(receiver, "username", "system"),
+            idempotency_key=f"TRF-RECV-{transfer.transfer_number}-{it.id}",
+        )
+
         # 2. Record transit damage / breakage if any
         if qty_dam > Decimal("0.00"):
             any_damage = True
@@ -288,11 +338,26 @@ def receive_stock_transfer(
 
             InventoryItem.objects.filter(pk=it.item.pk).update(current_stock=F("current_stock") - qty_dam)
 
+            # Create authoritative StockTransaction for transit loss/damage
+            stx_loss = StockTransaction.objects.create(
+                item=it.item,
+                transaction_type="loss",
+                quantity=qty_dam,
+                unit_cost=it.unit_cost,
+                location=dest_loc,
+                batch=it.batch,
+                reference_number=f"{transfer.transfer_number}-DAMAGE",
+                notes=f"Transit damage on Transfer #{transfer.transfer_number} to {dest_loc.name}.",
+                logged_by_username=getattr(receiver, "username", "system"),
+                idempotency_key=f"TRF-DAMAGE-{transfer.transfer_number}-{it.id}",
+            )
+
             damage_cost = (qty_dam * it.unit_cost).quantize(Decimal("0.01"))
             waste_rec = InventoryWasteRecord.objects.create(
                 idempotency_key=f"TRF-DAMAGE-{transfer.transfer_number}-{it.id}",
                 payload_hash=f"trf-damage:{transfer.pk}:{it.pk}:{qty_dam}:{damage_cost}",
                 item=it.item,
+                stock_transaction=stx_loss,
                 entered_quantity=qty_dam,
                 entered_unit=it.item.unit,
                 base_quantity=qty_dam,
@@ -369,6 +434,20 @@ def cancel_stock_transfer(*, transfer_id, user, reason=""):
                 )
                 ilb.quantity += it.quantity_dispatched
                 ilb.save(update_fields=["quantity"])
+
+                # Create authoritative StockTransaction for rejected delivery return
+                StockTransaction.objects.create(
+                    item=it.item,
+                    transaction_type="transfer_in",
+                    quantity=it.quantity_dispatched,
+                    unit_cost=it.unit_cost,
+                    location=source_loc,
+                    batch=it.batch,
+                    reference_number=f"{transfer.transfer_number}-RETURN",
+                    notes=f"Transfer #{transfer.transfer_number} returned to {source_loc.name}.",
+                    logged_by_username=getattr(user, "username", "system"),
+                    idempotency_key=f"TRF-RETURN-{transfer.transfer_number}-{it.id}",
+                )
 
         transfer.status = "rejected"
         transfer.rejection_reason = str(reason or "Delivery rejected at destination and returned to source store.").strip()

@@ -377,6 +377,105 @@ class MinibarConsumeView(APIView):
         })
 
 
+class MinibarReplenishView(APIView):
+    """
+    Replenishes room minibar inventory from Store/Pantry.
+    Issues inventory from Pantry/Store to Room via StockTransaction(issuance, destination_dept=Housekeeping, destination_room=Room X),
+    updates MinibarItem.current_quantity, and posts GL JV Dr 5000 / Cr 1300 if applicable.
+    """
+    permission_classes = [IsHousekeepingOperator]
+
+    def post(self, request):
+        room_id = request.data.get("room_id")
+        items = request.data.get("items") or []
+        notes = request.data.get("notes", "Minibar room replenishment")
+
+        if not room_id or not items:
+            return Response({"error": "room_id and items list are required."}, status=400)
+
+        try:
+            room = Room.objects.get(id=room_id)
+        except Room.DoesNotExist:
+            return Response({"error": "Room not found."}, status=404)
+
+        from hotel.integrity import record_stock_change
+        from hotel.models import StockLocation, ItemLocationBalance, MinibarItem, InventoryItem
+        from django.utils import timezone
+        from decimal import Decimal
+        from django.db import transaction
+
+        mb_loc = StockLocation.objects.filter(code="MINIBAR-PANTRY", is_active=True).first()
+        main_loc = StockLocation.objects.filter(code="STORE-MAIN", is_active=True).first()
+
+        replenished = []
+        try:
+            with transaction.atomic():
+                for entry in items:
+                    item_id = entry.get("item_id")
+                    qty = Decimal(str(entry.get("quantity", 0)))
+                    if qty <= 0:
+                        continue
+
+                    try:
+                        inv_item = InventoryItem.objects.select_for_update().get(id=item_id)
+                    except InventoryItem.DoesNotExist:
+                        continue
+
+                    target_loc = None
+                    if mb_loc:
+                        ilb = ItemLocationBalance.objects.filter(item=inv_item, location=mb_loc).first()
+                        if ilb and ilb.quantity >= qty:
+                            target_loc = mb_loc
+                    if not target_loc and main_loc:
+                        main_ilb = ItemLocationBalance.objects.filter(item=inv_item, location=main_loc).first()
+                        if main_ilb and main_ilb.quantity >= qty:
+                            target_loc = main_loc
+
+                    # Issue from pantry/store to room
+                    item, stx = record_stock_change(
+                        item_id=inv_item.pk,
+                        transaction_type="issuance",
+                        quantity=qty,
+                        unit_cost=inv_item.unit_cost,
+                        location=target_loc,
+                        destination_dept="Housekeeping",
+                        destination_room=f"Room {room.room_number}",
+                        reference_number=f"Minibar-Replenish-Room-{room.room_number}",
+                        notes=f"Minibar replenishment Room {room.room_number}. {notes}".strip(),
+                        logged_by_username=request.user.username or "Housekeeping",
+                    )
+
+                    mb_record, _ = MinibarItem.objects.get_or_create(
+                        room=room,
+                        item=inv_item,
+                        defaults={
+                            "standard_quantity": int(qty),
+                            "current_quantity": 0,
+                            "price": inv_item.selling_price or Decimal("0.00"),
+                        },
+                    )
+                    mb_record.current_quantity = min(mb_record.standard_quantity, mb_record.current_quantity + int(qty))
+                    mb_record.last_restocked_at = timezone.now()
+                    mb_record.last_checked_by = request.user.username or "Housekeeping"
+                    mb_record.save(update_fields=["current_quantity", "last_restocked_at", "last_checked_by"])
+
+                    replenished.append({
+                        "item_id": inv_item.id,
+                        "item_name": inv_item.name,
+                        "quantity": float(qty),
+                        "new_current_quantity": mb_record.current_quantity,
+                    })
+        except ValidationError as e:
+            msg = e.message if hasattr(e, "message") else ("; ".join(e.messages) if hasattr(e, "messages") else str(e))
+            return Response({"error": msg}, status=400)
+
+        return Response({
+            "message": "Minibar replenished successfully.",
+            "room_number": room.room_number,
+            "replenished_items": replenished,
+        })
+
+
 class LostAndFoundListView(APIView):
     permission_classes = [IsHousekeepingOperator]
 

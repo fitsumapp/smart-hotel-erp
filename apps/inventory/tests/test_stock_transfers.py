@@ -627,3 +627,130 @@ class StockTransferTestCase(APITestCase):
             format="json",
         )
         self.assertEqual(put_res.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_12_duplicate_dispatch_and_receive_blocked(self):
+        """State transitions prevent duplicate dispatch or receipt operations."""
+        item = InventoryItem.objects.create(
+            item_code="TRF-DUP-01",
+            name="Orange Marmalade",
+            category=self.category,
+            unit="jars",
+            current_stock=Decimal("20.00"),
+            unit_cost=Decimal("120.00"),
+        )
+        batch = StockBatch.objects.create(
+            batch_number="BAT-MARM-01",
+            item=item,
+            initial_quantity=Decimal("20.00"),
+            current_quantity=Decimal("20.00"),
+            unit_cost=Decimal("120.00"),
+            received_date=self.today,
+            status="active",
+        )
+        BatchLocationBalance.objects.create(batch=batch, location=self.main_store, quantity=Decimal("20.00"))
+        ItemLocationBalance.objects.create(item=item, location=self.main_store, quantity=Decimal("20.00"))
+
+        transfer = request_stock_transfer(
+            source_location=self.main_store,
+            destination_location=self.kitchen_store,
+            requested_by=self.kitchen_chef,
+            items=[{"item_id": item.id, "quantity_requested": 5}],
+        )
+
+        # 1. First dispatch succeeds
+        dispatch_stock_transfer(transfer_id=transfer.id, dispatcher=self.storekeeper)
+        transfer.refresh_from_db()
+        self.assertEqual(transfer.status, "in_transit")
+
+        # Duplicate dispatch attempt must fail
+        with self.assertRaises(ValidationError) as ctx:
+            dispatch_stock_transfer(transfer_id=transfer.id, dispatcher=self.storekeeper)
+        self.assertIn("expected 'requested'", str(ctx.exception))
+
+        # Balance at source must remain exactly 15 (not deducted twice)
+        blb_source = BatchLocationBalance.objects.get(batch=batch, location=self.main_store)
+        self.assertEqual(blb_source.quantity, Decimal("15.00"))
+        ilb_source = ItemLocationBalance.objects.get(item=item, location=self.main_store)
+        self.assertEqual(ilb_source.quantity, Decimal("15.00"))
+
+        # 2. First receipt succeeds
+        receive_stock_transfer(transfer_id=transfer.id, receiver=self.kitchen_chef)
+        transfer.refresh_from_db()
+        self.assertEqual(transfer.status, "completed")
+
+        # Duplicate receive attempt must fail
+        with self.assertRaises(ValidationError) as ctx2:
+            receive_stock_transfer(transfer_id=transfer.id, receiver=self.kitchen_chef)
+        self.assertIn("expected 'in_transit'", str(ctx2.exception))
+
+        # Balance at destination must remain exactly 5 (not incremented twice)
+        blb_dest = BatchLocationBalance.objects.get(batch=batch, location=self.kitchen_store)
+        self.assertEqual(blb_dest.quantity, Decimal("5.00"))
+        ilb_dest = ItemLocationBalance.objects.get(item=item, location=self.kitchen_store)
+        self.assertEqual(ilb_dest.quantity, Decimal("5.00"))
+
+    def test_13_stock_transaction_audit_trail_and_idempotency(self):
+        """Dispatch, receipt, and damage logging produce exact StockTransactions with idempotency keys."""
+        from hotel.models import StockTransaction
+
+        item = InventoryItem.objects.create(
+            item_code="TRF-TX-AUDIT-01",
+            name="Apple Juice 1L",
+            category=self.category,
+            unit="bottles",
+            current_stock=Decimal("50.00"),
+            unit_cost=Decimal("70.00"),
+        )
+        batch = StockBatch.objects.create(
+            batch_number="BAT-AJUICE-01",
+            item=item,
+            initial_quantity=Decimal("50.00"),
+            current_quantity=Decimal("50.00"),
+            unit_cost=Decimal("70.00"),
+            received_date=self.today,
+            status="active",
+        )
+        BatchLocationBalance.objects.create(batch=batch, location=self.main_store, quantity=Decimal("50.00"))
+        ItemLocationBalance.objects.create(item=item, location=self.main_store, quantity=Decimal("50.00"))
+
+        transfer = request_stock_transfer(
+            source_location=self.main_store,
+            destination_location=self.bar_store,
+            requested_by=self.admin,
+            items=[{"item_id": item.id, "quantity_requested": 10}],
+        )
+
+        dispatch_stock_transfer(transfer_id=transfer.id, dispatcher=self.storekeeper)
+
+        # Verify transfer_out transaction
+        tx_disp = StockTransaction.objects.filter(
+            item=item, transaction_type="transfer_out", reference_number=transfer.transfer_number
+        ).first()
+        self.assertIsNotNone(tx_disp)
+        self.assertEqual(tx_disp.quantity, Decimal("10.00"))
+        self.assertEqual(tx_disp.location, self.main_store)
+        self.assertTrue(tx_disp.idempotency_key.startswith("TRF-DISP-"))
+
+        # Receive with 1 bottle damaged
+        receipt_items = [{"item_id": item.id, "quantity_received": 9, "quantity_damaged": 1}]
+        receive_stock_transfer(
+            transfer_id=transfer.id,
+            receiver=self.admin,
+            receipt_items=receipt_items,
+        )
+
+        # Verify transfer_in transaction
+        tx_recv = StockTransaction.objects.filter(
+            item=item, transaction_type="transfer_in", reference_number=transfer.transfer_number
+        ).first()
+        self.assertIsNotNone(tx_recv)
+        self.assertEqual(tx_recv.location, self.bar_store)
+        self.assertTrue(tx_recv.idempotency_key.startswith("TRF-RECV-"))
+
+        # Verify transit loss transaction
+        tx_loss = StockTransaction.objects.filter(
+            item=item, transaction_type="loss", reference_number=f"{transfer.transfer_number}-DAMAGE"
+        ).first()
+        self.assertIsNotNone(tx_loss)
+        self.assertEqual(tx_loss.quantity, Decimal("1.00"))
+        self.assertTrue(tx_loss.idempotency_key.startswith("TRF-DAMAGE-"))

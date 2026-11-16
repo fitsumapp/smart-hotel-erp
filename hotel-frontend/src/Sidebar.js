@@ -10,7 +10,7 @@ import {
   Hotel, BookOpen, Moon, BarChart2, Shield, BarChart3,
   Activity, Layers, BookMarked, X, Sparkles, ChefHat,
   Truck, FileText, Globe, FileSpreadsheet, Scale, PackageCheck, Receipt,
-  ClipboardCheck
+  ClipboardCheck, ArrowRightLeft
 } from 'lucide-react';
 
 // ── Menu structure with section groupings ─────────────────────────────────────
@@ -52,6 +52,7 @@ const menuGroups = [
         ]
       },
       { id: 'inventory', title: 'Inventory Control', icon: <Package size={17} />, pkg: 'inventory' },
+      { id: 'transfers', title: 'Stock Transfers & Locations', icon: <ArrowRightLeft size={17} />, pkg: 'inventory' },
       { id: 'stocktaking', title: 'Physical Stocktaking', icon: <ClipboardCheck size={17} />, pkg: 'inventory' },
       {
         id: 'procurement',
@@ -110,6 +111,7 @@ const iconColors = {
   food_beverage:{ bg: 'rgba(251,146,60,0.14)',  color: '#fb923c' },
   rooms_pkg:    { bg: 'rgba(139,92,246,0.14)',  color: '#a78bfa' },
   inventory:    { bg: 'rgba(251,191,36,0.14)',  color: '#fbbf24' },
+  transfers:    { bg: 'rgba(15,118,110,0.14)',   color: '#0f766e' },
   stocktaking:  { bg: 'rgba(14,165,233,0.14)',  color: '#0ea5e9' },
   procurement:  { bg: 'rgba(16,185,129,0.14)',  color: '#10b981' },
   finance:      { bg: 'rgba(52,211,153,0.14)',  color: '#34d399' },

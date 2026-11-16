@@ -1,0 +1,2836 @@
+{
+  "BEV-JUICE-01": {
+    "item_id": 2,
+    "item_code": "BEV-JUICE-01",
+    "name": "Mango Juice 1L",
+    "category": "Beverages & Bar",
+    "unit": "bottle",
+    "unit_cost": 60.0,
+    "current_stock": 91.0,
+    "master_valuation": 5460.0,
+    "batch_count": 2,
+    "batches": [
+      {
+        "id": 2,
+        "batch_number": "BATCH-JUICE-001",
+        "status": "active",
+        "current_quantity": 87.0,
+        "initial_quantity": 100.0,
+        "unit_cost": 60.0,
+        "valuation": 5220.0,
+        "expiry_date": null,
+        "received_date": "2026-11-01",
+        "is_legacy": false,
+        "locations": [
+          {
+            "loc": "STORE-MAIN",
+            "qty": 90.0
+          },
+          {
+            "loc": "BAR-MAIN",
+            "qty": 6.0
+          }
+        ]
+      },
+      {
+        "id": 23,
+        "batch_number": "BAT-BEV-JUICE-01-20261104-5BF9FF",
+        "status": "active",
+        "current_quantity": 4.0,
+        "initial_quantity": 4.0,
+        "unit_cost": 60.0,
+        "valuation": 240.0,
+        "expiry_date": null,
+        "received_date": "2026-11-04",
+        "is_legacy": false,
+        "locations": [
+          {
+            "loc": "BAR-MAIN",
+            "qty": 4.0
+          }
+        ]
+      }
+    ],
+    "status_summary": {
+      "active": {
+        "qty": 91.0,
+        "val": 5460.0,
+        "count": 2
+      }
+    },
+    "location_count": 2,
+    "locations": [
+      {
+        "location_id": 3,
+        "location_code": "BAR-MAIN",
+        "location_name": "Main Bar Station",
+        "location_type": "bar",
+        "is_active": true,
+        "quantity": 10.0,
+        "valuation": 600.0
+      },
+      {
+        "location_id": 1,
+        "location_code": "STORE-MAIN",
+        "location_name": "Main Central Store",
+        "location_type": "warehouse",
+        "is_active": true,
+        "quantity": 90.0,
+        "valuation": 5400.0
+      }
+    ],
+    "location_total_qty": 100.0,
+    "location_total_val": 6000.0,
+    "transactions": [
+      {
+        "id": 27,
+        "timestamp": "2026-11-04 10:28:03.833543+00:00",
+        "transaction_type": "adjustment",
+        "quantity": 4.0,
+        "unit_cost": 60.0,
+        "direction": "increase",
+        "batch_id": 23,
+        "batch_num": "BAT-BEV-JUICE-01-20261104-5BF9FF",
+        "location_code": "BAR-MAIN",
+        "ref": null,
+        "notes": "Stocktake STK-20261104-801697 surplus adjustment: +4.00 bottle",
+        "logged_by": "",
+        "reversal_of": null
+      },
+      {
+        "id": 29,
+        "timestamp": "2026-11-05 18:23:31.360116+00:00",
+        "transaction_type": "adjustment",
+        "quantity": 12.0,
+        "unit_cost": 60.0,
+        "direction": "decrease",
+        "batch_id": 2,
+        "batch_num": "BATCH-JUICE-001",
+        "location_code": "BAR-MAIN",
+        "ref": null,
+        "notes": "Stocktake STK-20261105-466EE4 shrinkage adjustment: -12.00 bottle",
+        "logged_by": "",
+        "reversal_of": null
+      }
+    ],
+    "grns": [],
+    "pos": [],
+    "transfers": [
+      {
+        "transfer_id": 2,
+        "transfer_number": "TRF-20261101-81987E",
+        "source": "STORE-MAIN",
+        "dest": "BAR-MAIN",
+        "requested_qty": 10.0,
+        "dispatched_qty": 10.0,
+        "received_qty": 9.0,
+        "damaged_qty": 1.0,
+        "status": "partially_received"
+      }
+    ],
+    "waste": [
+      {
+        "id": 2,
+        "waste_category": "breakage_or_damage",
+        "waste_source": "direct_loss",
+        "entered_quantity": 1.0,
+        "base_quantity": 1.0,
+        "total_cost_loss": 60.0,
+        "stock_deducted": true,
+        "status": "pending_review",
+        "journal_entry_id": 8,
+        "notes": "Transit damage on Transfer #TRF-20261101-81987E to Main Bar Station."
+      }
+    ],
+    "stocktaking": [
+      {
+        "session_id": 1,
+        "session_number": "STK-20261104-C0C0BA",
+        "title": "Test Browser Session",
+        "location": "STORE-MAIN",
+        "status": "draft",
+        "theoretical_qty": 90.0,
+        "counted_qty": null,
+        "final_qty": null,
+        "variance_qty": 0.0,
+        "variance_val": 0.0,
+        "batch": null
+      },
+      {
+        "session_id": 2,
+        "session_number": "STK-20261104-C47E1D",
+        "title": "Automated Browser Physical Count Test",
+        "location": "BAR-MAIN",
+        "status": "recount_required",
+        "theoretical_qty": 18.0,
+        "counted_qty": 22.0,
+        "final_qty": 22.0,
+        "variance_qty": 4.0,
+        "variance_val": 240.0,
+        "batch": null
+      },
+      {
+        "session_id": 3,
+        "session_number": "STK-20261104-801697",
+        "title": "Automated Browser Physical Count Test",
+        "location": "BAR-MAIN",
+        "status": "approved",
+        "theoretical_qty": 18.0,
+        "counted_qty": 22.0,
+        "final_qty": 22.0,
+        "variance_qty": 4.0,
+        "variance_val": 240.0,
+        "batch": null
+      },
+      {
+        "session_id": 4,
+        "session_number": "STK-20261105-43B597",
+        "title": "Manual Trigger: Daily Nightly Central Store Audit - 2026-11-05",
+        "location": "BAR-MAIN",
+        "status": "draft",
+        "theoretical_qty": 22.0,
+        "counted_qty": null,
+        "final_qty": null,
+        "variance_qty": 0.0,
+        "variance_val": 0.0,
+        "batch": null
+      },
+      {
+        "session_id": 8,
+        "session_number": "STK-20261105-8B35D1",
+        "title": "Live HTTP Verification Session 1793901736",
+        "location": "BAR-MAIN",
+        "status": "under_review",
+        "theoretical_qty": 22.0,
+        "counted_qty": null,
+        "final_qty": null,
+        "variance_qty": 0.0,
+        "variance_val": 0.0,
+        "batch": null
+      },
+      {
+        "session_id": 9,
+        "session_number": "STK-20261105-BF27E4",
+        "title": "Live HTTP Verification Session 1793902867",
+        "location": "BAR-MAIN",
+        "status": "under_review",
+        "theoretical_qty": 22.0,
+        "counted_qty": null,
+        "final_qty": null,
+        "variance_qty": 0.0,
+        "variance_val": 0.0,
+        "batch": null
+      },
+      {
+        "session_id": 10,
+        "session_number": "STK-20261105-466EE4",
+        "title": "Live HTTP Verification Session 1793903010",
+        "location": "BAR-MAIN",
+        "status": "approved",
+        "theoretical_qty": 22.0,
+        "counted_qty": 10.0,
+        "final_qty": 10.0,
+        "variance_qty": -12.0,
+        "variance_val": -720.0,
+        "batch": null
+      },
+      {
+        "session_id": 11,
+        "session_number": "STK-20261105-B12D52",
+        "title": "Cancellation Test Session",
+        "location": "BAR-MAIN",
+        "status": "cancelled",
+        "theoretical_qty": 10.0,
+        "counted_qty": null,
+        "final_qty": null,
+        "variance_qty": 0.0,
+        "variance_val": 0.0,
+        "batch": null
+      },
+      {
+        "session_id": 12,
+        "session_number": "STK-20261105-90D491",
+        "title": "Browser QC Remediation Session 1793903455",
+        "location": "BAR-MAIN",
+        "status": "draft",
+        "theoretical_qty": 10.0,
+        "counted_qty": null,
+        "final_qty": null,
+        "variance_qty": 0.0,
+        "variance_val": 0.0,
+        "batch": null
+      },
+      {
+        "session_id": 13,
+        "session_number": "STK-20261105-5597AD",
+        "title": "Browser QC Remediation Session 1793903924",
+        "location": "BAR-MAIN",
+        "status": "under_review",
+        "theoretical_qty": 10.0,
+        "counted_qty": 25.0,
+        "final_qty": 25.0,
+        "variance_qty": 15.0,
+        "variance_val": 900.0,
+        "batch": null
+      },
+      {
+        "session_id": 14,
+        "session_number": "STK-20261105-A966D0",
+        "title": "Browser QC Remediation Session 1793904371",
+        "location": "BAR-MAIN",
+        "status": "under_review",
+        "theoretical_qty": 10.0,
+        "counted_qty": 25.0,
+        "final_qty": 25.0,
+        "variance_qty": 15.0,
+        "variance_val": 900.0,
+        "batch": null
+      },
+      {
+        "session_id": 25,
+        "session_number": "STK-20261107-E2640B",
+        "title": "Live HTTP Verification Session 1794067796",
+        "location": "BAR-MAIN",
+        "status": "approved",
+        "theoretical_qty": 10.0,
+        "counted_qty": 10.0,
+        "final_qty": 10.0,
+        "variance_qty": 0.0,
+        "variance_val": 0.0,
+        "batch": null
+      },
+      {
+        "session_id": 26,
+        "session_number": "STK-20261107-5E310A",
+        "title": "Cancellation Test Session",
+        "location": "BAR-MAIN",
+        "status": "cancelled",
+        "theoretical_qty": 10.0,
+        "counted_qty": null,
+        "final_qty": null,
+        "variance_qty": 0.0,
+        "variance_val": 0.0,
+        "batch": null
+      },
+      {
+        "session_id": 34,
+        "session_number": "STK-20261107-97D1C5",
+        "title": "Live HTTP Verification Session 1794080744",
+        "location": "BAR-MAIN",
+        "status": "approved",
+        "theoretical_qty": 10.0,
+        "counted_qty": 10.0,
+        "final_qty": 10.0,
+        "variance_qty": 0.0,
+        "variance_val": 0.0,
+        "batch": null
+      },
+      {
+        "session_id": 31,
+        "session_number": "STK-20261107-7190F7",
+        "title": "Store B Weekly Stocktake",
+        "location": "REMED-LOC-B",
+        "status": "draft",
+        "theoretical_qty": 0.0,
+        "counted_qty": null,
+        "final_qty": null,
+        "variance_qty": 0.0,
+        "variance_val": 0.0,
+        "batch": null
+      },
+      {
+        "session_id": 35,
+        "session_number": "STK-20261107-0E86E1",
+        "title": "Cancellation Test Session",
+        "location": "BAR-MAIN",
+        "status": "cancelled",
+        "theoretical_qty": 10.0,
+        "counted_qty": null,
+        "final_qty": null,
+        "variance_qty": 0.0,
+        "variance_val": 0.0,
+        "batch": null
+      },
+      {
+        "session_id": 51,
+        "session_number": "STK-20261109-BA07FF",
+        "title": "SoD Full Count Test",
+        "location": "ASSIGNED-KITCHEN-LOC",
+        "status": "draft",
+        "theoretical_qty": 0.0,
+        "counted_qty": null,
+        "final_qty": null,
+        "variance_qty": 0.0,
+        "variance_val": 0.0,
+        "batch": null
+      },
+      {
+        "session_id": 52,
+        "session_number": "STK-20261109-9BB78A",
+        "title": "SoD Full Count Test",
+        "location": "ASSIGNED-KITCHEN-LOC",
+        "status": "draft",
+        "theoretical_qty": 0.0,
+        "counted_qty": null,
+        "final_qty": null,
+        "variance_qty": 0.0,
+        "variance_val": 0.0,
+        "batch": null
+      },
+      {
+        "session_id": 53,
+        "session_number": "STK-20261109-F3DEEE",
+        "title": "SoD Full Count Test",
+        "location": "ASSIGNED-KITCHEN-LOC",
+        "status": "approved",
+        "theoretical_qty": 0.0,
+        "counted_qty": 0.0,
+        "final_qty": 0.0,
+        "variance_qty": 0.0,
+        "variance_val": 0.0,
+        "batch": null
+      }
+    ],
+    "journal_entries": [
+      {
+        "id": 8,
+        "entry_number": "JV-25CDD440",
+        "date": "2026-11-01",
+        "description": "Auto JV: Transit Damage Transfer #TRF-20261101-81987E - Mango Juice 1L (1.00 bottle)",
+        "lines": [
+          {
+            "account_code": "5010",
+            "account_name": "Inventory Spoilage & Waste Expense",
+            "debit": 60.0,
+            "credit": 0.0
+          },
+          {
+            "account_code": "1300",
+            "account_name": "Inventory Asset",
+            "debit": 0.0,
+            "credit": 60.0
+          }
+        ]
+      }
+    ]
+  },
+  "MB-SODA-01": {
+    "item_id": 3,
+    "item_code": "MB-SODA-01",
+    "name": "Artisan Sparkling Soda",
+    "category": "Minibar Beverages",
+    "unit": "bottle",
+    "unit_cost": 2.5,
+    "current_stock": 48.0,
+    "master_valuation": 120.0,
+    "batch_count": 1,
+    "batches": [
+      {
+        "id": 4,
+        "batch_number": "BATCH-MB-SODA-01",
+        "status": "active",
+        "current_quantity": 48.0,
+        "initial_quantity": 100.0,
+        "unit_cost": 2.5,
+        "valuation": 120.0,
+        "expiry_date": "2027-05-02",
+        "received_date": "2026-11-03",
+        "is_legacy": false,
+        "locations": [
+          {
+            "loc": "MINIBAR-PANTRY",
+            "qty": 48.0
+          },
+          {
+            "loc": "MB-FL1",
+            "qty": 20.0
+          }
+        ]
+      }
+    ],
+    "status_summary": {
+      "active": {
+        "qty": 48.0,
+        "val": 120.0,
+        "count": 1
+      }
+    },
+    "location_count": 2,
+    "locations": [
+      {
+        "location_id": 5,
+        "location_code": "MB-FL1",
+        "location_name": "Floor 1 Minibar Pantry",
+        "location_type": "minibar",
+        "is_active": true,
+        "quantity": 20.0,
+        "valuation": 50.0
+      },
+      {
+        "location_id": 4,
+        "location_code": "MINIBAR-PANTRY",
+        "location_name": "Housekeeping Minibar Pantry",
+        "location_type": "minibar",
+        "is_active": true,
+        "quantity": 48.0,
+        "valuation": 120.0
+      }
+    ],
+    "location_total_qty": 68.0,
+    "location_total_val": 170.0,
+    "transactions": [
+      {
+        "id": 4,
+        "timestamp": "2026-11-03 13:10:14.132974+00:00",
+        "transaction_type": "issuance",
+        "quantity": 2.0,
+        "unit_cost": 2.5,
+        "direction": null,
+        "batch_id": 4,
+        "batch_num": "BATCH-MB-SODA-01",
+        "location_code": "MINIBAR-PANTRY",
+        "ref": "Minibar-Room-101",
+        "notes": "Minibar consumption Room 101. Consumed by guest during evening",
+        "logged_by": "staging_housekeeper",
+        "reversal_of": null
+      },
+      {
+        "id": 5,
+        "timestamp": "2026-11-03 13:12:52.969659+00:00",
+        "transaction_type": "issuance",
+        "quantity": 2.0,
+        "unit_cost": 2.5,
+        "direction": null,
+        "batch_id": 4,
+        "batch_num": "BATCH-MB-SODA-01",
+        "location_code": "MINIBAR-PANTRY",
+        "ref": "Minibar-Room-101",
+        "notes": "Minibar consumption Room 101. Consumed by guest during evening",
+        "logged_by": "staging_housekeeper",
+        "reversal_of": null
+      },
+      {
+        "id": 6,
+        "timestamp": "2026-11-03 13:15:17.561228+00:00",
+        "transaction_type": "issuance",
+        "quantity": 2.0,
+        "unit_cost": 2.5,
+        "direction": null,
+        "batch_id": 4,
+        "batch_num": "BATCH-MB-SODA-01",
+        "location_code": "MINIBAR-PANTRY",
+        "ref": "Minibar-Room-101",
+        "notes": "Minibar consumption Room 101. Consumed by guest during evening",
+        "logged_by": "staging_housekeeper",
+        "reversal_of": null
+      },
+      {
+        "id": 7,
+        "timestamp": "2026-11-03 13:25:48.348812+00:00",
+        "transaction_type": "issuance",
+        "quantity": 2.0,
+        "unit_cost": 2.5,
+        "direction": null,
+        "batch_id": 4,
+        "batch_num": "BATCH-MB-SODA-01",
+        "location_code": "MINIBAR-PANTRY",
+        "ref": "Minibar-Room-101",
+        "notes": "Minibar consumption Room 101. Consumed by guest during evening",
+        "logged_by": "staging_housekeeper",
+        "reversal_of": null
+      },
+      {
+        "id": 8,
+        "timestamp": "2026-11-03 13:27:50.948951+00:00",
+        "transaction_type": "issuance",
+        "quantity": 2.0,
+        "unit_cost": 2.5,
+        "direction": null,
+        "batch_id": 4,
+        "batch_num": "BATCH-MB-SODA-01",
+        "location_code": "MINIBAR-PANTRY",
+        "ref": "Minibar-Room-101",
+        "notes": "Minibar consumption Room 101. Consumed by guest during evening",
+        "logged_by": "staging_housekeeper",
+        "reversal_of": null
+      },
+      {
+        "id": 9,
+        "timestamp": "2026-11-03 13:31:16.811148+00:00",
+        "transaction_type": "issuance",
+        "quantity": 2.0,
+        "unit_cost": 2.5,
+        "direction": null,
+        "batch_id": 4,
+        "batch_num": "BATCH-MB-SODA-01",
+        "location_code": "MINIBAR-PANTRY",
+        "ref": "Minibar-Room-101",
+        "notes": "Minibar consumption Room 101. Consumed by guest during evening",
+        "logged_by": "staging_housekeeper",
+        "reversal_of": null
+      },
+      {
+        "id": 10,
+        "timestamp": "2026-11-03 13:33:03.151616+00:00",
+        "transaction_type": "issuance",
+        "quantity": 2.0,
+        "unit_cost": 2.5,
+        "direction": null,
+        "batch_id": 4,
+        "batch_num": "BATCH-MB-SODA-01",
+        "location_code": "MINIBAR-PANTRY",
+        "ref": "Minibar-Room-101",
+        "notes": "Minibar consumption Room 101. Consumed by guest during evening",
+        "logged_by": "staging_housekeeper",
+        "reversal_of": null
+      },
+      {
+        "id": 11,
+        "timestamp": "2026-11-03 13:34:56.302838+00:00",
+        "transaction_type": "issuance",
+        "quantity": 2.0,
+        "unit_cost": 2.5,
+        "direction": null,
+        "batch_id": 4,
+        "batch_num": "BATCH-MB-SODA-01",
+        "location_code": "MINIBAR-PANTRY",
+        "ref": "Minibar-Room-101",
+        "notes": "Minibar consumption Room 101. Consumed by guest during evening",
+        "logged_by": "staging_housekeeper",
+        "reversal_of": null
+      },
+      {
+        "id": 12,
+        "timestamp": "2026-11-03 13:36:32.873560+00:00",
+        "transaction_type": "issuance",
+        "quantity": 2.0,
+        "unit_cost": 2.5,
+        "direction": null,
+        "batch_id": 4,
+        "batch_num": "BATCH-MB-SODA-01",
+        "location_code": "MINIBAR-PANTRY",
+        "ref": "Minibar-Room-101",
+        "notes": "Minibar consumption Room 101. Consumed by guest during evening",
+        "logged_by": "staging_housekeeper",
+        "reversal_of": null
+      },
+      {
+        "id": 13,
+        "timestamp": "2026-11-03 13:40:16.208059+00:00",
+        "transaction_type": "issuance",
+        "quantity": 2.0,
+        "unit_cost": 2.5,
+        "direction": null,
+        "batch_id": 4,
+        "batch_num": "BATCH-MB-SODA-01",
+        "location_code": "MINIBAR-PANTRY",
+        "ref": "Minibar-Room-101",
+        "notes": "Minibar consumption Room 101. Consumed by guest during evening",
+        "logged_by": "staging_housekeeper",
+        "reversal_of": null
+      },
+      {
+        "id": 14,
+        "timestamp": "2026-11-03 13:42:16.848385+00:00",
+        "transaction_type": "issuance",
+        "quantity": 2.0,
+        "unit_cost": 2.5,
+        "direction": null,
+        "batch_id": 4,
+        "batch_num": "BATCH-MB-SODA-01",
+        "location_code": "MINIBAR-PANTRY",
+        "ref": "Minibar-Room-101",
+        "notes": "Minibar consumption Room 101. Consumed by guest during evening",
+        "logged_by": "staging_housekeeper",
+        "reversal_of": null
+      }
+    ],
+    "grns": [],
+    "pos": [],
+    "transfers": [],
+    "waste": [],
+    "stocktaking": [
+      {
+        "session_id": 51,
+        "session_number": "STK-20261109-BA07FF",
+        "title": "SoD Full Count Test",
+        "location": "ASSIGNED-KITCHEN-LOC",
+        "status": "draft",
+        "theoretical_qty": 0.0,
+        "counted_qty": null,
+        "final_qty": null,
+        "variance_qty": 0.0,
+        "variance_val": 0.0,
+        "batch": null
+      },
+      {
+        "session_id": 52,
+        "session_number": "STK-20261109-9BB78A",
+        "title": "SoD Full Count Test",
+        "location": "ASSIGNED-KITCHEN-LOC",
+        "status": "draft",
+        "theoretical_qty": 0.0,
+        "counted_qty": null,
+        "final_qty": null,
+        "variance_qty": 0.0,
+        "variance_val": 0.0,
+        "batch": null
+      },
+      {
+        "session_id": 53,
+        "session_number": "STK-20261109-F3DEEE",
+        "title": "SoD Full Count Test",
+        "location": "ASSIGNED-KITCHEN-LOC",
+        "status": "approved",
+        "theoretical_qty": 0.0,
+        "counted_qty": 0.0,
+        "final_qty": 0.0,
+        "variance_qty": 0.0,
+        "variance_val": 0.0,
+        "batch": null
+      }
+    ],
+    "journal_entries": [
+      {
+        "id": 14,
+        "entry_number": "JV-0C2F410D",
+        "date": "2026-11-03",
+        "description": "Auto JV: Minibar Issuance - Artisan Sparkling Soda (Room 101)",
+        "lines": [
+          {
+            "account_code": "5000",
+            "account_name": "Inventory Cost of Goods Sold",
+            "debit": 5.0,
+            "credit": 0.0
+          },
+          {
+            "account_code": "1300",
+            "account_name": "Inventory Asset",
+            "debit": 0.0,
+            "credit": 5.0
+          }
+        ]
+      },
+      {
+        "id": 16,
+        "entry_number": "JV-7FD13D6C",
+        "date": "2026-11-03",
+        "description": "Auto JV: Minibar Issuance - Artisan Sparkling Soda (Room 101)",
+        "lines": [
+          {
+            "account_code": "5000",
+            "account_name": "Inventory Cost of Goods Sold",
+            "debit": 5.0,
+            "credit": 0.0
+          },
+          {
+            "account_code": "1300",
+            "account_name": "Inventory Asset",
+            "debit": 0.0,
+            "credit": 5.0
+          }
+        ]
+      },
+      {
+        "id": 18,
+        "entry_number": "JV-05DB0416",
+        "date": "2026-11-03",
+        "description": "Auto JV: Minibar Issuance - Artisan Sparkling Soda (Room 101)",
+        "lines": [
+          {
+            "account_code": "5000",
+            "account_name": "Inventory Cost of Goods Sold",
+            "debit": 5.0,
+            "credit": 0.0
+          },
+          {
+            "account_code": "1300",
+            "account_name": "Inventory Asset",
+            "debit": 0.0,
+            "credit": 5.0
+          }
+        ]
+      },
+      {
+        "id": 22,
+        "entry_number": "JV-D501D7A0",
+        "date": "2026-11-03",
+        "description": "Auto JV: Minibar Issuance - Artisan Sparkling Soda (Room 101)",
+        "lines": [
+          {
+            "account_code": "5000",
+            "account_name": "Inventory Cost of Goods Sold",
+            "debit": 5.0,
+            "credit": 0.0
+          },
+          {
+            "account_code": "1300",
+            "account_name": "Inventory Asset",
+            "debit": 0.0,
+            "credit": 5.0
+          }
+        ]
+      },
+      {
+        "id": 27,
+        "entry_number": "JV-6C7706AE",
+        "date": "2026-11-03",
+        "description": "Auto JV: Minibar Issuance - Artisan Sparkling Soda (Room 101)",
+        "lines": [
+          {
+            "account_code": "5000",
+            "account_name": "Inventory Cost of Goods Sold",
+            "debit": 5.0,
+            "credit": 0.0
+          },
+          {
+            "account_code": "1300",
+            "account_name": "Inventory Asset",
+            "debit": 0.0,
+            "credit": 5.0
+          }
+        ]
+      },
+      {
+        "id": 32,
+        "entry_number": "JV-EF67D2C7",
+        "date": "2026-11-03",
+        "description": "Auto JV: Minibar Issuance - Artisan Sparkling Soda (Room 101)",
+        "lines": [
+          {
+            "account_code": "5000",
+            "account_name": "Inventory Cost of Goods Sold",
+            "debit": 5.0,
+            "credit": 0.0
+          },
+          {
+            "account_code": "1300",
+            "account_name": "Inventory Asset",
+            "debit": 0.0,
+            "credit": 5.0
+          }
+        ]
+      },
+      {
+        "id": 37,
+        "entry_number": "JV-B3DF483A",
+        "date": "2026-11-03",
+        "description": "Auto JV: Minibar Issuance - Artisan Sparkling Soda (Room 101)",
+        "lines": [
+          {
+            "account_code": "5000",
+            "account_name": "Inventory Cost of Goods Sold",
+            "debit": 5.0,
+            "credit": 0.0
+          },
+          {
+            "account_code": "1300",
+            "account_name": "Inventory Asset",
+            "debit": 0.0,
+            "credit": 5.0
+          }
+        ]
+      },
+      {
+        "id": 42,
+        "entry_number": "JV-3A67BDCD",
+        "date": "2026-11-03",
+        "description": "Auto JV: Minibar Issuance - Artisan Sparkling Soda (Room 101)",
+        "lines": [
+          {
+            "account_code": "5000",
+            "account_name": "Inventory Cost of Goods Sold",
+            "debit": 5.0,
+            "credit": 0.0
+          },
+          {
+            "account_code": "1300",
+            "account_name": "Inventory Asset",
+            "debit": 0.0,
+            "credit": 5.0
+          }
+        ]
+      },
+      {
+        "id": 47,
+        "entry_number": "JV-BD89FD05",
+        "date": "2026-11-03",
+        "description": "Auto JV: Minibar Issuance - Artisan Sparkling Soda (Room 101)",
+        "lines": [
+          {
+            "account_code": "5000",
+            "account_name": "Inventory Cost of Goods Sold",
+            "debit": 5.0,
+            "credit": 0.0
+          },
+          {
+            "account_code": "1300",
+            "account_name": "Inventory Asset",
+            "debit": 0.0,
+            "credit": 5.0
+          }
+        ]
+      },
+      {
+        "id": 52,
+        "entry_number": "JV-4B747365",
+        "date": "2026-11-03",
+        "description": "Auto JV: Minibar Issuance - Artisan Sparkling Soda (Room 101)",
+        "lines": [
+          {
+            "account_code": "5000",
+            "account_name": "Inventory Cost of Goods Sold",
+            "debit": 5.0,
+            "credit": 0.0
+          },
+          {
+            "account_code": "1300",
+            "account_name": "Inventory Asset",
+            "debit": 0.0,
+            "credit": 5.0
+          }
+        ]
+      },
+      {
+        "id": 57,
+        "entry_number": "JV-1F6FA859",
+        "date": "2026-11-03",
+        "description": "Auto JV: Minibar Issuance - Artisan Sparkling Soda (Room 101)",
+        "lines": [
+          {
+            "account_code": "5000",
+            "account_name": "Inventory Cost of Goods Sold",
+            "debit": 5.0,
+            "credit": 0.0
+          },
+          {
+            "account_code": "1300",
+            "account_name": "Inventory Asset",
+            "debit": 0.0,
+            "credit": 5.0
+          }
+        ]
+      }
+    ]
+  },
+  "CORD-LIME-01": {
+    "item_id": 4,
+    "item_code": "CORD-LIME-01",
+    "name": "Fresh Lime Cordial",
+    "category": "Minibar Beverages",
+    "unit": "bottle",
+    "unit_cost": 5.0,
+    "current_stock": 135.0,
+    "master_valuation": 675.0,
+    "batch_count": 2,
+    "batches": [
+      {
+        "id": 5,
+        "batch_number": "BATCH-LIME-001",
+        "status": "active",
+        "current_quantity": 80.0,
+        "initial_quantity": 100.0,
+        "unit_cost": 5.0,
+        "valuation": 400.0,
+        "expiry_date": "2027-02-01",
+        "received_date": "2026-11-03",
+        "is_legacy": false,
+        "locations": [
+          {
+            "loc": "WH-MAIN",
+            "qty": 90.0
+          },
+          {
+            "loc": "BAR-MAIN",
+            "qty": 4.0
+          }
+        ]
+      },
+      {
+        "id": 22,
+        "batch_number": "BAT-CORD-LIME-01-20261104-EFDE72",
+        "status": "active",
+        "current_quantity": 41.0,
+        "initial_quantity": 41.0,
+        "unit_cost": 5.0,
+        "valuation": 205.0,
+        "expiry_date": null,
+        "received_date": "2026-11-04",
+        "is_legacy": false,
+        "locations": [
+          {
+            "loc": "BAR-MAIN",
+            "qty": 41.0
+          }
+        ]
+      }
+    ],
+    "status_summary": {
+      "active": {
+        "qty": 121.0,
+        "val": 605.0,
+        "count": 2
+      }
+    },
+    "location_count": 2,
+    "locations": [
+      {
+        "location_id": 3,
+        "location_code": "BAR-MAIN",
+        "location_name": "Main Bar Station",
+        "location_type": "bar",
+        "is_active": true,
+        "quantity": 45.0,
+        "valuation": 225.0
+      },
+      {
+        "location_id": 6,
+        "location_code": "WH-MAIN",
+        "location_name": "Central Warehouse",
+        "location_type": "warehouse",
+        "is_active": true,
+        "quantity": 90.0,
+        "valuation": 450.0
+      }
+    ],
+    "location_total_qty": 135.0,
+    "location_total_val": 675.0,
+    "transactions": [
+      {
+        "id": 26,
+        "timestamp": "2026-11-04 10:28:03.811452+00:00",
+        "transaction_type": "adjustment",
+        "quantity": 41.0,
+        "unit_cost": 5.0,
+        "direction": "increase",
+        "batch_id": 22,
+        "batch_num": "BAT-CORD-LIME-01-20261104-EFDE72",
+        "location_code": "BAR-MAIN",
+        "ref": null,
+        "notes": "Stocktake STK-20261104-801697 surplus adjustment: +41.00 bottle",
+        "logged_by": "",
+        "reversal_of": null
+      },
+      {
+        "id": 56,
+        "timestamp": "2026-11-11 08:55:05.697363+00:00",
+        "transaction_type": "loss",
+        "quantity": 2.0,
+        "unit_cost": 5.0,
+        "direction": null,
+        "batch_id": 5,
+        "batch_num": "BATCH-LIME-001",
+        "location_code": "BAR-MAIN",
+        "ref": null,
+        "notes": "Approved Waste Loss [breakage_or_damage]: Transit damage on Transfer #TRF-20261103-ED4DF5 to Main Bar Station.",
+        "logged_by": "admin_proc2",
+        "reversal_of": null
+      },
+      {
+        "id": 57,
+        "timestamp": "2026-11-11 08:55:14.952090+00:00",
+        "transaction_type": "loss",
+        "quantity": 2.0,
+        "unit_cost": 5.0,
+        "direction": null,
+        "batch_id": 5,
+        "batch_num": "BATCH-LIME-001",
+        "location_code": "BAR-MAIN",
+        "ref": null,
+        "notes": "Approved Waste Loss [breakage_or_damage]: Transit damage on Transfer #TRF-20261103-E790E6 to Main Bar Station.",
+        "logged_by": "admin_proc2",
+        "reversal_of": null
+      }
+    ],
+    "grns": [],
+    "pos": [],
+    "transfers": [
+      {
+        "transfer_id": 3,
+        "transfer_number": "TRF-20261103-4EAB1F",
+        "source": "WH-MAIN",
+        "dest": "BAR-MAIN",
+        "requested_qty": 10.0,
+        "dispatched_qty": 10.0,
+        "received_qty": 8.0,
+        "damaged_qty": 2.0,
+        "status": "partially_received"
+      },
+      {
+        "transfer_id": 4,
+        "transfer_number": "TRF-20261103-FDFBEC",
+        "source": "WH-MAIN",
+        "dest": "BAR-MAIN",
+        "requested_qty": 10.0,
+        "dispatched_qty": 10.0,
+        "received_qty": 8.0,
+        "damaged_qty": 2.0,
+        "status": "partially_received"
+      },
+      {
+        "transfer_id": 5,
+        "transfer_number": "TRF-20261103-E4887B",
+        "source": "WH-MAIN",
+        "dest": "BAR-MAIN",
+        "requested_qty": 10.0,
+        "dispatched_qty": 10.0,
+        "received_qty": 8.0,
+        "damaged_qty": 2.0,
+        "status": "partially_received"
+      },
+      {
+        "transfer_id": 6,
+        "transfer_number": "TRF-20261103-87880C",
+        "source": "WH-MAIN",
+        "dest": "BAR-MAIN",
+        "requested_qty": 10.0,
+        "dispatched_qty": 10.0,
+        "received_qty": 8.0,
+        "damaged_qty": 2.0,
+        "status": "partially_received"
+      },
+      {
+        "transfer_id": 7,
+        "transfer_number": "TRF-20261103-E364FB",
+        "source": "WH-MAIN",
+        "dest": "BAR-MAIN",
+        "requested_qty": 10.0,
+        "dispatched_qty": 10.0,
+        "received_qty": 8.0,
+        "damaged_qty": 2.0,
+        "status": "partially_received"
+      },
+      {
+        "transfer_id": 8,
+        "transfer_number": "TRF-20261103-A990CE",
+        "source": "WH-MAIN",
+        "dest": "BAR-MAIN",
+        "requested_qty": 10.0,
+        "dispatched_qty": 10.0,
+        "received_qty": 8.0,
+        "damaged_qty": 2.0,
+        "status": "partially_received"
+      },
+      {
+        "transfer_id": 9,
+        "transfer_number": "TRF-20261103-E790E6",
+        "source": "WH-MAIN",
+        "dest": "BAR-MAIN",
+        "requested_qty": 10.0,
+        "dispatched_qty": 10.0,
+        "received_qty": 8.0,
+        "damaged_qty": 2.0,
+        "status": "partially_received"
+      },
+      {
+        "transfer_id": 11,
+        "transfer_number": "TRF-20261103-ED4DF5",
+        "source": "WH-MAIN",
+        "dest": "BAR-MAIN",
+        "requested_qty": 10.0,
+        "dispatched_qty": 10.0,
+        "received_qty": 8.0,
+        "damaged_qty": 2.0,
+        "status": "partially_received"
+      }
+    ],
+    "waste": [
+      {
+        "id": 3,
+        "waste_category": "breakage_or_damage",
+        "waste_source": "direct_loss",
+        "entered_quantity": 2.0,
+        "base_quantity": 2.0,
+        "total_cost_loss": 10.0,
+        "stock_deducted": true,
+        "status": "pending_review",
+        "journal_entry_id": 25,
+        "notes": "Transit damage on Transfer #TRF-20261103-4EAB1F to Main Bar Station."
+      },
+      {
+        "id": 4,
+        "waste_category": "breakage_or_damage",
+        "waste_source": "direct_loss",
+        "entered_quantity": 2.0,
+        "base_quantity": 2.0,
+        "total_cost_loss": 10.0,
+        "stock_deducted": true,
+        "status": "pending_review",
+        "journal_entry_id": 30,
+        "notes": "Transit damage on Transfer #TRF-20261103-FDFBEC to Main Bar Station."
+      },
+      {
+        "id": 5,
+        "waste_category": "breakage_or_damage",
+        "waste_source": "direct_loss",
+        "entered_quantity": 2.0,
+        "base_quantity": 2.0,
+        "total_cost_loss": 10.0,
+        "stock_deducted": true,
+        "status": "pending_review",
+        "journal_entry_id": 35,
+        "notes": "Transit damage on Transfer #TRF-20261103-E4887B to Main Bar Station."
+      },
+      {
+        "id": 6,
+        "waste_category": "breakage_or_damage",
+        "waste_source": "direct_loss",
+        "entered_quantity": 2.0,
+        "base_quantity": 2.0,
+        "total_cost_loss": 10.0,
+        "stock_deducted": true,
+        "status": "pending_review",
+        "journal_entry_id": 40,
+        "notes": "Transit damage on Transfer #TRF-20261103-87880C to Main Bar Station."
+      },
+      {
+        "id": 7,
+        "waste_category": "breakage_or_damage",
+        "waste_source": "direct_loss",
+        "entered_quantity": 2.0,
+        "base_quantity": 2.0,
+        "total_cost_loss": 10.0,
+        "stock_deducted": true,
+        "status": "pending_review",
+        "journal_entry_id": 45,
+        "notes": "Transit damage on Transfer #TRF-20261103-E364FB to Main Bar Station."
+      },
+      {
+        "id": 8,
+        "waste_category": "breakage_or_damage",
+        "waste_source": "direct_loss",
+        "entered_quantity": 2.0,
+        "base_quantity": 2.0,
+        "total_cost_loss": 10.0,
+        "stock_deducted": true,
+        "status": "pending_review",
+        "journal_entry_id": 50,
+        "notes": "Transit damage on Transfer #TRF-20261103-A990CE to Main Bar Station."
+      },
+      {
+        "id": 9,
+        "waste_category": "breakage_or_damage",
+        "waste_source": "direct_loss",
+        "entered_quantity": 2.0,
+        "base_quantity": 2.0,
+        "total_cost_loss": 10.0,
+        "stock_deducted": true,
+        "status": "approved",
+        "journal_entry_id": 131,
+        "notes": "Transit damage on Transfer #TRF-20261103-E790E6 to Main Bar Station."
+      },
+      {
+        "id": 10,
+        "waste_category": "breakage_or_damage",
+        "waste_source": "direct_loss",
+        "entered_quantity": 2.0,
+        "base_quantity": 2.0,
+        "total_cost_loss": 10.0,
+        "stock_deducted": true,
+        "status": "approved",
+        "journal_entry_id": 130,
+        "notes": "Transit damage on Transfer #TRF-20261103-ED4DF5 to Main Bar Station."
+      }
+    ],
+    "stocktaking": [
+      {
+        "session_id": 2,
+        "session_number": "STK-20261104-C47E1D",
+        "title": "Automated Browser Physical Count Test",
+        "location": "BAR-MAIN",
+        "status": "recount_required",
+        "theoretical_qty": 8.0,
+        "counted_qty": 48.0,
+        "final_qty": 48.0,
+        "variance_qty": 40.0,
+        "variance_val": 200.0,
+        "batch": null
+      },
+      {
+        "session_id": 3,
+        "session_number": "STK-20261104-801697",
+        "title": "Automated Browser Physical Count Test",
+        "location": "BAR-MAIN",
+        "status": "approved",
+        "theoretical_qty": 8.0,
+        "counted_qty": 48.0,
+        "final_qty": 49.0,
+        "variance_qty": 41.0,
+        "variance_val": 205.0,
+        "batch": null
+      },
+      {
+        "session_id": 4,
+        "session_number": "STK-20261105-43B597",
+        "title": "Manual Trigger: Daily Nightly Central Store Audit - 2026-11-05",
+        "location": "BAR-MAIN",
+        "status": "draft",
+        "theoretical_qty": 49.0,
+        "counted_qty": null,
+        "final_qty": null,
+        "variance_qty": 0.0,
+        "variance_val": 0.0,
+        "batch": null
+      },
+      {
+        "session_id": 11,
+        "session_number": "STK-20261105-B12D52",
+        "title": "Cancellation Test Session",
+        "location": "BAR-MAIN",
+        "status": "cancelled",
+        "theoretical_qty": 49.0,
+        "counted_qty": null,
+        "final_qty": null,
+        "variance_qty": 0.0,
+        "variance_val": 0.0,
+        "batch": null
+      },
+      {
+        "session_id": 26,
+        "session_number": "STK-20261107-5E310A",
+        "title": "Cancellation Test Session",
+        "location": "BAR-MAIN",
+        "status": "cancelled",
+        "theoretical_qty": 49.0,
+        "counted_qty": null,
+        "final_qty": null,
+        "variance_qty": 0.0,
+        "variance_val": 0.0,
+        "batch": null
+      },
+      {
+        "session_id": 35,
+        "session_number": "STK-20261107-0E86E1",
+        "title": "Cancellation Test Session",
+        "location": "BAR-MAIN",
+        "status": "cancelled",
+        "theoretical_qty": 49.0,
+        "counted_qty": null,
+        "final_qty": null,
+        "variance_qty": 0.0,
+        "variance_val": 0.0,
+        "batch": null
+      },
+      {
+        "session_id": 51,
+        "session_number": "STK-20261109-BA07FF",
+        "title": "SoD Full Count Test",
+        "location": "ASSIGNED-KITCHEN-LOC",
+        "status": "draft",
+        "theoretical_qty": 0.0,
+        "counted_qty": null,
+        "final_qty": null,
+        "variance_qty": 0.0,
+        "variance_val": 0.0,
+        "batch": null
+      },
+      {
+        "session_id": 52,
+        "session_number": "STK-20261109-9BB78A",
+        "title": "SoD Full Count Test",
+        "location": "ASSIGNED-KITCHEN-LOC",
+        "status": "draft",
+        "theoretical_qty": 0.0,
+        "counted_qty": null,
+        "final_qty": null,
+        "variance_qty": 0.0,
+        "variance_val": 0.0,
+        "batch": null
+      },
+      {
+        "session_id": 53,
+        "session_number": "STK-20261109-F3DEEE",
+        "title": "SoD Full Count Test",
+        "location": "ASSIGNED-KITCHEN-LOC",
+        "status": "approved",
+        "theoretical_qty": 0.0,
+        "counted_qty": 0.0,
+        "final_qty": 0.0,
+        "variance_qty": 0.0,
+        "variance_val": 0.0,
+        "batch": null
+      }
+    ],
+    "journal_entries": [
+      {
+        "id": 25,
+        "entry_number": "JV-A5451849",
+        "date": "2026-11-03",
+        "description": "Auto JV: Transit Damage Transfer #TRF-20261103-4EAB1F - Fresh Lime Cordial (2.00 bottle)",
+        "lines": [
+          {
+            "account_code": "5010",
+            "account_name": "Inventory Spoilage & Waste Expense",
+            "debit": 10.0,
+            "credit": 0.0
+          },
+          {
+            "account_code": "1300",
+            "account_name": "Inventory Asset",
+            "debit": 0.0,
+            "credit": 10.0
+          }
+        ]
+      },
+      {
+        "id": 30,
+        "entry_number": "JV-93D80F5F",
+        "date": "2026-11-03",
+        "description": "Auto JV: Transit Damage Transfer #TRF-20261103-FDFBEC - Fresh Lime Cordial (2.00 bottle)",
+        "lines": [
+          {
+            "account_code": "5010",
+            "account_name": "Inventory Spoilage & Waste Expense",
+            "debit": 10.0,
+            "credit": 0.0
+          },
+          {
+            "account_code": "1300",
+            "account_name": "Inventory Asset",
+            "debit": 0.0,
+            "credit": 10.0
+          }
+        ]
+      },
+      {
+        "id": 35,
+        "entry_number": "JV-489EE249",
+        "date": "2026-11-03",
+        "description": "Auto JV: Transit Damage Transfer #TRF-20261103-E4887B - Fresh Lime Cordial (2.00 bottle)",
+        "lines": [
+          {
+            "account_code": "5010",
+            "account_name": "Inventory Spoilage & Waste Expense",
+            "debit": 10.0,
+            "credit": 0.0
+          },
+          {
+            "account_code": "1300",
+            "account_name": "Inventory Asset",
+            "debit": 0.0,
+            "credit": 10.0
+          }
+        ]
+      },
+      {
+        "id": 40,
+        "entry_number": "JV-DD1A402F",
+        "date": "2026-11-03",
+        "description": "Auto JV: Transit Damage Transfer #TRF-20261103-87880C - Fresh Lime Cordial (2.00 bottle)",
+        "lines": [
+          {
+            "account_code": "5010",
+            "account_name": "Inventory Spoilage & Waste Expense",
+            "debit": 10.0,
+            "credit": 0.0
+          },
+          {
+            "account_code": "1300",
+            "account_name": "Inventory Asset",
+            "debit": 0.0,
+            "credit": 10.0
+          }
+        ]
+      },
+      {
+        "id": 45,
+        "entry_number": "JV-7BD563FE",
+        "date": "2026-11-03",
+        "description": "Auto JV: Transit Damage Transfer #TRF-20261103-E364FB - Fresh Lime Cordial (2.00 bottle)",
+        "lines": [
+          {
+            "account_code": "5010",
+            "account_name": "Inventory Spoilage & Waste Expense",
+            "debit": 10.0,
+            "credit": 0.0
+          },
+          {
+            "account_code": "1300",
+            "account_name": "Inventory Asset",
+            "debit": 0.0,
+            "credit": 10.0
+          }
+        ]
+      },
+      {
+        "id": 50,
+        "entry_number": "JV-7C1C2FF3",
+        "date": "2026-11-03",
+        "description": "Auto JV: Transit Damage Transfer #TRF-20261103-A990CE - Fresh Lime Cordial (2.00 bottle)",
+        "lines": [
+          {
+            "account_code": "5010",
+            "account_name": "Inventory Spoilage & Waste Expense",
+            "debit": 10.0,
+            "credit": 0.0
+          },
+          {
+            "account_code": "1300",
+            "account_name": "Inventory Asset",
+            "debit": 0.0,
+            "credit": 10.0
+          }
+        ]
+      },
+      {
+        "id": 55,
+        "entry_number": "JV-27AC2405",
+        "date": "2026-11-03",
+        "description": "Auto JV: Transit Damage Transfer #TRF-20261103-E790E6 - Fresh Lime Cordial (2.00 bottle)",
+        "lines": [
+          {
+            "account_code": "5010",
+            "account_name": "Inventory Spoilage & Waste Expense",
+            "debit": 10.0,
+            "credit": 0.0
+          },
+          {
+            "account_code": "1300",
+            "account_name": "Inventory Asset",
+            "debit": 0.0,
+            "credit": 10.0
+          }
+        ]
+      },
+      {
+        "id": 60,
+        "entry_number": "JV-EDB97F07",
+        "date": "2026-11-03",
+        "description": "Auto JV: Transit Damage Transfer #TRF-20261103-ED4DF5 - Fresh Lime Cordial (2.00 bottle)",
+        "lines": [
+          {
+            "account_code": "5010",
+            "account_name": "Inventory Spoilage & Waste Expense",
+            "debit": 10.0,
+            "credit": 0.0
+          },
+          {
+            "account_code": "1300",
+            "account_name": "Inventory Asset",
+            "debit": 0.0,
+            "credit": 10.0
+          }
+        ]
+      },
+      {
+        "id": 130,
+        "entry_number": "JV-B3FA1B51",
+        "date": "2026-11-11",
+        "description": "Auto JV: Approved Inventory Waste - Fresh Lime Cordial (2.00 bottle) - breakage_or_damage",
+        "lines": [
+          {
+            "account_code": "5010",
+            "account_name": "Inventory Spoilage & Waste Expense",
+            "debit": 10.0,
+            "credit": 0.0
+          },
+          {
+            "account_code": "1300",
+            "account_name": "Inventory Asset",
+            "debit": 0.0,
+            "credit": 10.0
+          }
+        ]
+      },
+      {
+        "id": 131,
+        "entry_number": "JV-8802D5DD",
+        "date": "2026-11-11",
+        "description": "Auto JV: Approved Inventory Waste - Fresh Lime Cordial (2.00 bottle) - breakage_or_damage",
+        "lines": [
+          {
+            "account_code": "5010",
+            "account_name": "Inventory Spoilage & Waste Expense",
+            "debit": 10.0,
+            "credit": 0.0
+          },
+          {
+            "account_code": "1300",
+            "account_name": "Inventory Asset",
+            "debit": 0.0,
+            "credit": 10.0
+          }
+        ]
+      }
+    ]
+  },
+  "PER-MILK-01": {
+    "item_id": 5,
+    "item_code": "PER-MILK-01",
+    "name": "Fresh Whole Milk 1L",
+    "category": "Dairy & Cold Storage",
+    "unit": "l",
+    "unit_cost": 60.0,
+    "current_stock": 175.0,
+    "master_valuation": 10500.0,
+    "batch_count": 9,
+    "batches": [
+      {
+        "id": 7,
+        "batch_number": "BAT-QUAR-TEST-001",
+        "status": "active",
+        "current_quantity": 20.0,
+        "initial_quantity": 20.0,
+        "unit_cost": 50.0,
+        "valuation": 1000.0,
+        "expiry_date": "2027-02-01",
+        "received_date": "2026-10-19",
+        "is_legacy": true,
+        "locations": [
+          {
+            "loc": "STORE-MAIN",
+            "qty": 20.0
+          }
+        ]
+      },
+      {
+        "id": 8,
+        "batch_number": "BAT-EXPIRED-TEST-001",
+        "status": "expired",
+        "current_quantity": 10.0,
+        "initial_quantity": 10.0,
+        "unit_cost": 50.0,
+        "valuation": 500.0,
+        "expiry_date": "2026-10-29",
+        "received_date": "2026-09-24",
+        "is_legacy": false,
+        "locations": [
+          {
+            "loc": "STORE-MAIN",
+            "qty": 10.0
+          }
+        ]
+      },
+      {
+        "id": 9,
+        "batch_number": "BAT-PH1-1793720907",
+        "status": "active",
+        "current_quantity": 35.0,
+        "initial_quantity": 35.0,
+        "unit_cost": 60.0,
+        "valuation": 2100.0,
+        "expiry_date": "2027-01-02",
+        "received_date": "2026-11-03",
+        "is_legacy": false,
+        "locations": [
+          {
+            "loc": "STORE-MAIN",
+            "qty": 35.0
+          }
+        ]
+      },
+      {
+        "id": 10,
+        "batch_number": "BAT-PH1-1793721122",
+        "status": "active",
+        "current_quantity": 35.0,
+        "initial_quantity": 35.0,
+        "unit_cost": 60.0,
+        "valuation": 2100.0,
+        "expiry_date": "2027-01-02",
+        "received_date": "2026-11-03",
+        "is_legacy": false,
+        "locations": [
+          {
+            "loc": "STORE-MAIN",
+            "qty": 35.0
+          }
+        ]
+      },
+      {
+        "id": 11,
+        "batch_number": "BAT-PH1-1793721309",
+        "status": "active",
+        "current_quantity": 35.0,
+        "initial_quantity": 35.0,
+        "unit_cost": 60.0,
+        "valuation": 2100.0,
+        "expiry_date": "2027-01-02",
+        "received_date": "2026-11-03",
+        "is_legacy": false,
+        "locations": [
+          {
+            "loc": "STORE-MAIN",
+            "qty": 35.0
+          }
+        ]
+      },
+      {
+        "id": 12,
+        "batch_number": "BAT-QUAR-TEST-1793721429",
+        "status": "active",
+        "current_quantity": 20.0,
+        "initial_quantity": 20.0,
+        "unit_cost": 50.0,
+        "valuation": 1000.0,
+        "expiry_date": "2027-02-01",
+        "received_date": "2026-10-19",
+        "is_legacy": true,
+        "locations": [
+          {
+            "loc": "STORE-MAIN",
+            "qty": 20.0
+          }
+        ]
+      },
+      {
+        "id": 13,
+        "batch_number": "BAT-PH1-1793721460",
+        "status": "active",
+        "current_quantity": 35.0,
+        "initial_quantity": 35.0,
+        "unit_cost": 60.0,
+        "valuation": 2100.0,
+        "expiry_date": "2027-01-02",
+        "received_date": "2026-11-03",
+        "is_legacy": false,
+        "locations": [
+          {
+            "loc": "STORE-MAIN",
+            "qty": 35.0
+          }
+        ]
+      },
+      {
+        "id": 14,
+        "batch_number": "BAT-QUAR-TEST-1793721556",
+        "status": "active",
+        "current_quantity": 20.0,
+        "initial_quantity": 20.0,
+        "unit_cost": 50.0,
+        "valuation": 1000.0,
+        "expiry_date": "2027-02-01",
+        "received_date": "2026-10-19",
+        "is_legacy": true,
+        "locations": [
+          {
+            "loc": "STORE-MAIN",
+            "qty": 20.0
+          }
+        ]
+      },
+      {
+        "id": 15,
+        "batch_number": "BAT-PH1-1793721588",
+        "status": "active",
+        "current_quantity": 35.0,
+        "initial_quantity": 35.0,
+        "unit_cost": 60.0,
+        "valuation": 2100.0,
+        "expiry_date": "2027-01-02",
+        "received_date": "2026-11-03",
+        "is_legacy": false,
+        "locations": [
+          {
+            "loc": "STORE-MAIN",
+            "qty": 35.0
+          }
+        ]
+      }
+    ],
+    "status_summary": {
+      "active": {
+        "qty": 235.0,
+        "val": 13500.0,
+        "count": 8
+      },
+      "expired": {
+        "qty": 10.0,
+        "val": 500.0,
+        "count": 1
+      }
+    },
+    "location_count": 1,
+    "locations": [
+      {
+        "location_id": 1,
+        "location_code": "STORE-MAIN",
+        "location_name": "Main Central Store",
+        "location_type": "warehouse",
+        "is_active": true,
+        "quantity": 175.0,
+        "valuation": 10500.0
+      }
+    ],
+    "location_total_qty": 175.0,
+    "location_total_val": 10500.0,
+    "transactions": [
+      {
+        "id": 16,
+        "timestamp": "2026-11-03 15:48:28.526022+00:00",
+        "transaction_type": "purchase",
+        "quantity": 35.0,
+        "unit_cost": 60.0,
+        "direction": null,
+        "batch_id": 9,
+        "batch_num": "BAT-PH1-1793720907",
+        "location_code": "STORE-MAIN",
+        "ref": "INV-PH1-SELENIUM",
+        "notes": "",
+        "logged_by": "staging_admin",
+        "reversal_of": null
+      },
+      {
+        "id": 17,
+        "timestamp": "2026-11-03 15:52:04.076441+00:00",
+        "transaction_type": "purchase",
+        "quantity": 35.0,
+        "unit_cost": 60.0,
+        "direction": null,
+        "batch_id": 10,
+        "batch_num": "BAT-PH1-1793721122",
+        "location_code": "STORE-MAIN",
+        "ref": "INV-PH1-SELENIUM",
+        "notes": "",
+        "logged_by": "staging_admin",
+        "reversal_of": null
+      },
+      {
+        "id": 18,
+        "timestamp": "2026-11-03 15:55:11.164820+00:00",
+        "transaction_type": "purchase",
+        "quantity": 35.0,
+        "unit_cost": 60.0,
+        "direction": null,
+        "batch_id": 11,
+        "batch_num": "BAT-PH1-1793721309",
+        "location_code": "STORE-MAIN",
+        "ref": "INV-PH1-SELENIUM",
+        "notes": "",
+        "logged_by": "staging_admin",
+        "reversal_of": null
+      },
+      {
+        "id": 19,
+        "timestamp": "2026-11-03 15:57:42.257975+00:00",
+        "transaction_type": "purchase",
+        "quantity": 35.0,
+        "unit_cost": 60.0,
+        "direction": null,
+        "batch_id": 13,
+        "batch_num": "BAT-PH1-1793721460",
+        "location_code": "STORE-MAIN",
+        "ref": "INV-PH1-SELENIUM",
+        "notes": "",
+        "logged_by": "staging_admin",
+        "reversal_of": null
+      },
+      {
+        "id": 20,
+        "timestamp": "2026-11-03 15:59:49.394301+00:00",
+        "transaction_type": "purchase",
+        "quantity": 35.0,
+        "unit_cost": 60.0,
+        "direction": null,
+        "batch_id": 15,
+        "batch_num": "BAT-PH1-1793721588",
+        "location_code": "STORE-MAIN",
+        "ref": "INV-PH1-SELENIUM",
+        "notes": "",
+        "logged_by": "staging_admin",
+        "reversal_of": null
+      }
+    ],
+    "grns": [],
+    "pos": [],
+    "transfers": [],
+    "waste": [],
+    "stocktaking": [
+      {
+        "session_id": 1,
+        "session_number": "STK-20261104-C0C0BA",
+        "title": "Test Browser Session",
+        "location": "STORE-MAIN",
+        "status": "draft",
+        "theoretical_qty": 175.0,
+        "counted_qty": null,
+        "final_qty": null,
+        "variance_qty": 0.0,
+        "variance_val": 0.0,
+        "batch": null
+      },
+      {
+        "session_id": 51,
+        "session_number": "STK-20261109-BA07FF",
+        "title": "SoD Full Count Test",
+        "location": "ASSIGNED-KITCHEN-LOC",
+        "status": "draft",
+        "theoretical_qty": 0.0,
+        "counted_qty": null,
+        "final_qty": null,
+        "variance_qty": 0.0,
+        "variance_val": 0.0,
+        "batch": null
+      },
+      {
+        "session_id": 52,
+        "session_number": "STK-20261109-9BB78A",
+        "title": "SoD Full Count Test",
+        "location": "ASSIGNED-KITCHEN-LOC",
+        "status": "draft",
+        "theoretical_qty": 0.0,
+        "counted_qty": null,
+        "final_qty": null,
+        "variance_qty": 0.0,
+        "variance_val": 0.0,
+        "batch": null
+      },
+      {
+        "session_id": 53,
+        "session_number": "STK-20261109-F3DEEE",
+        "title": "SoD Full Count Test",
+        "location": "ASSIGNED-KITCHEN-LOC",
+        "status": "approved",
+        "theoretical_qty": 0.0,
+        "counted_qty": 0.0,
+        "final_qty": 0.0,
+        "variance_qty": 0.0,
+        "variance_val": 0.0,
+        "batch": null
+      }
+    ],
+    "journal_entries": [
+      {
+        "id": 61,
+        "entry_number": "JV-B69263DB",
+        "date": "2026-11-03",
+        "description": "Auto JV: Inventory Purchase - Fresh Whole Milk 1L (35.00 l)",
+        "lines": [
+          {
+            "account_code": "1000",
+            "account_name": "Cash",
+            "debit": 0.0,
+            "credit": 2100.0
+          },
+          {
+            "account_code": "1300",
+            "account_name": "Inventory Asset",
+            "debit": 2100.0,
+            "credit": 0.0
+          }
+        ]
+      },
+      {
+        "id": 62,
+        "entry_number": "JV-EB254A46",
+        "date": "2026-11-03",
+        "description": "Auto JV: Inventory Purchase - Fresh Whole Milk 1L (35.00 l)",
+        "lines": [
+          {
+            "account_code": "1000",
+            "account_name": "Cash",
+            "debit": 0.0,
+            "credit": 2100.0
+          },
+          {
+            "account_code": "1300",
+            "account_name": "Inventory Asset",
+            "debit": 2100.0,
+            "credit": 0.0
+          }
+        ]
+      },
+      {
+        "id": 63,
+        "entry_number": "JV-F778F563",
+        "date": "2026-11-03",
+        "description": "Auto JV: Inventory Purchase - Fresh Whole Milk 1L (35.00 l)",
+        "lines": [
+          {
+            "account_code": "1000",
+            "account_name": "Cash",
+            "debit": 0.0,
+            "credit": 2100.0
+          },
+          {
+            "account_code": "1300",
+            "account_name": "Inventory Asset",
+            "debit": 2100.0,
+            "credit": 0.0
+          }
+        ]
+      },
+      {
+        "id": 64,
+        "entry_number": "JV-A4D958A9",
+        "date": "2026-11-03",
+        "description": "Auto JV: Inventory Purchase - Fresh Whole Milk 1L (35.00 l)",
+        "lines": [
+          {
+            "account_code": "1000",
+            "account_name": "Cash",
+            "debit": 0.0,
+            "credit": 2100.0
+          },
+          {
+            "account_code": "1300",
+            "account_name": "Inventory Asset",
+            "debit": 2100.0,
+            "credit": 0.0
+          }
+        ]
+      },
+      {
+        "id": 65,
+        "entry_number": "JV-04C56FBE",
+        "date": "2026-11-03",
+        "description": "Auto JV: Inventory Purchase - Fresh Whole Milk 1L (35.00 l)",
+        "lines": [
+          {
+            "account_code": "1000",
+            "account_name": "Cash",
+            "debit": 0.0,
+            "credit": 2100.0
+          },
+          {
+            "account_code": "1300",
+            "account_name": "Inventory Asset",
+            "debit": 2100.0,
+            "credit": 0.0
+          }
+        ]
+      }
+    ]
+  },
+  "BEEF-001": {
+    "item_id": 6,
+    "item_code": "BEEF-001",
+    "name": "Prime Beef Tenderloin",
+    "category": "Provisions",
+    "unit": "kg",
+    "unit_cost": 450.0,
+    "current_stock": 10.0,
+    "master_valuation": 4500.0,
+    "batch_count": 0,
+    "batches": [],
+    "status_summary": {},
+    "location_count": 0,
+    "locations": [],
+    "location_total_qty": 0.0,
+    "location_total_val": 0.0,
+    "transactions": [],
+    "grns": [],
+    "pos": [],
+    "transfers": [],
+    "waste": [],
+    "stocktaking": [
+      {
+        "session_id": 51,
+        "session_number": "STK-20261109-BA07FF",
+        "title": "SoD Full Count Test",
+        "location": "ASSIGNED-KITCHEN-LOC",
+        "status": "draft",
+        "theoretical_qty": 0.0,
+        "counted_qty": null,
+        "final_qty": null,
+        "variance_qty": 0.0,
+        "variance_val": 0.0,
+        "batch": null
+      },
+      {
+        "session_id": 52,
+        "session_number": "STK-20261109-9BB78A",
+        "title": "SoD Full Count Test",
+        "location": "ASSIGNED-KITCHEN-LOC",
+        "status": "draft",
+        "theoretical_qty": 0.0,
+        "counted_qty": null,
+        "final_qty": null,
+        "variance_qty": 0.0,
+        "variance_val": 0.0,
+        "batch": null
+      },
+      {
+        "session_id": 53,
+        "session_number": "STK-20261109-F3DEEE",
+        "title": "SoD Full Count Test",
+        "location": "ASSIGNED-KITCHEN-LOC",
+        "status": "approved",
+        "theoretical_qty": 0.0,
+        "counted_qty": 0.0,
+        "final_qty": 0.0,
+        "variance_qty": 0.0,
+        "variance_val": 0.0,
+        "batch": null
+      }
+    ],
+    "journal_entries": []
+  },
+  "POT-001": {
+    "item_id": 7,
+    "item_code": "POT-001",
+    "name": "Russet Potatoes",
+    "category": "Provisions",
+    "unit": "kg",
+    "unit_cost": 35.0,
+    "current_stock": 50.0,
+    "master_valuation": 1750.0,
+    "batch_count": 0,
+    "batches": [],
+    "status_summary": {},
+    "location_count": 0,
+    "locations": [],
+    "location_total_qty": 0.0,
+    "location_total_val": 0.0,
+    "transactions": [],
+    "grns": [],
+    "pos": [],
+    "transfers": [],
+    "waste": [],
+    "stocktaking": [
+      {
+        "session_id": 51,
+        "session_number": "STK-20261109-BA07FF",
+        "title": "SoD Full Count Test",
+        "location": "ASSIGNED-KITCHEN-LOC",
+        "status": "draft",
+        "theoretical_qty": 0.0,
+        "counted_qty": null,
+        "final_qty": null,
+        "variance_qty": 0.0,
+        "variance_val": 0.0,
+        "batch": null
+      },
+      {
+        "session_id": 52,
+        "session_number": "STK-20261109-9BB78A",
+        "title": "SoD Full Count Test",
+        "location": "ASSIGNED-KITCHEN-LOC",
+        "status": "draft",
+        "theoretical_qty": 0.0,
+        "counted_qty": null,
+        "final_qty": null,
+        "variance_qty": 0.0,
+        "variance_val": 0.0,
+        "batch": null
+      },
+      {
+        "session_id": 53,
+        "session_number": "STK-20261109-F3DEEE",
+        "title": "SoD Full Count Test",
+        "location": "ASSIGNED-KITCHEN-LOC",
+        "status": "approved",
+        "theoretical_qty": 0.0,
+        "counted_qty": 0.0,
+        "final_qty": 0.0,
+        "variance_qty": 0.0,
+        "variance_val": 0.0,
+        "batch": null
+      }
+    ],
+    "journal_entries": []
+  },
+  "STK-BROWSER-01": {
+    "item_id": 15,
+    "item_code": "STK-BROWSER-01",
+    "name": "Staging Basmati Rice 25kg",
+    "category": "F&B Stocktake Staging",
+    "unit": "bags",
+    "unit_cost": 1200.0,
+    "current_stock": 50.0,
+    "master_valuation": 60000.0,
+    "batch_count": 0,
+    "batches": [],
+    "status_summary": {},
+    "location_count": 1,
+    "locations": [
+      {
+        "location_id": 1,
+        "location_code": "STORE-MAIN",
+        "location_name": "Main Central Store",
+        "location_type": "warehouse",
+        "is_active": true,
+        "quantity": 50.0,
+        "valuation": 60000.0
+      }
+    ],
+    "location_total_qty": 50.0,
+    "location_total_val": 60000.0,
+    "transactions": [],
+    "grns": [],
+    "pos": [],
+    "transfers": [],
+    "waste": [],
+    "stocktaking": [
+      {
+        "session_id": 1,
+        "session_number": "STK-20261104-C0C0BA",
+        "title": "Test Browser Session",
+        "location": "STORE-MAIN",
+        "status": "draft",
+        "theoretical_qty": 50.0,
+        "counted_qty": null,
+        "final_qty": null,
+        "variance_qty": 0.0,
+        "variance_val": 0.0,
+        "batch": null
+      },
+      {
+        "session_id": 51,
+        "session_number": "STK-20261109-BA07FF",
+        "title": "SoD Full Count Test",
+        "location": "ASSIGNED-KITCHEN-LOC",
+        "status": "draft",
+        "theoretical_qty": 0.0,
+        "counted_qty": null,
+        "final_qty": null,
+        "variance_qty": 0.0,
+        "variance_val": 0.0,
+        "batch": null
+      },
+      {
+        "session_id": 52,
+        "session_number": "STK-20261109-9BB78A",
+        "title": "SoD Full Count Test",
+        "location": "ASSIGNED-KITCHEN-LOC",
+        "status": "draft",
+        "theoretical_qty": 0.0,
+        "counted_qty": null,
+        "final_qty": null,
+        "variance_qty": 0.0,
+        "variance_val": 0.0,
+        "batch": null
+      },
+      {
+        "session_id": 53,
+        "session_number": "STK-20261109-F3DEEE",
+        "title": "SoD Full Count Test",
+        "location": "ASSIGNED-KITCHEN-LOC",
+        "status": "approved",
+        "theoretical_qty": 0.0,
+        "counted_qty": 0.0,
+        "final_qty": 0.0,
+        "variance_qty": 0.0,
+        "variance_val": 0.0,
+        "batch": null
+      }
+    ],
+    "journal_entries": []
+  },
+  "STK-BROWSER-02": {
+    "item_id": 16,
+    "item_code": "STK-BROWSER-02",
+    "name": "Staging Olive Oil 5L",
+    "category": "F&B Stocktake Staging",
+    "unit": "cans",
+    "unit_cost": 800.0,
+    "current_stock": 20.0,
+    "master_valuation": 16000.0,
+    "batch_count": 0,
+    "batches": [],
+    "status_summary": {},
+    "location_count": 1,
+    "locations": [
+      {
+        "location_id": 1,
+        "location_code": "STORE-MAIN",
+        "location_name": "Main Central Store",
+        "location_type": "warehouse",
+        "is_active": true,
+        "quantity": 20.0,
+        "valuation": 16000.0
+      }
+    ],
+    "location_total_qty": 20.0,
+    "location_total_val": 16000.0,
+    "transactions": [],
+    "grns": [],
+    "pos": [],
+    "transfers": [],
+    "waste": [],
+    "stocktaking": [
+      {
+        "session_id": 1,
+        "session_number": "STK-20261104-C0C0BA",
+        "title": "Test Browser Session",
+        "location": "STORE-MAIN",
+        "status": "draft",
+        "theoretical_qty": 20.0,
+        "counted_qty": null,
+        "final_qty": null,
+        "variance_qty": 0.0,
+        "variance_val": 0.0,
+        "batch": null
+      },
+      {
+        "session_id": 51,
+        "session_number": "STK-20261109-BA07FF",
+        "title": "SoD Full Count Test",
+        "location": "ASSIGNED-KITCHEN-LOC",
+        "status": "draft",
+        "theoretical_qty": 0.0,
+        "counted_qty": null,
+        "final_qty": null,
+        "variance_qty": 0.0,
+        "variance_val": 0.0,
+        "batch": null
+      },
+      {
+        "session_id": 52,
+        "session_number": "STK-20261109-9BB78A",
+        "title": "SoD Full Count Test",
+        "location": "ASSIGNED-KITCHEN-LOC",
+        "status": "draft",
+        "theoretical_qty": 0.0,
+        "counted_qty": null,
+        "final_qty": null,
+        "variance_qty": 0.0,
+        "variance_val": 0.0,
+        "batch": null
+      },
+      {
+        "session_id": 53,
+        "session_number": "STK-20261109-F3DEEE",
+        "title": "SoD Full Count Test",
+        "location": "ASSIGNED-KITCHEN-LOC",
+        "status": "approved",
+        "theoretical_qty": 0.0,
+        "counted_qty": 0.0,
+        "final_qty": 0.0,
+        "variance_qty": 0.0,
+        "variance_val": 0.0,
+        "batch": null
+      }
+    ],
+    "journal_entries": []
+  },
+  "ITM-DAIRY-MILK": {
+    "item_id": 17,
+    "item_code": "ITM-DAIRY-MILK",
+    "name": "Pasteurized Full Cream Milk 1L",
+    "category": "Fresh Dairy Products",
+    "unit": "l",
+    "unit_cost": 48.0,
+    "current_stock": 120.0,
+    "master_valuation": 5760.0,
+    "batch_count": 2,
+    "batches": [
+      {
+        "id": 24,
+        "batch_number": "BATCH-EXP-STAGE-01",
+        "status": "active",
+        "current_quantity": 25.0,
+        "initial_quantity": 25.0,
+        "unit_cost": 48.0,
+        "valuation": 1200.0,
+        "expiry_date": "2026-11-03",
+        "received_date": "2026-11-05",
+        "is_legacy": false,
+        "locations": [
+          {
+            "loc": "WH-AUDIT-01",
+            "qty": 25.0
+          }
+        ]
+      },
+      {
+        "id": 25,
+        "batch_number": "BATCH-NEAR-STAGE-07",
+        "status": "active",
+        "current_quantity": 40.0,
+        "initial_quantity": 40.0,
+        "unit_cost": 48.0,
+        "valuation": 1920.0,
+        "expiry_date": "2026-11-10",
+        "received_date": "2026-11-05",
+        "is_legacy": false,
+        "locations": [
+          {
+            "loc": "WH-AUDIT-01",
+            "qty": 40.0
+          }
+        ]
+      }
+    ],
+    "status_summary": {
+      "active": {
+        "qty": 65.0,
+        "val": 3120.0,
+        "count": 2
+      }
+    },
+    "location_count": 1,
+    "locations": [
+      {
+        "location_id": 9,
+        "location_code": "WH-AUDIT-01",
+        "location_name": "Audit Central Store",
+        "location_type": "warehouse",
+        "is_active": true,
+        "quantity": 120.0,
+        "valuation": 5760.0
+      }
+    ],
+    "location_total_qty": 120.0,
+    "location_total_val": 5760.0,
+    "transactions": [],
+    "grns": [],
+    "pos": [],
+    "transfers": [],
+    "waste": [],
+    "stocktaking": [
+      {
+        "session_id": 51,
+        "session_number": "STK-20261109-BA07FF",
+        "title": "SoD Full Count Test",
+        "location": "ASSIGNED-KITCHEN-LOC",
+        "status": "draft",
+        "theoretical_qty": 0.0,
+        "counted_qty": null,
+        "final_qty": null,
+        "variance_qty": 0.0,
+        "variance_val": 0.0,
+        "batch": null
+      },
+      {
+        "session_id": 52,
+        "session_number": "STK-20261109-9BB78A",
+        "title": "SoD Full Count Test",
+        "location": "ASSIGNED-KITCHEN-LOC",
+        "status": "draft",
+        "theoretical_qty": 0.0,
+        "counted_qty": null,
+        "final_qty": null,
+        "variance_qty": 0.0,
+        "variance_val": 0.0,
+        "batch": null
+      },
+      {
+        "session_id": 53,
+        "session_number": "STK-20261109-F3DEEE",
+        "title": "SoD Full Count Test",
+        "location": "ASSIGNED-KITCHEN-LOC",
+        "status": "approved",
+        "theoretical_qty": 0.0,
+        "counted_qty": 0.0,
+        "final_qty": 0.0,
+        "variance_qty": 0.0,
+        "variance_val": 0.0,
+        "batch": null
+      }
+    ],
+    "journal_entries": []
+  },
+  "ITM-MEAT-BEEF": {
+    "item_id": 18,
+    "item_code": "ITM-MEAT-BEEF",
+    "name": "Prime Beef Tenderloin",
+    "category": "Butchery & Poultry",
+    "unit": "kg",
+    "unit_cost": 450.0,
+    "current_stock": 45.0,
+    "master_valuation": 20250.0,
+    "batch_count": 1,
+    "batches": [
+      {
+        "id": 26,
+        "batch_number": "BATCH-UNK-STAGE-99",
+        "status": "active",
+        "current_quantity": 18.0,
+        "initial_quantity": 18.0,
+        "unit_cost": 450.0,
+        "valuation": 8100.0,
+        "expiry_date": null,
+        "received_date": "2026-11-05",
+        "is_legacy": true,
+        "locations": [
+          {
+            "loc": "WH-AUDIT-01",
+            "qty": 18.0
+          }
+        ]
+      }
+    ],
+    "status_summary": {
+      "active": {
+        "qty": 18.0,
+        "val": 8100.0,
+        "count": 1
+      }
+    },
+    "location_count": 1,
+    "locations": [
+      {
+        "location_id": 9,
+        "location_code": "WH-AUDIT-01",
+        "location_name": "Audit Central Store",
+        "location_type": "warehouse",
+        "is_active": true,
+        "quantity": 45.0,
+        "valuation": 20250.0
+      }
+    ],
+    "location_total_qty": 45.0,
+    "location_total_val": 20250.0,
+    "transactions": [],
+    "grns": [],
+    "pos": [],
+    "transfers": [],
+    "waste": [],
+    "stocktaking": [
+      {
+        "session_id": 51,
+        "session_number": "STK-20261109-BA07FF",
+        "title": "SoD Full Count Test",
+        "location": "ASSIGNED-KITCHEN-LOC",
+        "status": "draft",
+        "theoretical_qty": 0.0,
+        "counted_qty": null,
+        "final_qty": null,
+        "variance_qty": 0.0,
+        "variance_val": 0.0,
+        "batch": null
+      },
+      {
+        "session_id": 52,
+        "session_number": "STK-20261109-9BB78A",
+        "title": "SoD Full Count Test",
+        "location": "ASSIGNED-KITCHEN-LOC",
+        "status": "draft",
+        "theoretical_qty": 0.0,
+        "counted_qty": null,
+        "final_qty": null,
+        "variance_qty": 0.0,
+        "variance_val": 0.0,
+        "batch": null
+      },
+      {
+        "session_id": 53,
+        "session_number": "STK-20261109-F3DEEE",
+        "title": "SoD Full Count Test",
+        "location": "ASSIGNED-KITCHEN-LOC",
+        "status": "approved",
+        "theoretical_qty": 0.0,
+        "counted_qty": 0.0,
+        "final_qty": 0.0,
+        "variance_qty": 0.0,
+        "variance_val": 0.0,
+        "batch": null
+      }
+    ],
+    "journal_entries": []
+  },
+  "REMED-ITM-01": {
+    "item_id": 19,
+    "item_code": "REMED-ITM-01",
+    "name": "Test Item 01",
+    "category": "Remediation Test Cat",
+    "unit": "pcs",
+    "unit_cost": 100.0,
+    "current_stock": 50.0,
+    "master_valuation": 5000.0,
+    "batch_count": 0,
+    "batches": [],
+    "status_summary": {},
+    "location_count": 0,
+    "locations": [],
+    "location_total_qty": 0.0,
+    "location_total_val": 0.0,
+    "transactions": [],
+    "grns": [],
+    "pos": [],
+    "transfers": [],
+    "waste": [],
+    "stocktaking": [
+      {
+        "session_id": 5,
+        "session_number": "STK-20261105-9873B0",
+        "title": "Stocktake Store A (Blind) - 2026-11-05",
+        "location": "REMED-LOC-A",
+        "status": "under_review",
+        "theoretical_qty": 0.0,
+        "counted_qty": 48.0,
+        "final_qty": 48.0,
+        "variance_qty": 48.0,
+        "variance_val": 4800.0,
+        "batch": null
+      },
+      {
+        "session_id": 6,
+        "session_number": "STK-20261105-94ACD3",
+        "title": "Stocktake Store A (Blind) - 2026-11-05",
+        "location": "REMED-LOC-A",
+        "status": "under_review",
+        "theoretical_qty": 0.0,
+        "counted_qty": null,
+        "final_qty": null,
+        "variance_qty": 0.0,
+        "variance_val": 0.0,
+        "batch": null
+      },
+      {
+        "session_id": 7,
+        "session_number": "STK-20261105-A6BC9C",
+        "title": "Stocktake Store A (Blind) - 2026-11-05",
+        "location": "REMED-LOC-A",
+        "status": "under_review",
+        "theoretical_qty": 0.0,
+        "counted_qty": null,
+        "final_qty": null,
+        "variance_qty": 0.0,
+        "variance_val": 0.0,
+        "batch": null
+      },
+      {
+        "session_id": 51,
+        "session_number": "STK-20261109-BA07FF",
+        "title": "SoD Full Count Test",
+        "location": "ASSIGNED-KITCHEN-LOC",
+        "status": "draft",
+        "theoretical_qty": 0.0,
+        "counted_qty": null,
+        "final_qty": null,
+        "variance_qty": 0.0,
+        "variance_val": 0.0,
+        "batch": null
+      },
+      {
+        "session_id": 52,
+        "session_number": "STK-20261109-9BB78A",
+        "title": "SoD Full Count Test",
+        "location": "ASSIGNED-KITCHEN-LOC",
+        "status": "draft",
+        "theoretical_qty": 0.0,
+        "counted_qty": null,
+        "final_qty": null,
+        "variance_qty": 0.0,
+        "variance_val": 0.0,
+        "batch": null
+      },
+      {
+        "session_id": 53,
+        "session_number": "STK-20261109-F3DEEE",
+        "title": "SoD Full Count Test",
+        "location": "ASSIGNED-KITCHEN-LOC",
+        "status": "approved",
+        "theoretical_qty": 0.0,
+        "counted_qty": 0.0,
+        "final_qty": 0.0,
+        "variance_qty": 0.0,
+        "variance_val": 0.0,
+        "batch": null
+      }
+    ],
+    "journal_entries": []
+  },
+  "REMED-ITM-1793900106": {
+    "item_id": 21,
+    "item_code": "REMED-ITM-1793900106",
+    "name": "Test Item 01",
+    "category": "Remediation Test Cat",
+    "unit": "pcs",
+    "unit_cost": 100.0,
+    "current_stock": 50.0,
+    "master_valuation": 5000.0,
+    "batch_count": 1,
+    "batches": [
+      {
+        "id": 27,
+        "batch_number": "REMED-BATCH-DISMISS-1793900106",
+        "status": "active",
+        "current_quantity": 15.0,
+        "initial_quantity": 15.0,
+        "unit_cost": 100.0,
+        "valuation": 1500.0,
+        "expiry_date": "2026-11-10",
+        "received_date": "2026-11-05",
+        "is_legacy": false,
+        "locations": []
+      }
+    ],
+    "status_summary": {
+      "active": {
+        "qty": 15.0,
+        "val": 1500.0,
+        "count": 1
+      }
+    },
+    "location_count": 0,
+    "locations": [],
+    "location_total_qty": 0.0,
+    "location_total_val": 0.0,
+    "transactions": [],
+    "grns": [],
+    "pos": [],
+    "transfers": [],
+    "waste": [],
+    "stocktaking": [
+      {
+        "session_id": 6,
+        "session_number": "STK-20261105-94ACD3",
+        "title": "Stocktake Store A (Blind) - 2026-11-05",
+        "location": "REMED-LOC-A",
+        "status": "under_review",
+        "theoretical_qty": 0.0,
+        "counted_qty": 48.0,
+        "final_qty": 48.0,
+        "variance_qty": 48.0,
+        "variance_val": 4800.0,
+        "batch": null
+      },
+      {
+        "session_id": 7,
+        "session_number": "STK-20261105-A6BC9C",
+        "title": "Stocktake Store A (Blind) - 2026-11-05",
+        "location": "REMED-LOC-A",
+        "status": "under_review",
+        "theoretical_qty": 0.0,
+        "counted_qty": null,
+        "final_qty": null,
+        "variance_qty": 0.0,
+        "variance_val": 0.0,
+        "batch": null
+      },
+      {
+        "session_id": 51,
+        "session_number": "STK-20261109-BA07FF",
+        "title": "SoD Full Count Test",
+        "location": "ASSIGNED-KITCHEN-LOC",
+        "status": "draft",
+        "theoretical_qty": 0.0,
+        "counted_qty": null,
+        "final_qty": null,
+        "variance_qty": 0.0,
+        "variance_val": 0.0,
+        "batch": null
+      },
+      {
+        "session_id": 52,
+        "session_number": "STK-20261109-9BB78A",
+        "title": "SoD Full Count Test",
+        "location": "ASSIGNED-KITCHEN-LOC",
+        "status": "draft",
+        "theoretical_qty": 0.0,
+        "counted_qty": null,
+        "final_qty": null,
+        "variance_qty": 0.0,
+        "variance_val": 0.0,
+        "batch": null
+      },
+      {
+        "session_id": 53,
+        "session_number": "STK-20261109-F3DEEE",
+        "title": "SoD Full Count Test",
+        "location": "ASSIGNED-KITCHEN-LOC",
+        "status": "approved",
+        "theoretical_qty": 0.0,
+        "counted_qty": 0.0,
+        "final_qty": 0.0,
+        "variance_qty": 0.0,
+        "variance_val": 0.0,
+        "batch": null
+      }
+    ],
+    "journal_entries": []
+  },
+  "REMED-ITM-1793900629": {
+    "item_id": 22,
+    "item_code": "REMED-ITM-1793900629",
+    "name": "Test Item 01",
+    "category": "Remediation Test Cat",
+    "unit": "pcs",
+    "unit_cost": 100.0,
+    "current_stock": 50.0,
+    "master_valuation": 5000.0,
+    "batch_count": 2,
+    "batches": [
+      {
+        "id": 28,
+        "batch_number": "REMED-BATCH-DISMISS-1793900629",
+        "status": "active",
+        "current_quantity": 15.0,
+        "initial_quantity": 15.0,
+        "unit_cost": 100.0,
+        "valuation": 1500.0,
+        "expiry_date": "2026-11-10",
+        "received_date": "2026-11-05",
+        "is_legacy": false,
+        "locations": []
+      },
+      {
+        "id": 29,
+        "batch_number": "REMED-BATCH-THRESH-25D-1793900629",
+        "status": "active",
+        "current_quantity": 10.0,
+        "initial_quantity": 10.0,
+        "unit_cost": 100.0,
+        "valuation": 1000.0,
+        "expiry_date": "2026-11-30",
+        "received_date": "2026-11-05",
+        "is_legacy": false,
+        "locations": []
+      }
+    ],
+    "status_summary": {
+      "active": {
+        "qty": 25.0,
+        "val": 2500.0,
+        "count": 2
+      }
+    },
+    "location_count": 0,
+    "locations": [],
+    "location_total_qty": 0.0,
+    "location_total_val": 0.0,
+    "transactions": [],
+    "grns": [],
+    "pos": [],
+    "transfers": [],
+    "waste": [],
+    "stocktaking": [
+      {
+        "session_id": 7,
+        "session_number": "STK-20261105-A6BC9C",
+        "title": "Stocktake Store A (Blind) - 2026-11-05",
+        "location": "REMED-LOC-A",
+        "status": "under_review",
+        "theoretical_qty": 0.0,
+        "counted_qty": 48.0,
+        "final_qty": 48.0,
+        "variance_qty": 48.0,
+        "variance_val": 4800.0,
+        "batch": null
+      },
+      {
+        "session_id": 51,
+        "session_number": "STK-20261109-BA07FF",
+        "title": "SoD Full Count Test",
+        "location": "ASSIGNED-KITCHEN-LOC",
+        "status": "draft",
+        "theoretical_qty": 0.0,
+        "counted_qty": null,
+        "final_qty": null,
+        "variance_qty": 0.0,
+        "variance_val": 0.0,
+        "batch": null
+      },
+      {
+        "session_id": 52,
+        "session_number": "STK-20261109-9BB78A",
+        "title": "SoD Full Count Test",
+        "location": "ASSIGNED-KITCHEN-LOC",
+        "status": "draft",
+        "theoretical_qty": 0.0,
+        "counted_qty": null,
+        "final_qty": null,
+        "variance_qty": 0.0,
+        "variance_val": 0.0,
+        "batch": null
+      },
+      {
+        "session_id": 53,
+        "session_number": "STK-20261109-F3DEEE",
+        "title": "SoD Full Count Test",
+        "location": "ASSIGNED-KITCHEN-LOC",
+        "status": "approved",
+        "theoretical_qty": 0.0,
+        "counted_qty": 0.0,
+        "final_qty": 0.0,
+        "variance_qty": 0.0,
+        "variance_val": 0.0,
+        "batch": null
+      }
+    ],
+    "journal_entries": []
+  }
+}

@@ -64,6 +64,7 @@ from hotel.models import (
     Supplier,
     SupplierInvoice,
     SupplierInvoiceItem,
+    UnfulfilledStockDeduction,
 )
 from hotel.procurement import (
     approve_purchase_requisition,
@@ -428,11 +429,14 @@ class CrossModuleInventoryIntegrationTestCase(APITestCase):
         order = Order.objects.create(table=table, status="served", sub_total=Decimal("120.00"), total_amount=Decimal("120.00"))
         OrderItem.objects.create(order=order, menu_item=latte, quantity=1, price_at_order=Decimal("120.00"), status="served")
 
-        # POS settlement MUST fail due to expired batch lockout (Owner Decision D-2)
-        with self.assertRaises(ValueError) as ctx:
-            finalize_paid_order(order=order, payment_method="cash", cashier=self.cashier)
-        self.assertIn("insufficient valid stock", str(ctx.exception).lower())
-        self.assertIn("unexpired & verified", str(ctx.exception).lower())
+        # POS settlement completes payment, but locks out expired batch from deduction (recording shortage)
+        finalize_paid_order(order=order, payment_method="cash", cashier=self.cashier)
+        order.refresh_from_db()
+        self.assertEqual(order.payment_status, "paid")
+        self.assertEqual(order.inventory_deduction_status, "shortage_exception")
+        shortage = UnfulfilledStockDeduction.objects.get(order=order, ingredient=milk)
+        self.assertIn("insufficient valid stock", shortage.failure_reason.lower())
+        self.assertIn("unexpired & verified", shortage.failure_reason.lower())
 
         # Kitchen supervisor writes off the 10 expired liters
         waste_record, _ = record_waste_entry(

@@ -31,6 +31,7 @@ import HousekeepingManager from './pages/HousekeepingManager';
 import HousekeepingDashboard from './pages/HousekeepingDashboard';
 import ProcurementCenter from './pages/procurement/ProcurementCenter';
 import StocktakeCenter from './pages/stocktaking/StocktakeCenter';
+import StockTransferCenter from './pages/transfers/StockTransferCenter';
 
 import { Bell, Search, LogOut, Loader2, Menu } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -523,6 +524,7 @@ const DashboardLayout = ({ activeTab, setActiveTab, userData, handleLogout }) =>
             {activeTab === 'categories'           && <CategoryManager />}
             {activeTab === 'menus'                && <MenuManager />}
             {activeTab === 'inventory'            && <InventoryDashboard userData={userData} handleLogout={handleLogout} onNavigate={setActiveTab} />}
+            {activeTab === 'transfers'            && <StockTransferCenter userData={userData} />}
             {activeTab === 'stocktaking'          && <StocktakeCenter userData={userData} />}
             {activeTab === 'procurement'          && <ProcurementCenter userData={userData} />}
             {activeTab.startsWith('procurement_') && (

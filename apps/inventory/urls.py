@@ -7,6 +7,7 @@ from .views import (
     InventoryCategoryViewSet,
     InventoryDashboardStatsView,
     InventoryExpiryAlertViewSet,
+    InventoryGLReconciliationView,
     InventoryItemViewSet,
     InventoryWasteRecordViewSet,
     ItemLocationBalanceViewSet,
@@ -17,6 +18,7 @@ from .views import (
     RequestForQuotationViewSet,
     StockBatchViewSet,
     StockLocationViewSet,
+    StockMovementReportView,
     StocktakeScheduleViewSet,
     StocktakeSessionViewSet,
     StockTransactionViewSet,
@@ -58,4 +60,8 @@ router.register(r"stocktaking/schedules", StocktakeScheduleViewSet, basename="st
 # Persistent Expiry Alerts & Batch Safeguards
 router.register(r"inventory/expiry-alerts", InventoryExpiryAlertViewSet, basename="inventoryexpiryalert")
 
-urlpatterns = [path("inventory/dashboard-stats/", InventoryDashboardStatsView.as_view(), name="inventory-dashboard-stats")] + router.urls
+urlpatterns = [
+    path("inventory/dashboard-stats/", InventoryDashboardStatsView.as_view(), name="inventory-dashboard-stats"),
+    path("inventory/reports/stock-movement/", StockMovementReportView.as_view(), name="inventory-report-stock-movement"),
+    path("inventory/reports/gl-reconciliation/", InventoryGLReconciliationView.as_view(), name="inventory-report-gl-reconciliation"),
+] + router.urls

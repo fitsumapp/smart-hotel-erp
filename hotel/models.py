@@ -352,6 +352,20 @@ class Order(models.Model):
     payment_reference = models.CharField(max_length=100, blank=True, null=True)
     tip_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
 
+    INVENTORY_DEDUCTION_STATUS = [
+        ("pending", "Pending"),
+        ("deducted", "Deducted"),
+        ("shortage_exception", "Shortage Exception"),
+        ("not_applicable", "Not Applicable"),
+    ]
+    inventory_deduction_status = models.CharField(
+        max_length=30,
+        choices=INVENTORY_DEDUCTION_STATUS,
+        default="pending",
+        db_index=True,
+        help_text="Tracks recipe ingredient deduction status independently of payment settlement.",
+    )
+
     payment_page_token = models.CharField(max_length=64, blank=True, null=True, unique=True)
     chapa_tx_ref = models.CharField(max_length=120, blank=True, null=True, unique=True)
     chapa_checkout_url = models.URLField(max_length=500, blank=True, null=True)
@@ -1089,6 +1103,8 @@ class StockTransaction(models.Model):
         ("adjustment", "Adjustment (Audit/Damage)"),
         ("sale_deduction", "Auto-Deduct (Sales)"),
         ("loss", "Waste & Loss (Stock-Out)"),
+        ("transfer_in", "Transfer In (Received)"),
+        ("transfer_out", "Transfer Out (Dispatched)"),
     ]
 
     item = models.ForeignKey(InventoryItem, on_delete=models.CASCADE, related_name="transactions")
@@ -1244,6 +1260,63 @@ class RecipeBOM(models.Model):
 
     def __str__(self):
         return f"Recipe: {self.menu_item.name} uses {self.quantity_required} of {self.ingredient.name}"
+
+
+# ── 18b. Unfulfilled Stock Deduction (POS Shortage Exception) ─────────────────
+
+class UnfulfilledStockDeduction(models.Model):
+    """
+    Durable record of recipe ingredient deduction shortages during POS settlement.
+    Ensures inventory depletion failures do not reverse guest check payments,
+    providing an auditable trail for F&B Cost Controller reconciliation.
+    """
+    STATUS_CHOICES = [
+        ("pending_reconciliation", "Pending Reconciliation"),
+        ("resolved", "Resolved"),
+        ("written_off", "Written Off"),
+    ]
+
+    order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name="unfulfilled_deductions")
+    order_item = models.ForeignKey(
+        "OrderItem", on_delete=models.CASCADE, null=True, blank=True, related_name="unfulfilled_deductions"
+    )
+    menu_item = models.ForeignKey(MenuItem, on_delete=models.SET_NULL, null=True, blank=True)
+    ingredient = models.ForeignKey(
+        InventoryItem, on_delete=models.PROTECT, related_name="unfulfilled_deductions"
+    )
+    location = models.ForeignKey(
+        StockLocation, on_delete=models.SET_NULL, null=True, blank=True, related_name="unfulfilled_deductions"
+    )
+    quantity_required = models.DecimalField(max_digits=12, decimal_places=4)
+    quantity_available = models.DecimalField(max_digits=12, decimal_places=4, default=0.00)
+    shortage_quantity = models.DecimalField(max_digits=12, decimal_places=4)
+    unit_cost_snapshot = models.DecimalField(max_digits=12, decimal_places=4, default=0.00)
+    failure_reason = models.CharField(max_length=255)
+    status = models.CharField(
+        max_length=30, choices=STATUS_CHOICES, default="pending_reconciliation", db_index=True
+    )
+    reconciled_at = models.DateTimeField(null=True, blank=True)
+    reconciled_by_id_ref = models.IntegerField(null=True, blank=True)
+    reconciliation_notes = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["order", "order_item", "ingredient"],
+                name="unique_order_item_ingredient_shortage",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["status", "created_at"], name="usd_stat_time_idx"),
+            models.Index(fields=["ingredient", "status"], name="usd_ing_status_idx"),
+            models.Index(fields=["order", "status"], name="usd_ord_status_idx"),
+        ]
+
+    def __str__(self):
+        return f"Shortage ORD #{self.order_id}: {self.shortage_quantity} {self.ingredient.unit} of {self.ingredient.name} ({self.status})"
+
 
 
 

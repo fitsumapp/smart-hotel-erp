@@ -1,0 +1,232 @@
+[
+  {
+    "test": "Category LIST",
+    "status": "PASS",
+    "details": "Status 200, count=18"
+  },
+  {
+    "test": "Category CREATE",
+    "status": "PASS",
+    "details": "id=27, name=AccTest_6ecc5300"
+  },
+  {
+    "test": "Category READ-BACK",
+    "status": "PASS",
+    "details": "Status 200"
+  },
+  {
+    "test": "Category UPDATE",
+    "status": "PASS",
+    "details": "Status 200"
+  },
+  {
+    "test": "Category DELETE",
+    "status": "PASS",
+    "details": "Status 204"
+  },
+  {
+    "test": "Category DELETE DB-CHECK",
+    "status": "PASS",
+    "details": "Exists in DB after delete: False"
+  },
+  {
+    "test": "Supplier LIST",
+    "status": "PASS",
+    "details": "Status 200"
+  },
+  {
+    "test": "Supplier CREATE",
+    "status": "PASS",
+    "details": "id=17"
+  },
+  {
+    "test": "Supplier UPDATE",
+    "status": "PASS",
+    "details": "Status 200"
+  },
+  {
+    "test": "Item CREATE",
+    "status": "PASS",
+    "details": "id=41, code=ACC-f0f33bae"
+  },
+  {
+    "test": "Item READ-BACK",
+    "status": "PASS",
+    "details": "Status 200"
+  },
+  {
+    "test": "Item UPDATE",
+    "status": "PASS",
+    "details": "Status 200"
+  },
+  {
+    "test": "Adjustment INCREASE",
+    "status": "PASS",
+    "details": "Stock 73.00->78.00"
+  },
+  {
+    "test": "Idempotency REPLAY",
+    "status": "PARTIAL",
+    "details": "Status 400"
+  },
+  {
+    "test": "Adjustment DECREASE",
+    "status": "PASS",
+    "details": "Stock 78.00->76.00, expected=76.00"
+  },
+  {
+    "test": "Stock PURCHASE",
+    "status": "PASS",
+    "details": "Stock 76.00->86.00"
+  },
+  {
+    "test": "Ledger LIST",
+    "status": "PASS",
+    "details": "count=38"
+  },
+  {
+    "test": "Ledger SUMMARY",
+    "status": "PASS",
+    "details": "Status 200, data={\"total_count\": 38, \"total_inflow_qty\": \"640.00\", \"total_outflow_qty\": \"32.00\", \"adjustment_increase_qty\": \"70.00\", \"adjustment_decrease_qty\": \"24.00\", \"net_quantity_change\": \"654.00\", \"total_valuatio"
+  },
+  {
+    "test": "Transaction REVERSE",
+    "status": "PASS",
+    "details": "Status 201, stock 86.00->76.00"
+  },
+  {
+    "test": "Waste RECORD",
+    "status": "FAIL",
+    "details": "Status 400, body={\"error\": \"Invalid waste source: 'kitchen'. Must be 'direct_loss' or 'kitchen_prep_waste'.\"}"
+  },
+  {
+    "test": "Location LIST",
+    "status": "PASS",
+    "details": "Status 200"
+  },
+  {
+    "test": "Location CREATE",
+    "status": "PASS",
+    "details": "Status 201, id=39"
+  },
+  {
+    "test": "Location INVENTORY",
+    "status": "PASS",
+    "details": "Status 200, items=1"
+  },
+  {
+    "test": "Batch LIST",
+    "status": "PASS",
+    "details": "Status 200"
+  },
+  {
+    "test": "BatchLocationBalance LIST",
+    "status": "PASS",
+    "details": "Status 200"
+  },
+  {
+    "test": "ItemLocationBalance LIST",
+    "status": "PASS",
+    "details": "Status 200"
+  },
+  {
+    "test": "Transfer REQUEST",
+    "status": "PASS",
+    "details": "id=13, status=requested"
+  },
+  {
+    "test": "Transfer DISPATCH",
+    "status": "PASS",
+    "details": "Status 200, status=in_transit"
+  },
+  {
+    "test": "Transfer RECEIVE",
+    "status": "PASS",
+    "details": "Status 200, status=completed"
+  },
+  {
+    "test": "Requisition LIST",
+    "status": "PASS",
+    "details": "Status 200"
+  },
+  {
+    "test": "PurchaseOrder LIST",
+    "status": "PASS",
+    "details": "Status 200"
+  },
+  {
+    "test": "GRN LIST",
+    "status": "PASS",
+    "details": "Status 200"
+  },
+  {
+    "test": "Invoice LIST",
+    "status": "PASS",
+    "details": "Status 200"
+  },
+  {
+    "test": "RFQ LIST",
+    "status": "PASS",
+    "details": "Status 200"
+  },
+  {
+    "test": "Quotation LIST",
+    "status": "PASS",
+    "details": "Status 200"
+  },
+  {
+    "test": "Stocktake Session LIST",
+    "status": "PASS",
+    "details": "Status 200"
+  },
+  {
+    "test": "Stocktake Schedule LIST",
+    "status": "PASS",
+    "details": "Status 200"
+  },
+  {
+    "test": "Dashboard STATS",
+    "status": "PASS",
+    "details": "items=26, val=295815.0, low=5"
+  },
+  {
+    "test": "Stock Movement REPORT",
+    "status": "PASS",
+    "details": "Status 200, items=26"
+  },
+  {
+    "test": "GL Reconciliation REPORT",
+    "status": "PASS",
+    "details": "reconciled=False, batch_val=194205.00, gl_bal=116685.00, variance=-77520.00"
+  },
+  {
+    "test": "Expiry Alert LIST",
+    "status": "PASS",
+    "details": "Status 200"
+  },
+  {
+    "test": "Opening Stock IMPORT",
+    "status": "PASS",
+    "details": "count=1, val=1250.00"
+  },
+  {
+    "test": "Opening Stock DB-CHECK",
+    "status": "PASS",
+    "details": "item=OpenStock 8974d1, stock=25.00"
+  },
+  {
+    "test": "Batch vs Item Balance",
+    "status": "FAIL",
+    "details": "Mismatches: PER-MILK-01: stock=175.00, batches=245.00; BEEF-001: stock=10.00, batches=0; POT-001: stock=50.00, batches=0"
+  },
+  {
+    "test": "Location vs Item Balance",
+    "status": "PARTIAL",
+    "details": "Mismatches: BEEF-001: stock=10.00, locations=0; POT-001: stock=50.00, locations=0"
+  },
+  {
+    "test": "GL Journal Balance",
+    "status": "PASS",
+    "details": "Debits=208890.00, Credits=208890.00"
+  }
+]

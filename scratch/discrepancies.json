@@ -1,0 +1,566 @@
+[
+  {
+    "id": 2,
+    "name": "Mango Juice 1L",
+    "code": "BEV-JUICE-01",
+    "category": "Beverages & Bar",
+    "unit": "bottle",
+    "unit_cost": 60.0,
+    "current_stock": 91.0,
+    "batch_sum": 91.0,
+    "loc_sum": 100.0,
+    "master_valuation": 5460.0,
+    "batch_valuation": 5460.0,
+    "valuation_discrepancy": 0.0,
+    "batches": [
+      {
+        "num": "BATCH-JUICE-001",
+        "qty": 87.0,
+        "cost": 60.0,
+        "status": "active",
+        "is_legacy": false
+      },
+      {
+        "num": "BAT-BEV-JUICE-01-20261104-5BF9FF",
+        "qty": 4.0,
+        "cost": 60.0,
+        "status": "active",
+        "is_legacy": false
+      }
+    ],
+    "locations": [
+      {
+        "loc": "STORE-MAIN",
+        "qty": 90.0
+      },
+      {
+        "loc": "BAR-MAIN",
+        "qty": 10.0
+      }
+    ],
+    "transactions": [
+      {
+        "type": "adjustment",
+        "qty": 4.0,
+        "ref": null,
+        "dir": "increase"
+      },
+      {
+        "type": "adjustment",
+        "qty": 12.0,
+        "ref": null,
+        "dir": "decrease"
+      }
+    ],
+    "grn_count": 0
+  },
+  {
+    "id": 3,
+    "name": "Artisan Sparkling Soda",
+    "code": "MB-SODA-01",
+    "category": "Minibar Beverages",
+    "unit": "bottle",
+    "unit_cost": 2.5,
+    "current_stock": 48.0,
+    "batch_sum": 48.0,
+    "loc_sum": 68.0,
+    "master_valuation": 120.0,
+    "batch_valuation": 120.0,
+    "valuation_discrepancy": 0.0,
+    "batches": [
+      {
+        "num": "BATCH-MB-SODA-01",
+        "qty": 48.0,
+        "cost": 2.5,
+        "status": "active",
+        "is_legacy": false
+      }
+    ],
+    "locations": [
+      {
+        "loc": "MINIBAR-PANTRY",
+        "qty": 48.0
+      },
+      {
+        "loc": "MB-FL1",
+        "qty": 20.0
+      }
+    ],
+    "transactions": [
+      {
+        "type": "issuance",
+        "qty": 2.0,
+        "ref": "Minibar-Room-101",
+        "dir": null
+      },
+      {
+        "type": "issuance",
+        "qty": 2.0,
+        "ref": "Minibar-Room-101",
+        "dir": null
+      },
+      {
+        "type": "issuance",
+        "qty": 2.0,
+        "ref": "Minibar-Room-101",
+        "dir": null
+      },
+      {
+        "type": "issuance",
+        "qty": 2.0,
+        "ref": "Minibar-Room-101",
+        "dir": null
+      },
+      {
+        "type": "issuance",
+        "qty": 2.0,
+        "ref": "Minibar-Room-101",
+        "dir": null
+      },
+      {
+        "type": "issuance",
+        "qty": 2.0,
+        "ref": "Minibar-Room-101",
+        "dir": null
+      },
+      {
+        "type": "issuance",
+        "qty": 2.0,
+        "ref": "Minibar-Room-101",
+        "dir": null
+      },
+      {
+        "type": "issuance",
+        "qty": 2.0,
+        "ref": "Minibar-Room-101",
+        "dir": null
+      },
+      {
+        "type": "issuance",
+        "qty": 2.0,
+        "ref": "Minibar-Room-101",
+        "dir": null
+      },
+      {
+        "type": "issuance",
+        "qty": 2.0,
+        "ref": "Minibar-Room-101",
+        "dir": null
+      },
+      {
+        "type": "issuance",
+        "qty": 2.0,
+        "ref": "Minibar-Room-101",
+        "dir": null
+      }
+    ],
+    "grn_count": 0
+  },
+  {
+    "id": 4,
+    "name": "Fresh Lime Cordial",
+    "code": "CORD-LIME-01",
+    "category": "Minibar Beverages",
+    "unit": "bottle",
+    "unit_cost": 5.0,
+    "current_stock": 135.0,
+    "batch_sum": 121.0,
+    "loc_sum": 135.0,
+    "master_valuation": 675.0,
+    "batch_valuation": 605.0,
+    "valuation_discrepancy": 70.0,
+    "batches": [
+      {
+        "num": "BATCH-LIME-001",
+        "qty": 80.0,
+        "cost": 5.0,
+        "status": "active",
+        "is_legacy": false
+      },
+      {
+        "num": "BAT-CORD-LIME-01-20261104-EFDE72",
+        "qty": 41.0,
+        "cost": 5.0,
+        "status": "active",
+        "is_legacy": false
+      }
+    ],
+    "locations": [
+      {
+        "loc": "WH-MAIN",
+        "qty": 90.0
+      },
+      {
+        "loc": "BAR-MAIN",
+        "qty": 45.0
+      }
+    ],
+    "transactions": [
+      {
+        "type": "adjustment",
+        "qty": 41.0,
+        "ref": null,
+        "dir": "increase"
+      },
+      {
+        "type": "loss",
+        "qty": 2.0,
+        "ref": null,
+        "dir": null
+      },
+      {
+        "type": "loss",
+        "qty": 2.0,
+        "ref": null,
+        "dir": null
+      }
+    ],
+    "grn_count": 0
+  },
+  {
+    "id": 5,
+    "name": "Fresh Whole Milk 1L",
+    "code": "PER-MILK-01",
+    "category": "Dairy & Cold Storage",
+    "unit": "l",
+    "unit_cost": 60.0,
+    "current_stock": 175.0,
+    "batch_sum": 245.0,
+    "loc_sum": 175.0,
+    "master_valuation": 10500.0,
+    "batch_valuation": 14000.0,
+    "valuation_discrepancy": -3500.0,
+    "batches": [
+      {
+        "num": "BAT-EXPIRED-TEST-001",
+        "qty": 10.0,
+        "cost": 50.0,
+        "status": "expired",
+        "is_legacy": false
+      },
+      {
+        "num": "BAT-PH1-1793720907",
+        "qty": 35.0,
+        "cost": 60.0,
+        "status": "active",
+        "is_legacy": false
+      },
+      {
+        "num": "BAT-PH1-1793721122",
+        "qty": 35.0,
+        "cost": 60.0,
+        "status": "active",
+        "is_legacy": false
+      },
+      {
+        "num": "BAT-PH1-1793721309",
+        "qty": 35.0,
+        "cost": 60.0,
+        "status": "active",
+        "is_legacy": false
+      },
+      {
+        "num": "BAT-PH1-1793721460",
+        "qty": 35.0,
+        "cost": 60.0,
+        "status": "active",
+        "is_legacy": false
+      },
+      {
+        "num": "BAT-PH1-1793721588",
+        "qty": 35.0,
+        "cost": 60.0,
+        "status": "active",
+        "is_legacy": false
+      },
+      {
+        "num": "BAT-QUAR-TEST-001",
+        "qty": 20.0,
+        "cost": 50.0,
+        "status": "active",
+        "is_legacy": true
+      },
+      {
+        "num": "BAT-QUAR-TEST-1793721429",
+        "qty": 20.0,
+        "cost": 50.0,
+        "status": "active",
+        "is_legacy": true
+      },
+      {
+        "num": "BAT-QUAR-TEST-1793721556",
+        "qty": 20.0,
+        "cost": 50.0,
+        "status": "active",
+        "is_legacy": true
+      }
+    ],
+    "locations": [
+      {
+        "loc": "STORE-MAIN",
+        "qty": 175.0
+      }
+    ],
+    "transactions": [
+      {
+        "type": "purchase",
+        "qty": 35.0,
+        "ref": "INV-PH1-SELENIUM",
+        "dir": null
+      },
+      {
+        "type": "purchase",
+        "qty": 35.0,
+        "ref": "INV-PH1-SELENIUM",
+        "dir": null
+      },
+      {
+        "type": "purchase",
+        "qty": 35.0,
+        "ref": "INV-PH1-SELENIUM",
+        "dir": null
+      },
+      {
+        "type": "purchase",
+        "qty": 35.0,
+        "ref": "INV-PH1-SELENIUM",
+        "dir": null
+      },
+      {
+        "type": "purchase",
+        "qty": 35.0,
+        "ref": "INV-PH1-SELENIUM",
+        "dir": null
+      }
+    ],
+    "grn_count": 0
+  },
+  {
+    "id": 6,
+    "name": "Prime Beef Tenderloin",
+    "code": "BEEF-001",
+    "category": "Provisions",
+    "unit": "kg",
+    "unit_cost": 450.0,
+    "current_stock": 10.0,
+    "batch_sum": 0.0,
+    "loc_sum": 0.0,
+    "master_valuation": 4500.0,
+    "batch_valuation": 0.0,
+    "valuation_discrepancy": 4500.0,
+    "batches": [],
+    "locations": [],
+    "transactions": [],
+    "grn_count": 0
+  },
+  {
+    "id": 7,
+    "name": "Russet Potatoes",
+    "code": "POT-001",
+    "category": "Provisions",
+    "unit": "kg",
+    "unit_cost": 35.0,
+    "current_stock": 50.0,
+    "batch_sum": 0.0,
+    "loc_sum": 0.0,
+    "master_valuation": 1750.0,
+    "batch_valuation": 0.0,
+    "valuation_discrepancy": 1750.0,
+    "batches": [],
+    "locations": [],
+    "transactions": [],
+    "grn_count": 0
+  },
+  {
+    "id": 15,
+    "name": "Staging Basmati Rice 25kg",
+    "code": "STK-BROWSER-01",
+    "category": "F&B Stocktake Staging",
+    "unit": "bags",
+    "unit_cost": 1200.0,
+    "current_stock": 50.0,
+    "batch_sum": 0.0,
+    "loc_sum": 50.0,
+    "master_valuation": 60000.0,
+    "batch_valuation": 0.0,
+    "valuation_discrepancy": 60000.0,
+    "batches": [],
+    "locations": [
+      {
+        "loc": "STORE-MAIN",
+        "qty": 50.0
+      }
+    ],
+    "transactions": [],
+    "grn_count": 0
+  },
+  {
+    "id": 16,
+    "name": "Staging Olive Oil 5L",
+    "code": "STK-BROWSER-02",
+    "category": "F&B Stocktake Staging",
+    "unit": "cans",
+    "unit_cost": 800.0,
+    "current_stock": 20.0,
+    "batch_sum": 0.0,
+    "loc_sum": 20.0,
+    "master_valuation": 16000.0,
+    "batch_valuation": 0.0,
+    "valuation_discrepancy": 16000.0,
+    "batches": [],
+    "locations": [
+      {
+        "loc": "STORE-MAIN",
+        "qty": 20.0
+      }
+    ],
+    "transactions": [],
+    "grn_count": 0
+  },
+  {
+    "id": 17,
+    "name": "Pasteurized Full Cream Milk 1L",
+    "code": "ITM-DAIRY-MILK",
+    "category": "Fresh Dairy Products",
+    "unit": "l",
+    "unit_cost": 48.0,
+    "current_stock": 120.0,
+    "batch_sum": 65.0,
+    "loc_sum": 120.0,
+    "master_valuation": 5760.0,
+    "batch_valuation": 3120.0,
+    "valuation_discrepancy": 2640.0,
+    "batches": [
+      {
+        "num": "BATCH-EXP-STAGE-01",
+        "qty": 25.0,
+        "cost": 48.0,
+        "status": "active",
+        "is_legacy": false
+      },
+      {
+        "num": "BATCH-NEAR-STAGE-07",
+        "qty": 40.0,
+        "cost": 48.0,
+        "status": "active",
+        "is_legacy": false
+      }
+    ],
+    "locations": [
+      {
+        "loc": "WH-AUDIT-01",
+        "qty": 120.0
+      }
+    ],
+    "transactions": [],
+    "grn_count": 0
+  },
+  {
+    "id": 18,
+    "name": "Prime Beef Tenderloin",
+    "code": "ITM-MEAT-BEEF",
+    "category": "Butchery & Poultry",
+    "unit": "kg",
+    "unit_cost": 450.0,
+    "current_stock": 45.0,
+    "batch_sum": 18.0,
+    "loc_sum": 45.0,
+    "master_valuation": 20250.0,
+    "batch_valuation": 8100.0,
+    "valuation_discrepancy": 12150.0,
+    "batches": [
+      {
+        "num": "BATCH-UNK-STAGE-99",
+        "qty": 18.0,
+        "cost": 450.0,
+        "status": "active",
+        "is_legacy": true
+      }
+    ],
+    "locations": [
+      {
+        "loc": "WH-AUDIT-01",
+        "qty": 45.0
+      }
+    ],
+    "transactions": [],
+    "grn_count": 0
+  },
+  {
+    "id": 19,
+    "name": "Test Item 01",
+    "code": "REMED-ITM-01",
+    "category": "Remediation Test Cat",
+    "unit": "pcs",
+    "unit_cost": 100.0,
+    "current_stock": 50.0,
+    "batch_sum": 0.0,
+    "loc_sum": 0.0,
+    "master_valuation": 5000.0,
+    "batch_valuation": 0.0,
+    "valuation_discrepancy": 5000.0,
+    "batches": [],
+    "locations": [],
+    "transactions": [],
+    "grn_count": 0
+  },
+  {
+    "id": 21,
+    "name": "Test Item 01",
+    "code": "REMED-ITM-1793900106",
+    "category": "Remediation Test Cat",
+    "unit": "pcs",
+    "unit_cost": 100.0,
+    "current_stock": 50.0,
+    "batch_sum": 15.0,
+    "loc_sum": 0.0,
+    "master_valuation": 5000.0,
+    "batch_valuation": 1500.0,
+    "valuation_discrepancy": 3500.0,
+    "batches": [
+      {
+        "num": "REMED-BATCH-DISMISS-1793900106",
+        "qty": 15.0,
+        "cost": 100.0,
+        "status": "active",
+        "is_legacy": false
+      }
+    ],
+    "locations": [],
+    "transactions": [],
+    "grn_count": 0
+  },
+  {
+    "id": 22,
+    "name": "Test Item 01",
+    "code": "REMED-ITM-1793900629",
+    "category": "Remediation Test Cat",
+    "unit": "pcs",
+    "unit_cost": 100.0,
+    "current_stock": 50.0,
+    "batch_sum": 25.0,
+    "loc_sum": 0.0,
+    "master_valuation": 5000.0,
+    "batch_valuation": 2500.0,
+    "valuation_discrepancy": 2500.0,
+    "batches": [
+      {
+        "num": "REMED-BATCH-DISMISS-1793900629",
+        "qty": 15.0,
+        "cost": 100.0,
+        "status": "active",
+        "is_legacy": false
+      },
+      {
+        "num": "REMED-BATCH-THRESH-25D-1793900629",
+        "qty": 10.0,
+        "cost": 100.0,
+        "status": "active",
+        "is_legacy": false
+      }
+    ],
+    "locations": [],
+    "transactions": [],
+    "grn_count": 0
+  }
+]

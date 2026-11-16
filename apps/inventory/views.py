@@ -14,6 +14,7 @@ from django.db.models import DecimalField, ExpressionWrapper, F, Q, Sum
 from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
+from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -134,6 +135,8 @@ from .serializers import (
 )
 from .services import (
     approve_waste_entry,
+    execute_spot_purchase,
+    import_opening_stock_records,
     record_stock_change,
     record_waste_entry,
     reject_waste_entry,
@@ -158,12 +161,97 @@ class InventoryItemViewSet(viewsets.ModelViewSet):
     serializer_class = InventoryItemSerializer
     permission_classes = [IsInventoryManager]
 
+    @action(detail=False, methods=["post"], url_path="import-opening-stock")
+    def import_opening_stock(self, request):
+        """Bulk imports opening stock inventory via JSON records or CSV file."""
+        records = request.data.get("records")
+        if not records and "file" in request.FILES:
+            import csv, io
+            file_obj = request.FILES["file"]
+            decoded_file = file_obj.read().decode("utf-8-sig")
+            reader = csv.DictReader(io.StringIO(decoded_file))
+            records = list(reader)
+        if not records:
+            return Response({"error": "No records or CSV file provided."}, status=status.HTTP_400_BAD_REQUEST)
+
+        default_location = request.data.get("default_location")
+        overwrite = request.data.get("overwrite") in ("true", "1", True)
+
+        try:
+            result = import_opening_stock_records(
+                records=records,
+                user=request.user,
+                default_location=default_location,
+                overwrite=overwrite,
+            )
+            return Response(result, status=status.HTTP_201_CREATED)
+        except ValidationError as e:
+            return Response(
+                {"error": e.messages if hasattr(e, "messages") else str(e)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+class StockLedgerPagination(PageNumberPagination):
+    page_size = 50
+    page_size_query_param = "page_size"
+    max_page_size = 200
+
+    def paginate_queryset(self, queryset, request, view=None):
+        if request.query_params.get("paginate") == "false":
+            return None
+        return super().paginate_queryset(queryset, request, view=view)
+
+
 class StockTransactionViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         return select_stock_transactions(self.request.query_params)
 
     serializer_class = StockTransactionSerializer
     permission_classes = [IsInventoryManager]
+    pagination_class = StockLedgerPagination
+
+    @action(detail=False, methods=["get"], url_path="summary")
+    def summary(self, request):
+        """Calculates server-side aggregate totals for filtered stock transactions."""
+        qs = self.get_queryset()
+        total_count = qs.count()
+
+        inflow_types = ["purchase", "transfer_in"]
+        outflow_types = ["issuance", "sale_deduction", "loss", "transfer_out"]
+
+        total_inflow_qty = qs.filter(transaction_type__in=inflow_types).aggregate(
+            total=Sum("quantity")
+        )["total"] or Decimal("0.00")
+        total_outflow_qty = qs.filter(transaction_type__in=outflow_types).aggregate(
+            total=Sum("quantity")
+        )["total"] or Decimal("0.00")
+
+        adj_inc = qs.filter(transaction_type="adjustment", adjustment_direction="increase").aggregate(
+            total=Sum("quantity")
+        )["total"] or Decimal("0.00")
+        adj_dec = qs.filter(transaction_type="adjustment", adjustment_direction="decrease").aggregate(
+            total=Sum("quantity")
+        )["total"] or Decimal("0.00")
+
+        net_qty = (total_inflow_qty + adj_inc) - (total_outflow_qty + adj_dec)
+
+        total_value = qs.aggregate(
+            total=Sum(
+                ExpressionWrapper(F("quantity") * F("unit_cost"), output_field=DecimalField(max_digits=14, decimal_places=2))
+            )
+        )["total"] or Decimal("0.00")
+
+        return Response({
+            "total_count": total_count,
+            "total_inflow_qty": str(total_inflow_qty),
+            "total_outflow_qty": str(total_outflow_qty),
+            "adjustment_increase_qty": str(adj_inc),
+            "adjustment_decrease_qty": str(adj_dec),
+            "net_quantity_change": str(net_qty),
+            "total_valuation": str(total_value),
+        })
 
     def update(self, request, *args, **kwargs):
         return Response({"error": "Stock history is immutable."}, status=405)
@@ -542,9 +630,82 @@ class InventoryWasteRecordViewSet(viewsets.ModelViewSet):
         return Response(serializer.data, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
 
 class StockLocationViewSet(viewsets.ModelViewSet):
-    queryset = StockLocation.objects.all()
+    queryset = StockLocation.objects.select_related("custodian").all().order_by("code")
     serializer_class = StockLocationSerializer
     permission_classes = [IsInventoryManager]
+
+    def destroy(self, request, *args, **kwargs):
+        loc = self.get_object()
+        has_stock = ItemLocationBalance.objects.filter(location=loc, quantity__gt=0).exists()
+        has_transfers = StockTransfer.objects.filter(
+            Q(source_location=loc) | Q(destination_location=loc),
+            status__in=["requested", "in_transit"]
+        ).exists()
+        if has_stock or has_transfers:
+            # Soft-deactivate safely to protect audit integrity and balance records
+            loc.is_active = False
+            loc.save(update_fields=["is_active"])
+            return Response(
+                {
+                    "message": f"Location '{loc.name}' contains active stock balances or pending transfers. It has been safely deactivated instead of deleted.",
+                    "is_active": False,
+                },
+                status=status.HTTP_200_OK,
+            )
+        return super().destroy(request, *args, **kwargs)
+
+    @action(detail=True, methods=["get"], url_path="inventory")
+    def location_inventory(self, request, pk=None):
+        """Returns location-level inventory stock, batches, and total valuation."""
+        location = self.get_object()
+        balances = (
+            ItemLocationBalance.objects.filter(location=location, quantity__gt=0)
+            .select_related("item", "item__category")
+            .order_by("item__name")
+        )
+        data = []
+        total_val = Decimal("0.00")
+        for b in balances:
+            item = b.item
+            val = (b.quantity * item.unit_cost).quantize(Decimal("0.01"))
+            total_val += val
+            batches = list(
+                BatchLocationBalance.objects.filter(location=location, batch__item=item, quantity__gt=0)
+                .select_related("batch")
+                .values("batch__id", "batch__batch_number", "batch__expiry_date", "batch__status", "quantity", "batch__unit_cost")
+            )
+            data.append({
+                "item_id": item.id,
+                "item_code": item.item_code,
+                "item_name": item.name,
+                "category_name": item.category.name if item.category else "Uncategorized",
+                "unit": item.unit,
+                "quantity": str(b.quantity),
+                "unit_cost": str(item.unit_cost),
+                "valuation": str(val),
+                "batches": [
+                    {
+                        "batch_id": bt["batch__id"],
+                        "batch_number": bt["batch__batch_number"],
+                        "expiry_date": bt["batch__expiry_date"],
+                        "status": bt["batch__status"],
+                        "quantity": str(bt["quantity"]),
+                        "unit_cost": str(bt["batch__unit_cost"]),
+                    }
+                    for bt in batches
+                ],
+            })
+        return Response({
+            "location_id": location.id,
+            "location_code": location.code,
+            "location_name": location.name,
+            "location_type": location.location_type,
+            "is_active": location.is_active,
+            "custodian_username": location.custodian.username if location.custodian else None,
+            "total_items": len(data),
+            "total_valuation": str(total_val),
+            "items": data,
+        })
 
 class StockBatchViewSet(viewsets.ModelViewSet):
     serializer_class = StockBatchSerializer
@@ -992,7 +1153,7 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"], url_path="receive-grn", permission_classes=[IsProcurementOperator])
     def receive_grn(self, request, pk=None):
         delivery_note = request.data.get("delivery_note_number", "")
-        location_id = request.data.get("location")
+        location_id = request.data.get("location_id") or request.data.get("location")
         receipt_items = request.data.get("items", [])
         notes = request.data.get("notes", "")
 
@@ -1017,6 +1178,72 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
             return Response({"error": str(e)}, status=status.HTTP_403_FORBIDDEN)
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=False, methods=["post"], url_path="spot-purchase", permission_classes=[IsProcurementOperator])
+    def spot_purchase(self, request):
+        """Creates an urgent spot purchase order, auto-generates GRN dock intake, and posts balancing GL."""
+        try:
+            result = execute_spot_purchase(
+                user=request.user,
+                supplier_id=request.data.get("supplier_id") or request.data.get("supplier"),
+                supplier_name=request.data.get("supplier_name"),
+                delivery_location=request.data.get("delivery_location") or request.data.get("location"),
+                items=request.data.get("items", []),
+                payment_method=request.data.get("payment_method", "cash"),
+                invoice_number=request.data.get("invoice_number"),
+                notes=request.data.get("notes", ""),
+            )
+            return Response(result, status=status.HTTP_201_CREATED)
+        except ValidationError as ve:
+            return Response(
+                {"error": ve.messages if hasattr(ve, "messages") else str(ve)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=True, methods=["get"], url_path="printable")
+    def printable_document(self, request, pk=None):
+        """Generates formatted purchase order document for supplier dispatch and printable PDF export."""
+        po = self.get_object()
+        lines = []
+        subtotal = Decimal("0.00")
+        for it in po.items.select_related("item").all():
+            line_tot = (it.quantity_ordered * it.unit_price).quantize(Decimal("0.01"))
+            subtotal += line_tot
+            lines.append({
+                "item_code": it.item.item_code,
+                "item_name": it.item.name,
+                "unit": it.item.unit,
+                "quantity": str(it.quantity_ordered),
+                "unit_price": str(it.unit_price),
+                "line_total": str(line_tot),
+                "received_quantity": str(it.received_quantity),
+                "notes": it.notes,
+            })
+
+        return Response({
+            "po_number": po.po_number,
+            "created_at": po.created_at,
+            "issued_at": po.issued_at,
+            "issued_by": po.issued_by.username if po.issued_by else "Authorized Officer",
+            "status": po.status,
+            "supplier": {
+                "name": po.supplier.name if po.supplier else "Direct Vendor",
+                "phone": po.supplier.phone if po.supplier else "—",
+                "email": po.supplier.email if po.supplier else "—",
+                "address": po.supplier.address if po.supplier else "—",
+            },
+            "delivery_location": {
+                "name": po.delivery_location.name if po.delivery_location else "Main Receiving Bay",
+                "code": po.delivery_location.code if po.delivery_location else "STORE-MAIN",
+            },
+            "lines": lines,
+            "subtotal": str(subtotal),
+            "total_amount": str(po.total_amount),
+            "currency": "ETB",
+            "notes": po.notes,
+        })
 
 class GoodsReceiptNoteViewSet(viewsets.ModelViewSet):
     queryset = (
@@ -1052,7 +1279,7 @@ class GoodsReceiptNoteViewSet(viewsets.ModelViewSet):
             )
         po_id = request.data.get("purchase_order")
         delivery_note = request.data.get("delivery_note_number", "")
-        location_id = request.data.get("location")
+        location_id = request.data.get("location_id") or request.data.get("location")
         receipt_items = request.data.get("items", [])
         notes = request.data.get("notes", "")
 
@@ -1469,7 +1696,7 @@ class StocktakeSessionViewSet(viewsets.ModelViewSet):
         return qs
 
     def create(self, request, *args, **kwargs):
-        location_id = request.data.get("location") or request.data.get("location_id")
+        location_id = request.data.get("location_id") or request.data.get("location") or request.data.get("location_id")
         category_id = request.data.get("category") or request.data.get("category_id")
         counting_mode = request.data.get("counting_mode", "blind")
         title = request.data.get("title")
@@ -1688,7 +1915,7 @@ class StocktakeScheduleViewSet(viewsets.ModelViewSet):
         return qs
 
     def create(self, request, *args, **kwargs):
-        location_id = request.data.get("location")
+        location_id = request.data.get("location_id") or request.data.get("location")
         user = request.user
         if user and not (user.is_superuser or getattr(user, "role", "") in {"admin", "hotel_manager", "inventory"}):
             if location_id:
@@ -1846,4 +2073,41 @@ class InventoryExpiryAlertViewSet(viewsets.ReadOnlyModelViewSet):
         alert.resolution_reason = reason
         alert.save(update_fields=["status", "resolved_at", "resolution_reason", "updated_at"])
         return Response(self.get_serializer(alert).data, status=status.HTTP_200_OK)
+
+
+class StockMovementReportView(APIView):
+    """
+    Returns deterministic stock movement reports by period, location, or category:
+    Opening + Purchases + Transfers In - Transfers Out - Issuances - Waste +/- Adjustments = Closing.
+    """
+    permission_classes = [IsProcurementOrFinanceOperator]
+
+    def get(self, request):
+        start_date = request.query_params.get("start_date") or request.query_params.get("from")
+        end_date = request.query_params.get("end_date") or request.query_params.get("to")
+        location_id = request.query_params.get("location") or request.query_params.get("location_id")
+        category_id = request.query_params.get("category") or request.query_params.get("category_id")
+
+        from apps.inventory.services import generate_stock_movement_report
+        data = generate_stock_movement_report(
+            start_date=start_date,
+            end_date=end_date,
+            location_id=location_id,
+            category_id=category_id,
+        )
+        return Response(data, status=status.HTTP_200_OK)
+
+
+class InventoryGLReconciliationView(APIView):
+    """
+    Reconciles Inventory Sub-ledger valuation (batches and item master) against GL Asset Account 1300 balance.
+    Detects and reports discrepancies with itemized audit records.
+    """
+    permission_classes = [IsProcurementOrFinanceOperator]
+
+    def get(self, request):
+        from apps.inventory.services import generate_gl_reconciliation_report
+        data = generate_gl_reconciliation_report()
+        return Response(data, status=status.HTTP_200_OK)
+
 

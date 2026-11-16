@@ -1,6 +1,7 @@
 """Orders transactional and business services."""
 import hashlib
 import json
+import logging
 from decimal import Decimal, ROUND_HALF_UP
 from uuid import uuid4
 
@@ -10,8 +11,13 @@ from django.db import transaction
 from django.utils import timezone
 
 from hotel.integrity import record_stock_change
-from hotel.models import DiningSession, MenuItem, Notification, Order, OrderItem, PaymentAttempt, RestaurantTable, SystemSettings
+from hotel.models import (
+    DiningSession, MenuItem, Notification, Order, OrderItem,
+    PaymentAttempt, RestaurantTable, SystemSettings, UnfulfilledStockDeduction
+)
 from users.models import User
+
+logger = logging.getLogger(__name__)
 
 
 TWOPLACES = Decimal("0.01")
@@ -184,6 +190,12 @@ def notify_cashiers(message):
     notify_users(cashiers, message)
 
 
+def notify_inventory_managers(message):
+    """Notify all active inventory managers and supervisors in the current tenant."""
+    managers = User.objects.filter(role__in=["inventory", "admin", "hotel_manager"], is_active=True)
+    notify_users(managers, message)
+
+
 def build_payment_summary(order, settings_obj=None):
     settings_obj = settings_obj or get_system_settings()
     totals = sync_order_financials(order, settings_obj=settings_obj, save=False)
@@ -351,11 +363,20 @@ def finalize_paid_order(order, payment_method, payment_reference=None, tip_amoun
 
     if settings is None or getattr(settings, "module_inventory", True):
         total_ingredient_cost = Decimal("0.00")
+        has_any_bom = False
+        has_shortage = False
+
         try:
             from hotel.models import ItemLocationBalance, StockLocation
             for order_item in order.items.exclude(status="cancelled"):
                 menu_item = order_item.menu_item
-                for bom_item in menu_item.ingredients_bom.all():
+                # Deterministic BOM lock ordering by ingredient_id to prevent circular PostgreSQL deadlocks (SQLSTATE 40P01)
+                bom_items = menu_item.ingredients_bom.select_related("ingredient").filter(
+                    ingredient__isnull=False
+                ).order_by("ingredient_id")
+
+                for bom_item in bom_items:
+                    has_any_bom = True
                     ingredient = bom_item.ingredient
                     qty_to_deduct = bom_item.quantity_required * Decimal(str(order_item.quantity))
 
@@ -372,45 +393,96 @@ def finalize_paid_order(order, payment_method, payment_reference=None, tip_amoun
                                 if main_ilb and main_ilb.quantity >= qty_to_deduct:
                                     target_location = main_loc
 
-                    locked_item, stx = record_stock_change(
-                        item_id=ingredient.pk,
-                        transaction_type="sale_deduction",
-                        quantity=qty_to_deduct,
-                        unit_cost=ingredient.unit_cost,
-                        location=target_location,
-                        reference_number=f"ORD-{order.id}",
-                        idempotency_key=f"POS-BOM-{order.id}-{order_item.id}-{ingredient.id}",
-                        notes=f"Auto-deducted for menu item '{menu_item.name}' (qty: {order_item.quantity}) from {getattr(target_location, 'name', 'Main Store')}",
-                        logged_by_username=cashier.username if cashier else "system_auto",
-                    )
+                    # Deduct ingredient inside an isolated savepoint.
+                    # If stock is insufficient or fails, only this ingredient's savepoint is rolled back.
+                    # Financial settlement is NEVER rolled back.
+                    try:
+                        with transaction.atomic():
+                            locked_item, stx = record_stock_change(
+                                item_id=ingredient.pk,
+                                transaction_type="sale_deduction",
+                                quantity=qty_to_deduct,
+                                unit_cost=ingredient.unit_cost,
+                                location=target_location,
+                                reference_number=f"ORD-{order.id}",
+                                idempotency_key=f"POS-BOM-{order.id}-{order_item.id}-{ingredient.id}",
+                                notes=f"Auto-deducted for menu item '{menu_item.name}' (qty: {order_item.quantity}) from {getattr(target_location, 'name', 'Main Store')}",
+                                logged_by_username=cashier.username if cashier else "system_auto",
+                            )
 
-                    consumptions = list(stx.batch_consumptions.all()) if stx else []
-                    if consumptions:
-                        ingredient_cost = sum((c.total_cost for c in consumptions), Decimal("0.00"))
-                    else:
-                        effective_uc = to_decimal(stx.unit_cost if stx else locked_item.unit_cost)
-                        ingredient_cost = (qty_to_deduct * effective_uc).quantize(TWOPLACES)
+                            consumptions = list(stx.batch_consumptions.all()) if stx else []
+                            if consumptions:
+                                ingredient_cost = sum((c.total_cost for c in consumptions), Decimal("0.00"))
+                            else:
+                                effective_uc = to_decimal(stx.unit_cost if stx else locked_item.unit_cost)
+                                ingredient_cost = (qty_to_deduct * effective_uc).quantize(TWOPLACES)
 
-                    total_ingredient_cost += ingredient_cost
+                            total_ingredient_cost += ingredient_cost
 
-            if total_ingredient_cost > 0:
-                post_journal_entry(
-                    description=f"Auto JV: COGS for Order #{order.id}",
-                    items=[
-                        {
-                            "account_code": "5000",
-                            "debit": total_ingredient_cost,
-                            "credit": Decimal("0.00"),
-                        },
-                        {
-                            "account_code": "1300",
-                            "debit": Decimal("0.00"),
-                            "credit": total_ingredient_cost,
-                        },
-                    ],
+                    except Exception as deduction_err:
+                        # Savepoint was rolled back: zero partially modified inventory
+                        has_shortage = True
+                        avail = getattr(ingredient, "current_stock", Decimal("0.00")) or Decimal("0.00")
+                        shortage = max(Decimal("0.00"), qty_to_deduct - avail)
+
+                        # Persist shortage exception durably for controlled F&B reconciliation
+                        UnfulfilledStockDeduction.objects.update_or_create(
+                            order=order,
+                            order_item=order_item,
+                            ingredient=ingredient,
+                            defaults={
+                                "menu_item": menu_item,
+                                "location": target_location,
+                                "quantity_required": qty_to_deduct,
+                                "quantity_available": avail,
+                                "shortage_quantity": shortage if shortage > 0 else qty_to_deduct,
+                                "unit_cost_snapshot": getattr(ingredient, "unit_cost", Decimal("0.00")) or Decimal("0.00"),
+                                "failure_reason": str(deduction_err)[:255],
+                                "status": "pending_reconciliation",
+                            },
+                        )
+                        logger.warning(
+                            "POS inventory deduction shortage for Order #%s item '%s' (ingredient '%s'): %s",
+                            order.id, menu_item.name, ingredient.name, deduction_err
+                        )
+
+            # Set inventory deduction status on Order
+            if not has_any_bom:
+                order.inventory_deduction_status = "not_applicable"
+            elif has_shortage:
+                order.inventory_deduction_status = "shortage_exception"
+                notify_inventory_managers(
+                    f"Stock Shortage Alert: Order #{order.id} settled with recipe ingredient shortages requiring reconciliation."
                 )
-        except Exception as e:
-            raise ValueError(f"Inventory deduction failed for Order #{order.id}: {e}") from e
+            else:
+                order.inventory_deduction_status = "deducted"
+            order.save(update_fields=["inventory_deduction_status"])
+
+            # Post COGS Journal Entry for successfully deducted ingredients
+            if total_ingredient_cost > 0:
+                try:
+                    post_journal_entry(
+                        description=f"Auto JV: COGS for Order #{order.id}",
+                        items=[
+                            {
+                                "account_code": "5000",
+                                "debit": total_ingredient_cost,
+                                "credit": Decimal("0.00"),
+                            },
+                            {
+                                "account_code": "1300",
+                                "debit": Decimal("0.00"),
+                                "credit": total_ingredient_cost,
+                            },
+                        ],
+                    )
+                except Exception as jv_err:
+                    logger.error("Auto COGS JV failed for Order #%s: %s", order.id, jv_err)
+
+        except Exception as outer_inv_err:
+            logger.error("Unexpected error in inventory deduction workflow for Order #%s: %s", order.id, outer_inv_err)
+            order.inventory_deduction_status = "shortage_exception"
+            order.save(update_fields=["inventory_deduction_status"])
 
     if order.table:
         session = order.session

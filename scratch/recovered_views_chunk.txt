@@ -1,0 +1,58 @@
+Created At: 2026-11-05T11:02:20+03:00
+Completed At: 2026-11-05T11:02:20+03:00
+Showing lines 1-55 of 1575
+1: """Inventory API views extracted from the legacy facade."""
+2: from decimal import Decimal, ROUND_HALF_UP
+3: import datetime
+4: 
+5: TWOPLACES = Decimal("0.01")
+6: 
+7: 
+8: def to_decimal(value):
+9:     return Decimal(str(value or 0)).quantize(TWOPLACES, rounding=ROUND_HALF_UP)
+10: 
+11: from django.core.exceptions import PermissionDenied, ValidationError
+12: from django.db import transaction
+13: from django.db.models import DecimalField, ExpressionWrapper, F, Sum
+14: from django.utils import timezone
+15: from rest_framework import status, viewsets
+16: from rest_framework.decorators import action
+17: from rest_framework.permissions import IsAuthenticated
+18: from rest_framework.response import Response
+19: from rest_framework.views import APIView
+20: 
+21: from hotel.models import (
+22:     BatchLocationBalance,
+23:     GoodsReceiptNote,
+24:     GoodsReceiptNoteItem,
+25:     InventoryCategory,
+26:     InventoryItem,
+27:     InventoryWasteRecord,
+28:     ItemLocationBalance,
+29:     MenuItem,
+30:     ProcurementApprovalPolicy,
+31:     ProcurementApprovalTier,
+32:     PurchaseOrder,
+33:     PurchaseOrderItem,
+34:     PurchaseRequisition,
+35:     PurchaseRequisitionItem,
+36:     RecipeBOM,
+37:     RequestForQuotation,
+38:     RequestForQuotationItem,
+39:     StockBatch,
+40:     StockLocation,
+41:     StocktakeItem,
+42:     StocktakeSession,
+43:     StockTransaction,
+44:     StockTransfer,
+45:     StockTransferItem,
+46:     Supplier,
+47:     SupplierInvoice,
+48:     SupplierInvoiceItem,
+49:     SupplierQuotation,
+50:     SupplierQuotationItem,
+51: )
+52: from hotel.procurement import (
+53:     approve_purchase_requisition,
+54:     approve_supplier_invoice,
+55:     close_request_for_quotation,
